@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # 脚本信息
-SCRIPT_VERSION="v1.05"
-SCRIPT_DATE="2025/06/02"
+SCRIPT_VERSION="v1.07"
+SCRIPT_DATE="2025/09/29"
 script_info() {
     echo "#╔╦╗┌─┐ ┬ ┬  ┌─┐┌─┐┌─┐┬  ┌─┐  ┌─┐┌┐┌  ╔═╗┌─┐┌─┐┌┐┌ ╦ ╦ ┬─┐┌┬┐  ╦ ┌┐┌┌─┐┌┬┐┌─┐┬  ┬  ┌─┐┬─┐#"
     echo "# ║ ├─┤ │ │  └─┐│  ├─┤│  ├┤   │ ││││  ║ ║├─┘├┤ │││ ║║║ ├┬┘ │   ║ │││└─┐ │ ├─┤│  │  ├┤ ├┬┘#"
@@ -79,6 +79,10 @@ found_tailscale_file=false
 # tailscale版本号
 tailscale_version=""
 
+# 设备总运行内存
+total_mem=""
+# 设备可用运行内存
+free_mem=""
 # 剩余空间大小bytes
 free_space=""
 # 文件大小bytes
@@ -158,9 +162,18 @@ check_tailscale_install_status() {
                 tailscale_install_status="persistent"
             fi
             is_tailscale_installed="true"
+        else
+            if [ -f "/usr/bin/tailscaled" ] || [ -f "/tmp/tailscaled" ]; then
+                is_tailscale_installed="unknown"
+                found_tailscale_file="true"
+            fi
+        fi
+    else
+        if [ -f "/usr/bin/tailscaled" ] || [ -f "/tmp/tailscaled" ]; then
+            is_tailscale_installed="unknown"
+            found_tailscale_file="true"
         fi
     fi
-
 }
 
 # 函数：检查剩余存储空间（单位：bytes）
@@ -174,6 +187,11 @@ get_free_space() {
     # 使用 df -k 获取以 KB（1024 字节）为单位的剩余空间
     free_space_kb=$(df -Pk "$MOUNT_POINT" | awk 'NR==2 {print $(NF-2)}')
     
+    #获取设备总运行内存
+    total_mem=$(expr $(free | grep Mem | awk '{print $2}') / 1024)
+    #获取设备可用运行内存
+    free_mem=$(expr $(free | grep Mem | awk '{print $7}') / 1024)
+
     # 检查输出是否有效
     if [ -z "$free_space_kb" ] || ! echo "$free_space_kb" | grep -q '^[0-9]\+$'; then
         echo "错误: 无法获取 $MOUNT_POINT 的剩余空间"
@@ -183,7 +201,6 @@ get_free_space() {
     # 将 KB 转换为 bytes（1KB = 1024 bytes）
     free_space=$((free_space_kb * 1024))
     free_space_mb=$(expr $free_space / 1024 / 1024)
-    
 }
 
 # 函数：获取 GitHub 文件大小（单位：bytes）
@@ -282,11 +299,12 @@ remove() {
             directories="/etc/init.d /etc /etc/config /usr/bin /tmp /var/lib"
             binaries="tailscale tailscaled"
 
-            # 使用 for 循环遍历目录和文件
+            # remove指定目录的 tailscale 或 tailscaled 文件
             for dir in $directories; do
                 for bin in $binaries; do
                     if [ -f "$dir/$bin" ]; then
                         rm -rf $dir/$bin
+                        echo "已删除文件: $dir/$bin"
                     fi
                 done
             done
@@ -299,8 +317,66 @@ remove() {
             break
         fi
     done
-
 }
+
+# 函数：清理未知文件
+remove_unknown_file() {
+    while true; do
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ WARNING!!!请您确认以下信息:                           ║"
+        echo "║                                                       ║"
+        echo "║ 您正在执行删除Tailscale残留文件,如果这些文件为您自行  ║"
+        echo "║ 创建,则不应该被删除,请您取消该操作!                   ║"
+        echo "║ 请您确认您的操作, 避免造成损失!                       ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+
+        # remove指定目录的 tailscale 或 tailscaled 文件
+        directories="/etc/init.d /etc /etc/config /usr/bin /tmp /var/lib"
+        binaries="tailscale tailscaled"
+
+        # 使用 for 循环遍历目录和文件
+        for dir in $directories; do
+            for bin in $binaries; do
+                if [ -f "$dir/$bin" ]; then
+                    echo "找到文件: $dir/$bin"
+                fi
+            done
+        done
+
+        read -n 1 -p "确认删除残留文件吗? (y/N): " choice
+
+        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            tailscale_stoper
+
+            # remove指定目录的 tailscale 或 tailscaled 文件
+            directories="/etc/init.d /etc /etc/config /usr/bin /tmp /var/lib"
+            binaries="tailscale tailscaled"
+
+            # 使用 for 循环遍历目录和文件
+            for dir in $directories; do
+                for bin in $binaries; do
+                    if [ -f "$dir/$bin" ]; then
+                        rm -rf $dir/$bin
+                        echo "已删除文件: $dir/$bin"
+                    fi
+                done
+            done
+
+            ip link delete tailscale0
+            
+            echo "已删除所有残留文件, 重启脚本..."
+            sleep 2
+            exec "$0" "$@"
+
+            break
+        else
+            echo "取消删除残留文件"
+            break
+        fi
+    done
+}
+
 
 # 函数：持久安装
 persistent_install() {
@@ -543,6 +619,7 @@ script_exit() {
         echo "└───────────────────────────────────────────────────────┘"
         exit 0
 }
+
 # 函数：显示基本信息
 show_info() {
     echo "╔═════════════════════ 基 本 信 息 ═════════════════════╗"
@@ -551,24 +628,50 @@ show_info() {
     if [ "$is_tailscale_installed" = "true" ]; then
         echo "   Tailscale安装状态: 已安装"
         if [ "$tailscale_install_status" = "temp" ]; then
-        echo "   Tailscale安装模式: 临时安装"
+            echo "   Tailscale安装模式: 临时安装"
         elif [ "$tailscale_install_status" = "persistent" ]; then
-        echo "   Tailscale安装模式: 持久安装"
+            echo "   Tailscale安装模式: 持久安装"
         fi
         echo "   Tailscale版本: $tailscale_version"
     else 
-        echo "   Tailscale安装状态: 未安装"
-        echo "   Tailscale版本: 未安装"
+        if [ "$is_tailscale_installed" = "unknown" ]; then
+            echo "   Tailscale安装模式: 未知(存在tailscale文件, 但tailscale运行异常)"
+            echo "   Tailscale版本: 未知"
+        else
+            echo "   Tailscale安装状态: 未安装"
+            echo "   Tailscale版本: 未安装"
+        fi
     fi
 
     echo "   Tailscale最新版本: $tailscale_latest_version"
-    echo "   剩余存储空间：$free_space B / $(expr $free_space / 1024 / 1024) M"
     echo "   Tailscale文件大小: $file_size B / $(expr $file_size / 1024 / 1024) M" 
+    echo "   剩余存储空间：$free_space B / $(expr $free_space / 1024 / 1024) M"
     # 比较并判断
     if [ "$free_space" -gt "$file_size" ]; then
         echo "   剩余空间足以持久安装Tailscale"
     else
         echo "   剩余空间不足以持久安装Tailscale"
+    fi
+
+    echo "   设备 可用/全部 内存：$free_mem MB / $total_mem MB"
+    if [ "$free_mem" -lt 60 ]; then
+        echo "   设备运行内存过低, 可能导致tailscale无法正常运行"
+    elif [ "$free_mem" -lt 120 ]; then
+        echo "   设备运行内存较低, 可能导致tailscale运行卡顿"
+    fi
+
+    if [ "$USE_CUSTOM_PROXY" = "true" ]; then
+        echo "   GitHub代理: $custom_proxy (自定义)"
+    else
+        echo "   GitHub代理: $available_proxy"
+    fi
+
+    if [ "$is_tailscale_installed" = "true" ]; then
+        if [ $tailscale_latest_version != $tailscale_version ]; then
+            echo "   Tailscale有新版本可用, 您可以选择更新"
+        else
+            echo "   Tailscale已是最新版本"
+        fi
     fi
     echo "╚═════════════════════ 基 本 信 息 ═════════════════════╝"
 }
@@ -592,6 +695,12 @@ option_menu() {
         if [ "$is_tailscale_installed" = "true" ]; then
             menu_items="$menu_items $option_index).卸载"
             menu_operations="$menu_operations remove"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$found_tailscale_file" = "true" ] && [ "$is_tailscale_installed" = "unknown" ]; then
+            menu_items="$menu_items $option_index).删除残留文件(已找到tailscale文件但tailscale运行异常)"
+            menu_operations="$menu_operations remove_unknown_file"
             option_index=$((option_index + 1))
         fi
 
@@ -717,6 +826,15 @@ done
 
 # 主程序
 
+main() {
+    clear
+    script_info
+    init
+    clear
+    script_info
+    option_menu
+}
+
 if [ "$TMP_INSTALL" = "true" ]; then
     set_system_dns
     get_system_arch 
@@ -725,9 +843,4 @@ if [ "$TMP_INSTALL" = "true" ]; then
     exit 0
 fi
 
-clear
-script_info
-init
-clear
-script_info
-option_menu
+main

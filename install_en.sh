@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # Script Information
-SCRIPT_VERSION="v1.05"
-SCRIPT_DATE="2025/06/02"
+SCRIPT_VERSION="v1.07"
+SCRIPT_DATE="2025/09/29"
 script_info() {
     echo "#╔╦╗┌─┐ ┬ ┬  ┌─┐┌─┐┌─┐┬  ┌─┐  ┌─┐┌┐┌  ╔═╗┌─┐┌─┐┌┐┌ ╦ ╦ ┬─┐┌┬┐  ╦ ┌┐┌┌─┐┌┬┐┌─┐┬  ┬  ┌─┐┬─┐#"
     echo "# ║ ├─┤ │ │  └─┐│  ├─┤│  ├┤   │ ││││  ║ ║├─┘├┤ │││ ║║║ ├┬┘ │   ║ │││└─┐ │ ├─┤│  │  ├┤ ├┬┘#"
@@ -57,6 +57,8 @@ tailscale_install_status="none"
 found_tailscale_file=false
 tailscale_version=""
 
+total_mem=""
+free_mem=""
 free_space=""
 file_size=""
 free_space_mb=""
@@ -118,6 +120,16 @@ check_tailscale_install_status() {
                 tailscale_install_status="persistent"
             fi
             is_tailscale_installed="true"
+        else
+            if [ -f "/usr/bin/tailscaled" ] || [ -f "/tmp/tailscaled" ]; then
+                is_tailscale_installed="unknown"
+                found_tailscale_file="true"
+            fi
+        fi
+    else
+        if [ -f "/usr/bin/tailscaled" ] || [ -f "/tmp/tailscaled" ]; then
+            is_tailscale_installed="unknown"
+            found_tailscale_file="true"
         fi
     fi
 }
@@ -131,6 +143,9 @@ get_free_space() {
 
     free_space_kb=$(df -Pk "$MOUNT_POINT" | awk 'NR==2 {print $(NF-2)}')
     
+    total_mem=$(expr $(free | grep Mem | awk '{print $2}') / 1024)
+    free_mem=$(expr $(free | grep Mem | awk '{print $7}') / 1024)
+
     if [ -z "$free_space_kb" ] || ! echo "$free_space_kb" | grep -q '^[0-9]\+$'; then
         echo "Error: Failed to get free space for $MOUNT_POINT"
         exit 1
@@ -207,6 +222,7 @@ remove() {
                 for bin in $binaries; do
                     if [ -f "$dir/$bin" ]; then
                         rm -rf $dir/$bin
+                        echo "Removed file: $dir/$bin"
                     fi
                 done
             done
@@ -220,6 +236,61 @@ remove() {
         fi
     done
 
+}
+
+# Function: Remove unknown files
+remove_unknown_file() {
+    while true; do
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ WARNING!!! Please confirm:                            ║"
+        echo "║                                                       ║"
+        echo "║ You are about to delete Tailscale residual files. If  ║"
+        echo "║ you created these files yourself, they should not be  ║"
+        echo "║ deleted. Please cancel this operation!                ║"
+        echo "║ Please confirm your operation to avoid data loss!     ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+
+        directories="/etc/init.d /etc /etc/config /usr/bin /tmp /var/lib"
+        binaries="tailscale tailscaled"
+
+        for dir in $directories; do
+            for bin in $binaries; do
+                if [ -f "$dir/$bin" ]; then
+                    echo "Found file: $dir/$bin"
+                fi
+            done
+        done
+        
+        read -n 1 -p "Confirm removing Tailscale residual files? (y/N): " choice
+
+        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            tailscale_stoper
+
+            directories="/etc/init.d /etc /etc/config /usr/bin /tmp /var/lib"
+            binaries="tailscale tailscaled"
+
+            for dir in $directories; do
+                for bin in $binaries; do
+                    if [ -f "$dir/$bin" ]; then
+                        rm -rf $dir/$bin
+                        echo "Removed file: $dir/$bin"
+                    fi
+                done
+            done
+
+            ip link delete tailscale0
+
+            echo "All residual files removed, restarting script..."
+            sleep 2
+            exec "$0" "$@"
+
+            break
+        else
+            echo "Operation canceled"
+            break
+        fi
+    done
 }
 
 # Function: Persistent Install
@@ -449,23 +520,46 @@ show_info() {
     if [ "$is_tailscale_installed" = "true" ]; then
         echo "   Tailscale Status: Installed"
         if [ "$tailscale_install_status" = "temp" ]; then
-        echo "   Install Mode: Temporary"
+            echo "   Install Mode: Temporary"
         elif [ "$tailscale_install_status" = "persistent" ]; then
-        echo "   Install Mode: Persistent"
+            echo "   Install Mode: Persistent"
         fi
         echo "   Tailscale Version: $tailscale_version"
     else 
-        echo "   Tailscale Status: Not Installed"
-        echo "   Tailscale Version: N/A"
+        if [ "$is_tailscale_installed" = "unknown" ]; then
+            echo "   Tailscale Status: Unknown (Residual files detected)"
+            echo "   Tailscale Version: N/A"
+        else
+            echo "   Tailscale Status: Not Installed"
+            echo "   Tailscale Version: N/A"
+        fi
     fi
+
     echo "   Latest Tailscale Version: $tailscale_latest_version"
-    echo "   Free Space: $free_space B / $(expr $free_space / 1024 / 1024) M"
     echo "   Tailscale Size: $file_size B / $(expr $file_size / 1024 / 1024) M" 
+    echo "   Free Space: $free_space B / $(expr $free_space / 1024 / 1024) M"
+
     if [ "$free_space" -gt "$file_size" ]; then
         echo "   Sufficient space for persistent install"
     else
         echo "   Insufficient space for persistent install"
     fi
+
+    echo "   Device Free/Total Memory: $free_mem MB / $total_mem MB"
+    if [ "$free_mem" -lt 60 ]; then
+        echo "   Device memory is too low, which may cause Tailscale to malfunction"
+    elif [ "$free_mem" -lt 120 ]; then
+        echo "   Device memory is relatively low, which may cause Tailscale to run slowly"
+    fi
+
+    if [ "$is_tailscale_installed" = "true" ]; then
+        if [ $tailscale_latest_version != $tailscale_version ]; then
+            echo "   New Tailscale version available, you can choose to update"
+        else
+            echo "   Tailscale is up to date"
+        fi
+    fi
+
     echo "╚═════════════════════ Basic Information ══════════════════╝"
 }
 
@@ -489,6 +583,12 @@ option_menu() {
         if [ "$is_tailscale_installed" = "true" ]; then
             menu_items="$menu_items $option_index).Uninstall"
             menu_operations="$menu_operations remove"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$found_tailscale_file" = "true" ] && [ "$is_tailscale_installed" = "unknown" ]; then
+            menu_items="$menu_items $option_index).Remove-Unknown-Files(Found-tailscale-files-but-tailscale-runs-abnormally)"
+            menu_operations="$menu_operations remove_unknown_file"
             option_index=$((option_index + 1))
         fi
 
@@ -580,6 +680,16 @@ for arg in "$@"; do
 done
 
 # Main Program
+
+main() {
+    clear
+    script_info
+    init
+    clear
+    script_info
+    option_menu
+}
+
 if [ "$TMP_INSTALL" = "true" ]; then
     get_system_arch 
     get_tailscale_info
@@ -587,9 +697,4 @@ if [ "$TMP_INSTALL" = "true" ]; then
     exit 0
 fi
 
-clear
-script_info
-init
-clear
-script_info
-option_menu
+main
