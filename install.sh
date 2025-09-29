@@ -290,7 +290,7 @@ remove() {
         echo "║                                                       ║"
         echo "╚═══════════════════════════════════════════════════════╝"
 
-        read -n 1 -p "确认卸载tailscale残留文件吗? (y/N): " choice
+        read -n 1 -p "确认卸载tailscale吗? (y/N): " choice
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
             tailscale_stoper
