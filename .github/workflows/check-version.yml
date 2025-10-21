@@ -96,7 +96,12 @@ jobs:
           echo "Commit from GHCR: $commit"
           echo "commit=$commit" >> $GITHUB_OUTPUT
           echo "version=$version" >> $GITHUB_OUTPUT
- 
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
       - name: Commit and push new version file
         id: push_new_version
         run: |
