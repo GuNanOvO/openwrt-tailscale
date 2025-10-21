@@ -1,0 +1,110 @@
+name: Daily Tailscale GHCR Check
+
+permissions:
+  contents: read
+
+on:
+  schedule:
+    - cron: '0 4,8,18,22 * * *'
+  workflow_dispatch:
+
+jobs:
+  version-check:
+    name: Check GHCR Stable Version
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.compare.outputs.should_build }}
+      ghcr_version: ${{ steps.get_ghcr.outputs.stable_version }}
+    steps:
+      - name: Get GHCR stable version
+        id: get_ghcr
+        uses: actions/github-script@v6
+        env:
+          GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+        with:
+          script: |
+            const token = process.env.GHCR_TOKEN;
+            const res = await fetch(
+              'https://api.github.com/orgs/tailscale/packages/container/tailscale/versions',
+              { headers: { 
+                  'Authorization': `Bearer ${token}`,
+                  'Accept': 'application/vnd.github.v3+json'
+                } 
+              }
+            );
+            const versions = await res.json();
+
+            const latestStableObj = versions.find(v => {
+              const tags = v.metadata.container.tags || [];
+              return tags.includes('stable') && tags.includes('latest');
+            });
+
+            if (!latestStableObj) throw new Error('No version found with both stable and latest tags');
+
+            const versionTag = (latestStableObj.metadata.container.tags || [])
+              .filter(tag => tag !== 'latest' && tag !== 'stable')[0];
+
+            if (!versionTag) throw new Error('No version tag found');
+
+            console.log('Upstream latest stable version tag:', versionTag);
+            core.setOutput('stable_version', versionTag);
+
+      - name: Get latest local tag
+        id: get_local_tag
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: tags } = await github.rest.repos.listTags({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              per_page: 1  
+            });
+            const latestTag = tags[0]?.name || '';
+            console.log('Local repo latest version:', latestTag)
+            core.setOutput('tag', latestTag);
+
+      - name: Compare upstream GHCR stable version with local latest tag
+        id: compare
+        run: |
+          echo "GHCR stable version: ${{ steps.get_ghcr.outputs.stable_version }}"
+          echo "Local latest tag: ${{ steps.get_local_tag.outputs.tag }}"
+
+          should_build="false"
+          if [[ "${{ steps.get_ghcr.outputs.stable_version }}" != "${{ steps.get_local_tag.outputs.tag }}" ]]; then
+            should_build="true"
+          fi
+          echo "should_build=$should_build" >> $GITHUB_OUTPUT
+
+  trigger-build:
+    name: Trigger Build Workflow with Commit
+    permissions:
+      contents: write
+    needs: version-check
+    if: needs.version-check.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      ghcr_commit: ${{ steps.get_commit.outputs.commit }}
+    steps:
+      - name: Pull GHCR stable image and get commit
+        id: get_commit
+        run: |
+          version=${{ needs.version-check.outputs.ghcr_version }}
+          echo "Pulling ghcr.io/tailscale/tailscale:${version}"
+          docker pull ghcr.io/tailscale/tailscale:${version}
+
+          commit=$(docker run --rm ghcr.io/tailscale/tailscale:${version} tailscale version | grep -oP 'tailscale commit: \K\w+')
+          echo "Commit from GHCR: $commit"
+          echo "commit=$commit" >> $GITHUB_OUTPUT
+          echo "version=$version" >> $GITHUB_OUTPUT
+ 
+      - name: Commit and push new version file
+        id: push_new_version
+        run: |
+          echo "UPSTREAM_COMMIT: ${{ steps.get_commit.outputs.commit }}" > version
+          echo "VERSION: ${{ steps.get_commit.outputs.version}}" >> version
+          git config --local user.name "action@github.com"
+          git config --local user.email "GitHub Action"
+          git add version
+          git commit -m "chore: update version to ${{ steps.get_commit.outputs.commit }} [CI-BUILD-NEW-VERSION] " || true
+          git push origin main
+
