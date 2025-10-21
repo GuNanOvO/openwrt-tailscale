@@ -1,9 +1,10 @@
 name: Smaller Tailscale Build Pipeline
 
 on:
-  schedule:
-    - cron: '30 0/12 * * *'
-  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths:
+      - version
 
 env:
   SOFTWARE_NAME: "Tailscale"
@@ -14,70 +15,14 @@ env:
   REPO_SMALL_OWNER: "GuNanOvO"
   ARTIFACT_DIR: "artifacts"
   BUILD_DATE: ""
+
 jobs:
-  version-check:
-    name: Check Version Differences
-    runs-on: ubuntu-latest
-    outputs:
-      should_build: ${{ steps.compare.outputs.should_build }}
-      upstream_tag: ${{ steps.get_upstream.outputs.tag }}
-    steps:
-      - name: Get latest stable tag from tailscale
-        id: get_upstream
-        uses: actions/github-script@v6
-        with:
-          script: |
-            const { data: tags } = await github.rest.repos.listTags({
-              owner: 'tailscale',
-              repo: 'tailscale',
-              per_page: 100
-            });
-
-            const stableTags = tags
-              .map(tag => tag.name)
-              .filter(name => /^v\d+\.\d+\.\d+$/.test(name));
-
-            stableTags.sort((a, b) => {
-              const parse = v => v.slice(1).split('.').map(Number);
-              const [a1, a2, a3] = parse(a);
-              const [b1, b2, b3] = parse(b);
-              return b1 - a1 || b2 - a2 || b3 - a3;
-            });
-
-            const latest = stableTags[0] || '';
-            core.setOutput('tag', latest);
-
-      - name: Get latest release tag from openwrt-tailscale
-        id: get_small
-        uses: actions/github-script@v6
-        with:
-          script: |
-            try {
-              const { data } = await github.rest.repos.getLatestRelease({
-                owner: 'GuNanOvO',
-                repo: 'openwrt-tailscale'
-              });
-              core.setOutput('tag', data?.tag_name || '');
-            } catch (error) {
-              core.setOutput('tag', '');
-            }
-
-      - name: Compare versions
-        id: compare
-        run: |
-          echo "Upstream: ${{ steps.get_upstream.outputs.tag }}"
-          echo "Local: ${{ steps.get_small.outputs.tag }}"
-          if [ "${{ steps.get_upstream.outputs.tag }}" != "${{ steps.get_small.outputs.tag }}" ]; then
-            echo "should_build=true" >> ${GITHUB_OUTPUT}
-          else
-            echo "should_build=false" >> ${GITHUB_OUTPUT}
-          fi
-
   build:
     name: Build for ${{ matrix.platform.id }}
-    needs: version-check
-    if: needs.version-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
+    outputs: 
+      upstream_commit: ${{ steps.read_commit.outputs.upstream_commit }}
+      version_tag: ${{ steps.read_commit.outputs.version_tag }}
     strategy:
       matrix:
         platform: [
@@ -182,11 +127,20 @@ jobs:
       fail-fast: false
 
     steps:
-      - name: Checkout source
+      - name: Read commit from version file
+        id: read_commit
+        run: |
+          upstream_commit = $(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')
+          version = $(grep '^VERSION:' version | awk '{print $2}')
+          echo "upstream_commit=$upstream_commit" >> $GITHUB_OUTPUT
+          echo "version_tag=$version" >>$GITHUB_OUTPUT
+
+
+      - name: Checkout source at specific commit
         uses: actions/checkout@v4
         with:
-          repository: ${{ env.REPO }}
-          ref: ${{ needs.version-check.outputs.upstream_tag }}
+          repository: ${{ env.REPO }} 
+          ref: ${{ steps.read_commit.outputs.upstream_commit }}
           path: src
 
       - name: Checkout packaging files
@@ -284,7 +238,7 @@ jobs:
 
             for target in ${targets}; do
               ARCH=${target}
-              VERSION=$(echo "${{ needs.version-check.outputs.upstream_tag }}" | sed 's/^v//')
+              VERSION=$(echo "${{ steps.read_commit.outputs.version_tag }}" | sed 's/^v//')
 
               if [[ -z "$compressed_bin" ]]; then
                 ipk_compressed="tailscale_${VERSION}_${ARCH}_normal.ipk"
@@ -299,7 +253,7 @@ jobs:
                   -e "s/__EPOCH__/${EPOCH}/" \
                   packaging/CONTROL/control > ipk/CONTROL/control
 
-              VERSION=${{ needs.version-check.outputs.upstream_tag }}
+              VERSION=${{ steps.read_commit.outputs.version_tag }}
               tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf control.tar.gz -C ipk/CONTROL .
               tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf data.tar.gz -C ipk ./usr ./etc ./lib
               if [[ "${bin}" =~ (normal) ]]; then
@@ -326,7 +280,7 @@ jobs:
 
           for target in ${targets}; do
             ARCH=${target}
-            VERSION=${{ needs.version-check.outputs.upstream_tag }}
+            VERSION=${{ steps.read_commit.outputs.version_tag }}
 
             if [[ "${{ matrix.platform.id }}" =~ ^mips64 ]]; then
               binary_compressed="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}-normal"
@@ -373,11 +327,10 @@ jobs:
 
   release:
     name: Create Release
-    needs: [version-check, build]
-    if: needs.version-check.outputs.should_build == 'true'
+    needs: [build]
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ needs.version-check.outputs.upstream_tag }}
+      RELEASE_TAG: ${{ needs.build.outputs.version_tag }}
     steps:
       - name: Prepare workspace
         run: |
