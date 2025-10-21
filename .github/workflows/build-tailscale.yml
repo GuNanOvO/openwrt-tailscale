@@ -128,8 +128,16 @@ jobs:
       fail-fast: false
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: main
+
+
       - name: Read commit from version file
         id: read_commit
+        working-directory: main
         run: |
           upstream_commit="$(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')"
           version="$(grep '^VERSION:' version | awk '{print $2}')"
