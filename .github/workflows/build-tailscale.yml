@@ -130,8 +130,8 @@ jobs:
       - name: Read commit from version file
         id: read_commit
         run: |
-          upstream_commit = $(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')
-          version = $(grep '^VERSION:' version | awk '{print $2}')
+          upstream_commit="$(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')"
+          version="$(grep '^VERSION:' version | awk '{print $2}')"
           echo "upstream_commit=$upstream_commit" >> $GITHUB_OUTPUT
           echo "version_tag=$version" >>$GITHUB_OUTPUT
 
