@@ -1,5 +1,8 @@
 name: Daily Tailscale GHCR Check
 
+permissions:
+  contents: read
+
 on:
   schedule:
     - cron: '0 4,8,18,22 * * *'
@@ -74,6 +77,8 @@ jobs:
 
   trigger-build:
     name: Trigger Build Workflow with Commit
+    permissions:
+      contents: write
     needs: version-check
     if: needs.version-check.outputs.should_build == 'true'
     runs-on: ubuntu-latest
