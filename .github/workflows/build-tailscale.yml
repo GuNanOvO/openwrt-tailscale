@@ -202,7 +202,7 @@ jobs:
           mkdir -p ../build
           exec $go build \
             -tags "${{ env.TAGS }}" \
-            -ldfLags "${{ env.LDFLAGS }}" \
+            -ldflags "${{ env.LDFLAGS }}" \
             -trimpath \
             -o "../build/${output_name}" \
             ./cmd/${{ env.FILE_NAME }}
