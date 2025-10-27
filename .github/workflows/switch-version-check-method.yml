@@ -1,4 +1,5 @@
 name: Change Default Version Check Method
+
 on:
   workflow_dispatch:
     inputs:
@@ -12,50 +13,27 @@ on:
         required: true
 
 jobs:
-  update-workflow:
+  update-config:
     name: Update Default Check Method
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Update check-version.yml default method
+      - name: Update .config/check-method file
         run: |
-          check_file=".github/workflows/check-version.yml"
-          new_method="${{ github.event.inputs.version_check_method }}"
-          
-          # Create a temporary file
-          tmp_file=$(mktemp)
-          
-          # Process the file and update the default option
-          awk -v new_method="$new_method" '
-          BEGIN { in_inputs = 0; in_version_check = 0; found = 0 }
-          {
-            if ($0 ~ /inputs:/) { in_inputs = 1 }
-            if (in_inputs && $0 ~ /version_check_method:/) { in_version_check = 1 }
-            if (in_version_check && $0 ~ /default:/) {
-              # Replace the default value while preserving indentation
-              gsub(/default: .+$/, "default: \x27" new_method "\x27")
-              found = 1
-              in_version_check = 0
-            }
-            print $0
-          }' "$check_file" > "$tmp_file"
-          
-          # Check if the replacement was successful
-          if [ -s "$tmp_file" ]; then
-            mv "$tmp_file" "$check_file"
-          else
-            echo "Error: Failed to process the file"
-            exit 1
-          fi
+          mkdir -p .config
+          echo "${{ github.event.inputs.version_check_method }}" > .config/check-method
+          echo "Updated .config/check-method to:"
+          cat .config/check-method
 
       - name: Check for changes
         id: check-changes
         run: |
-          if git diff --quiet .github/workflows/check-version.yml; then
+          if git diff --quiet .config/check-method; then
             echo "No changes were necessary"
             echo "changed=false" >> $GITHUB_OUTPUT
           else
@@ -68,6 +46,6 @@ jobs:
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
-          git add .github/workflows/check-version.yml
+          git add .config/check-method
           git commit -m "chore: update default version check method to ${{ github.event.inputs.version_check_method }}"
           git push

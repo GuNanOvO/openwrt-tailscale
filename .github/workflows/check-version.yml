@@ -26,6 +26,27 @@ jobs:
       selected_version: ${{ steps.compare.outputs.selected_version }}
       check_method: ${{ steps.compare.outputs.check_method }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Load check method from .config/check-method
+        id: load-method
+        run: |
+          # 优先使用 workflow_dispatch 输入，其次读取配置文件，最后默认 ghcr
+          if [ -n "${{ github.event.inputs.version_check_method }}" ]; then
+            method="${{ github.event.inputs.version_check_method }}"
+            echo "Using manually provided method: $method"
+          elif [ -f .config/check-method ]; then
+            method=$(cat .config/check-method | tr -d '[:space:]')
+            echo "Using method from .config/check-method: $method"
+          else
+            method="ghcr"
+            echo "Using default method: $method"
+          fi
+
+          # 输出给后续步骤使用
+          echo "method=$method" >> $GITHUB_OUTPUT
+
       - name: Get GHCR stable version
         id: get_ghcr
         uses: actions/github-script@v6
@@ -58,7 +79,7 @@ jobs:
 
             console.log('Upstream latest stable version tag:', versionTag);
             core.setOutput('stable_version', versionTag);
-            
+
       - name: Get latest tag from release
         id: get_tag_release
         uses: actions/github-script@v6
@@ -102,7 +123,7 @@ jobs:
       - name: Compare versions
         id: compare
         run: |
-          check_method="${{ github.event.inputs.version_check_method || 'ghcr' }}"
+          check_method="${{ steps.load-method.outputs.method }}"
           echo "Using version check method: $check_method"
           
           if [ "$check_method" = "ghcr" ]; then
@@ -189,6 +210,5 @@ jobs:
           git config --local user.name "action@github.com"
           git config --local user.email "GitHub Action"
           git add version
-          git commit -m "chore: update version to ${{ steps.get_commit.outputs.commit }} [CI-BUILD-NEW-VERSION] " || true
+          git commit -m "chore: update version to ${{ steps.get_commit.outputs.commit }} [CI-BUILD-NEW-VERSION]" || true
           git push origin main
-
