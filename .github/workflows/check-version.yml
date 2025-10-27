@@ -216,5 +216,5 @@ jobs:
       - name: Trigger build workflow
         uses: peter-evans/repository-dispatch@v4
         with:
-          event-type: build-trigger
+          event-type: build-tailscale
           token: ${{ secrets.PAT_TOKEN }}
