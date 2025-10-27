@@ -7,7 +7,7 @@ on:
     paths:
       - version
   repository_dispatch:
-    types: [ build-trigger ]
+    types: [ build-tailscale ]
 
 env:
   SOFTWARE_NAME: "Tailscale"
@@ -528,7 +528,7 @@ jobs:
 
           ### 🛠️ 构建特性
           - 将 \`tailscale\` 和 \`tailscaled\` 合并为单一二进制文件。  
-          - 结合精简的 TAGS 与 `-s -w` LDFLAGS，大幅减小了二进制文件的体积。  
+          - 结合精简的 TAGS 与 \`-s -w\` LDFLAGS，大幅减小了二进制文件的体积。  
           - 使用 UPX 压缩技术对二进制文件进行压缩（mips64 架构除外），进一步降低存储占用。  
 
           ### ⚠️ 系统需求
@@ -556,7 +556,7 @@ jobs:
 
           ### 🛠️ Build Features
           - Combined \`tailscale\` and \`tailscaled\` into a single binary.  
-          - Used streamlined TAGS and `-s -w` LDFLAGS to significantly reduce the size of the binary.  
+          - Used streamlined TAGS and \`-s -w\` LDFLAGS to significantly reduce the size of the binary.  
           - UPX compression applied to binaries (except for mips64 architecture) to further reduce storage usage.  
 
           ### ⚠️ System Requirements
