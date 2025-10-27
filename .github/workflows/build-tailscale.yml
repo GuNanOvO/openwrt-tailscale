@@ -6,6 +6,8 @@ on:
     branches: [ main ]
     paths:
       - version
+  repository_dispatch:
+    types: [ build-trigger ]
 
 env:
   SOFTWARE_NAME: "Tailscale"

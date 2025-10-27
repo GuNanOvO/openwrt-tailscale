@@ -212,3 +212,9 @@ jobs:
           git add version
           git commit -m "chore: update version to ${{ steps.get_commit.outputs.commit }} [CI-BUILD-NEW-VERSION]" || true
           git push origin main
+
+      - name: Trigger build workflow
+        uses: peter-evans/repository-dispatch@v4
+        with:
+          event-type: build-trigger
+          token: ${{ secrets.PAT_TOKEN }}
