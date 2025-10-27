@@ -187,6 +187,8 @@ jobs:
           GO386: ${{ matrix.platform.go386 || '' }}
           CGO_ENABLED: ${{ matrix.platform.cgo_enabled || 0 }}
           CC: ${{ matrix.platform.cc || '' }}
+          TAGS: "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
+          LDFLAGS: "-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
         run: |
           output_name="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
           
@@ -196,12 +198,14 @@ jobs:
           fi
 
           eval `CGO_ENABLED=0 GOOS=$($go env GOHOSTOS) GOARCH=$($go env GOHOSTARCH) $go run ./cmd/mkversion`
-          
-          tags="ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
-          ldflags="-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
 
           mkdir -p ../build
-          exec $go build -tags "${TAGS}" -ldflags "${LDFLAGS}" -trimpath -o "../build/${output_name}" ./cmd/${{ env.FILE_NAME }}
+          exec $go build \
+            -tags "${TAGS}" \
+            -ldflags "${LDFLAGS}" \
+            -trimpath \
+            -o "../build/${output_name}" \
+            ./cmd/${{ env.FILE_NAME }}
           
           # Verify the binary was created
           if [ ! -f "../build/${output_name}" ]; then
