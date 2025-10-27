@@ -131,7 +131,16 @@ wget -O /usr/bin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-t
 <summary><h2>Implementation Details</h2></summary>
 
 #### Compilation Optimization:  
-Uses `--extra-small` compile option from Tailscale's [official documentation](https://tailscale.com/kb/1207/small-tailscale) combined with [UPX](https://upx.github.io/) binary compression, reducing tailscale size to 20% of original 🎉  
+The following build parameters were used to slim down Tailscale:
+
+```
+TAGS: ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
+
+LDFLAGS:
+-s -w
+```
+
+Additionally, by applying [UPX](https://upx.github.io/) binary compression, the Tailscale binary was reduced to only 20% of its original size, making it feasible to run Tailscale on OpenWrt devices with limited storage space 🎉.
 
 #### Core Logic:  
 1. **Persistent Installation**  

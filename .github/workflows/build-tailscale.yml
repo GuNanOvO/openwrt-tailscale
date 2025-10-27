@@ -187,12 +187,23 @@ jobs:
           GO386: ${{ matrix.platform.go386 || '' }}
           CGO_ENABLED: ${{ matrix.platform.cgo_enabled || 0 }}
           CC: ${{ matrix.platform.cc || '' }}
-          TAGS: "ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
+          TAGS: ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
+          LDFLAGS: "-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
         run: |
           output_name="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
+          
+          go="go"
+          if [ -n "${TS_USE_TOOLCHAIN:-}" ]; then
+              go="./tool/go"
+          fi
+
+          eval `CGO_ENABLED=0 GOOS=$($go env GOHOSTOS) GOARCH=$($go env GOHOSTARCH) $go run ./cmd/mkversion`
+
           mkdir -p ../build
-          ./build_dist.sh \
-            --extra-small --box \
+          exec $go build \
+            -tags "${{ env.TAGS }}" \
+            -ldfLags "${{ env.LDFLAGS }}" \
+            -trimpath \
             -o "../build/${output_name}" \
             ./cmd/${{ env.FILE_NAME }}
           
@@ -517,7 +528,7 @@ jobs:
 
           ### 🛠️ 构建特性
           - 将 \`tailscale\` 和 \`tailscaled\` 合并为单一二进制文件。  
-          - 使用 \`--extra-small\` 编译选项，极大地减少了二进制文件的体积。  
+          - 结合精简的 TAGS 与 `-s -w` LDFLAGS，大幅减小了二进制文件的体积。  
           - 使用 UPX 压缩技术对二进制文件进行压缩（mips64 架构除外），进一步降低存储占用。  
 
           ### ⚠️ 系统需求
@@ -545,7 +556,7 @@ jobs:
 
           ### 🛠️ Build Features
           - Combined \`tailscale\` and \`tailscaled\` into a single binary.  
-          - Built with the \`--extra-small\` flag to significantly reduce binary size.  
+          - Used streamlined TAGS and `-s -w` LDFLAGS to significantly reduce the size of the binary.  
           - UPX compression applied to binaries (except for mips64 architecture) to further reduce storage usage.  
 
           ### ⚠️ System Requirements
