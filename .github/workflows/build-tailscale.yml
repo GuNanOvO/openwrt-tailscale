@@ -187,22 +187,33 @@ jobs:
           GO386: ${{ matrix.platform.go386 || '' }}
           CGO_ENABLED: ${{ matrix.platform.cgo_enabled || 0 }}
           CC: ${{ matrix.platform.cc || '' }}
-          TAGS: "ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
-          LDFLAGS: "-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
         run: |
           output_name="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
           
           go="go"
           if [ -n "${TS_USE_TOOLCHAIN:-}" ]; then
-              go="./tool/go"
+            go="./tool/go"
           fi
 
           eval `CGO_ENABLED=0 GOOS=$($go env GOHOSTOS) GOARCH=$($go env GOHOSTARCH) $go run ./cmd/mkversion`
 
+          if [ "$#" -ge 1 ] && [ "$1" = "shellvars" ]; then
+            cat <<EOF
+          VERSION_MINOR="$VERSION_MINOR"
+          VERSION_SHORT="$VERSION_SHORT"
+          VERSION_LONG="$VERSION_LONG"
+          VERSION_GIT_HASH="$VERSION_GIT_HASH"
+          EOF
+            exit 0
+          fi
+
+          tags="ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
+          ldflags="-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
+
           mkdir -p ../build
           exec $go build \
-            -tags "${TAGS}" \
-            -ldflags "${LDFLAGS}" \
+            -tags "${tags}" \
+            -ldflags "${ldflags}" \
             -trimpath \
             -o "../build/${output_name}" \
             ./cmd/${{ env.FILE_NAME }}
