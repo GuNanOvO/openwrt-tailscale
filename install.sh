@@ -35,7 +35,7 @@ https://github.com"
 INIT_URL="/gunanovo/openwrt-tailscale/blob/main/etc/init.d/tailscale"
 # OpenWrt 可写存储分区，通常是 /overlay
 MOUNT_POINT="/"
-PACKAGES_TO_CHECK="libc libustream-openssl kmod-tun ca-bundle iptables ip6tables kmod-ipt-conntrack kmod-nft-nat"
+PACKAGES_TO_CHECK="libc kmod-tun ca-bundle"
 # tmp tailscale
 TMP_TAILSCALE='#!/bin/sh
                 set -e
@@ -265,16 +265,36 @@ get_tailscale_info() {
 
 # 函数：更新
 update() {
-    echo "正在更新"
+    echo "正在更新..."
     if [ "$TMP_INSTALL" = "true" ]; then
         temp_install "true"
     else
         if [ "$tailscale_install_status" = "temp" ]; then
-            temp_install
+            temp_install "true"
         elif [ "$tailscale_install_status" = "persistent" ]; then
-            persistent_install
+            persistent_install "true"
         fi
     fi
+    while true; do
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ WARNING!!!请您确认以下信息:                           ║"
+        echo "║                                                       ║"
+        echo "║ 您正在执行更新Tailscale, Tailscale需要重启, 如果您当 ║"
+        echo "║ 当前正在通过Tailscale连接至设备有可能断开与设备的连接 ║"
+        echo "║ 请您确认您的操作, 避免造成失! 感谢您的使用!         ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+
+        read -n 1 -p "确认重启tailscale吗? (y/N): " choice
+
+        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            /etc/init.d/tailscale stop
+            /etc/init.d/tailscale start
+            break
+        else
+            echo "取消重启tailscale, 您稍后可自行通过命令 /etc/init.d/tailscale stop && /etc/init.d/tailscale start 来重启tailscale服务"
+            break
+    done
 }
 
 # 函数：卸载
