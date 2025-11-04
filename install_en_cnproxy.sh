@@ -28,7 +28,7 @@ https://www.ghproxy.cn/https://github.com
 https://github.com"
 INIT_URL="/gunanovo/openwrt-tailscale/blob/main/etc/init.d/tailscale"
 MOUNT_POINT="/"
-PACKAGES_TO_CHECK="libustream-openssl kmod-tun ca-bundle iptables ip6tables kmod-ipt-conntrack kmod-nft-nat"
+PACKAGES_TO_CHECK="libc kmod-tun ca-bundle"
 # tmp tailscale
 TMP_TAILSCALE='#!/bin/sh
                 set -e
@@ -233,11 +233,33 @@ update() {
         temp_install "true"
     else
         if [ "$tailscale_install_status" = "temp" ]; then
-            temp_install
+            temp_install "true"
         elif [ "$tailscale_install_status" = "persistent" ]; then
-            persistent_install
+            persistent_install "true"
         fi
     fi
+    while true; do
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ WARNING!!! Please confirm:                            ║"
+        echo "║                                                       ║"
+        echo "║ You are updating Tailscale, which requires a restart. ║"
+        echo "║ If you are currently connected to the device via      ║"
+        echo "║ Tailscale, you may lose connection to the device.     ║"
+        echo "║ Please confirm your operation to avoid disconnection! ║"
+        echo "║ Thank you for using!                                  ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+
+        read -n 1 -p "Confirm restarting Tailscale? (y/N): " choice
+
+        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            /etc/init.d/tailscale stop
+            /etc/init.d/tailscale start
+            break
+        else
+            echo "Tailscale restart canceled, you can restart the Tailscale service later using the command /etc/init.d/tailscale stop && /etc/init.d/tailscale start"
+            break
+    done
 }
 
 # Function: Remove
