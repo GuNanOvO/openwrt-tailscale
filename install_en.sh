@@ -218,6 +218,7 @@ update() {
         else
             echo "Tailscale restart canceled, you can restart the Tailscale service later using the command /etc/init.d/tailscale stop && /etc/init.d/tailscale start"
             break
+        fi
     done
 }
 
