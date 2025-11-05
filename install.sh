@@ -294,6 +294,7 @@ update() {
         else
             echo "取消重启tailscale, 您稍后可自行通过命令 /etc/init.d/tailscale stop && /etc/init.d/tailscale start 来重启tailscale服务"
             break
+        fi
     done
 }
 
