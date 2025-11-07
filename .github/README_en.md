@@ -120,7 +120,7 @@ wget -O /usr/bin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-t
 > >    ```
 > > 3. Append `GOGC=10` to the end of that line so it becomes:
 > >    ```bash
-> >    procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode GOGC=10"  
+> >    procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode" GOGC=10 
 > >    ```
 > >    This will make Tailscale more aggressive in memory garbage collection.
 
