@@ -17,6 +17,7 @@ start_service() {
   config_get_bool std_err "settings" log_stderr 1
   config_get port "settings" port 41641
   config_get state_file "settings" state_file /etc/tailscale/tailscaled.state
+  config_get fw_mode "settings" fw_mode nftables
 
   /usr/bin/tailscaled --cleanup
 
