@@ -542,12 +542,22 @@ tailscale_stoper() {
 # Function: Initialize
 init() {
     show_init_progress_bar=$1
-    local functions="set_system_dns get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
+    local functions="get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
     local function_count=5
     local total=50
     local progress=0
     
     if [ "$show_init_progress_bar" != "false" ]; then
+
+        read -n 1 -p "Would you like to change the system DNS to (223.5.5.5,119.29.29.29) to improve resolution speed? (y/N): " dns_choice
+        if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
+            echo ""
+            set_system_dns
+            echo "System DNS changed"
+        fi
+
+        echo ""
+
         printf "\rInitializing: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
         
         for function in $functions; do

@@ -599,13 +599,25 @@ tailscale_stoper() {
 # 函数：初始化
 init() {
     show_init_progress_bar=$1
+
     #设置系统DNS #获取系统架构 #检查是否安装过 #获取磁盘剩余空间 #获取tailscale文件大小
-    local functions="set_system_dns get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
-    local function_count=5
+    local functions="get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
+    local function_count=4
     local total=50
     local progress=0
     
     if [ "$show_init_progress_bar" != "false" ]; then
+
+        #询问是否更改DNS
+        read -n 1 -p "是否将系统DNS更改为(223.5.5.5,119.29.29.29)以提高解析速度? (y/N): " dns_choice 
+        if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
+            echo ""
+            set_system_dns
+            echo "系统DNS已更改"
+        fi
+
+        echo ""
+
         # 0%进度条
         printf "\r初始化中: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
         
