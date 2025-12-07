@@ -212,16 +212,16 @@ get_tailscale_info() {
     attempt_timeout=10
     
     if [ "$NO_TINY" == "true" ]; then
-        tailscale_file_name="tailscaled-linux-${arch}-normal"
+        TAILSCALE_FILE="tailscaled-linux-${arch}-normal"
     else
-        tailscale_file_name="tailscaled-linux-${arch}"
+        TAILSCALE_FILE="tailscaled-linux-${arch}"
     fi
 
     if [ "$USE_CUSTOM_PROXY" == "true" ]; then
 
         attempt_url="$available_proxy/$TAILSCALE_URL/download/build-info.txt"
         tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-        file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$tailscale_file_name " | awk '{print $2}')
+        file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
 
         if [ -z "$tailscale_latest_version" ] && [ -z "$file_size" ]; then
             echo ""
@@ -234,7 +234,7 @@ get_tailscale_info() {
             for attempt_proxy in $URL_PROXYS; do
                 attempt_url="$attempt_proxy/$TAILSCALE_URL/download/build-info.txt"
                 tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-                file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$tailscale_file_name " | awk '{print $2}')
+                file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
 
                 if [ -n "$tailscale_latest_version" ] && [ -n "$file_size" ]; then
                     available_proxy="$attempt_proxy"
@@ -407,7 +407,7 @@ persistent_install() {
         echo "║ WARNING!!!请您确认以下信息:                           ║"
         echo "║                                                       ║"
         echo "║ 使用持久安装时, 请您确认您的openwrt的剩余空间至少大于 ║"
-        echo "║ "$file_size_mb", 推荐大于$(expr $file_size_mb \* 3)M.                         ║"
+        echo "║ "$file_size_mb", 推荐大于$(expr $file_size_mb \* 3)M.                                       ║"
         echo "║ 安装时产生任何错误, 您可以于:                         ║"
         echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
         echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
@@ -416,16 +416,18 @@ persistent_install() {
         read -n 1 -p "确认采用持久安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-    echo "正在持久安装..."
     fi 
+    echo ""
+    echo "正在持久安装..."
     downloader
     mv -f /tmp/tailscaled /usr/bin
     ln -sv /usr/bin/tailscaled /usr/bin/tailscale
     echo "持久安装完成!"
     tailscale_starter
-    script_exit
+    echo "正在重新初始化脚本, 请稍候..."
+    init "" "false"
 
 }
 
@@ -437,7 +439,7 @@ temp_to_persistent() {
         echo "║ WARNING!!!请您确认以下信息:                           ║"
         echo "║                                                       ║"
         echo "║ 使用持久安装时, 请您确认您的openwrt的剩余空间至少大于 ║"
-        echo "║ "$file_size_mb", 推荐大于$(expr $file_size_mb \* 3)M.                         ║"
+        echo "║ "$file_size_mb", 推荐大于$(expr $file_size_mb \* 3)M.                                       ║"
         echo "║ 安装时产生任何错误, 您可以于:                         ║"
         echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
         echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
@@ -446,17 +448,17 @@ temp_to_persistent() {
         read -n 1 -p "确认采用持久安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-        echo "正在持久安装..."
     fi
+    echo ""
+    echo "正在持久安装..."
     tailscale_stoper
     rm -rf /tmp/tailscale
     rm -rf /tmp/tailscaled
     rm -rf /usr/bin/tailscale
     rm -rf /usr/bin/tailscaled
-    persistent_install
-    script
+    persistent_install "true"
 }
 
 # 函数：临时安装
@@ -479,10 +481,11 @@ temp_install() {
         read -n 1 -p "确认采用临时安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-        echo "正在临时安装..."
-    fi 
+    fi
+    echo ""
+    echo "正在临时安装..." 
     downloader
     ln -sv /tmp/tailscaled /tmp/tailscale
     if [ "$NO_TINY" == "true" ]; then
@@ -494,7 +497,8 @@ temp_install() {
     fi
     echo "临时安装完成!"
     tailscale_starter
-    script_exit
+    echo "正在重新初始化脚本, 请稍候..."
+    init "" "false"
 }
 
 # 函数：持久安装切换到临时安装
@@ -517,27 +521,43 @@ persistent_to_temp() {
         read -n 1 -p "确认采用临时安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
 
     fi 
+    echo ""
     echo "正在切换到临时安装..."
     tailscale_stoper
     rm -rf /usr/bin/tailscale
     rm -rf /usr/bin/tailscaled
     temp_install "true"
-    script_exit
 }
 
 # 函数：下载器
 downloader() {
-    if [ "$NO_TINY" == "true" ]; then
-        wget -cO /tmp/tailscaled "$available_proxy/$TAILSCALE_URL/download/tailscaled-linux-${arch}-normal"
-        
-    else
-        wget -cO /tmp/tailscaled "$available_proxy/$TAILSCALE_URL/download/tailscaled-linux-${arch}"
-    fi
-        wget -cO /etc/init.d/tailscale "$available_proxy/$INIT_URL"
+    # 尝试3次
+    attempt_range="1 2 3"
+    # 超时时间（秒）
+    attempt_timeout=20
+    for attempt_times in $attempt_range; do
+        wget -cO "/tmp/$TAILSCALE_FILE" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE"
+        wget -cO /tmp/checksums.txt "$available_proxy/$TAILSCALE_URL/download/checksums.txt"
+        grep -E "  ${TAILSCALE_FILE}\$" checksums.txt > $TAILSCALE_FILE.sha256
+        if ! sha256sum -c $TAILSCALE_FILE.sha256; then
+            if [ "$attempt_times" == "3" ]; then
+                echo "tailscale 文件三次下载均失败, 即将重启脚本, 请重试!"
+                exit
+            else
+                echo "tailscale 文件校验不通过, 正在尝试重新下载!"
+            fi
+        else
+            echo "tailscale 文件校验通过!"
+            mv "/tmp/$TAILSCALE_FILE" "/tmp/tailscaled"
+            break
+        fi
+    done
+
+    wget -cO /etc/init.d/tailscale "$available_proxy/$INIT_URL"
 }
 
 # 函数：tailscale服务启动器
@@ -599,21 +619,24 @@ tailscale_stoper() {
 # 函数：初始化
 init() {
     show_init_progress_bar=$1
+    change_dns=$2
 
-    #设置系统DNS #获取系统架构 #检查是否安装过 #获取磁盘剩余空间 #获取tailscale文件大小
+    #获取系统架构 #检查是否安装过 #获取磁盘剩余空间 #获取tailscale文件大小
     local functions="get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
     local function_count=4
-    local total=50
+    local total=$function_count
     local progress=0
     
     if [ "$show_init_progress_bar" != "false" ]; then
 
-        #询问是否更改DNS
-        read -n 1 -p "是否将系统DNS更改为(223.5.5.5,119.29.29.29)以提高解析速度? (y/N): " dns_choice 
-        if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
-            echo ""
-            set_system_dns
-            echo "系统DNS已更改"
+        if [ "$change_dns" != "false" ]; then
+            #询问是否更改DNS
+            read -n 1 -p "是否将系统DNS更改为(223.5.5.5,119.29.29.29)以提高解析速度? (y/N): " dns_choice 
+            if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
+                echo ""
+                set_system_dns
+                echo "系统DNS已更改"
+            fi
         fi
 
         echo ""
@@ -622,19 +645,21 @@ init() {
         printf "\r初始化中: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
         
         for function in $functions; do
-            printf "\r初始化中: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
             eval "$function"
-            progress=$((progress + $((total / $function_count))))
-
+            progress=$((progress + 1))
+            percent=$((progress * 100 / function_count))
+            bars=$((percent / 2))
+            printf "\r初始化中: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
         done
     
         # 100%进度条
-        printf "\r  完成  : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
+        printf "\r  完成  : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$bars"))" "$percent"
     else
         for function in $functions; do
             eval "$function"
         done
     fi
+    echo ""
 
 }
 
@@ -710,6 +735,7 @@ show_info() {
 }
 
 option_menu() {
+    # 显示菜单并获取用户输入
     while true; do
         menu_items=""
         menu_operations=""
@@ -763,39 +789,35 @@ option_menu() {
 
         menu_items="$menu_items $option_index).退出"
         menu_operations="$menu_operations exit"
-        #option_index=$((option_index + 1))
+        
+        echo ""
+        echo "┌──────────────────────── 菜 单 ────────────────────────┐"
+        
+        # 遍历选项列表，动态生成菜单
+        for item in $menu_items; do
+            echo "│       $item"
+        done
+        echo ""
 
-        # 显示菜单并获取用户输入
-        while true; do
-            echo ""
-            echo "┌──────────────────────── 菜 单 ────────────────────────┐"
-            
-            # 遍历选项列表，动态生成菜单
-            for item in $menu_items; do
-                echo "│       $item"
+        read -n 1 -p "│ 请输入选项(0 ~ $option_index): " choice
+        echo ""
+        echo ""
+
+        # 判断输入是否合法
+        if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
+            operation_index=1
+            for operation in $menu_operations; do
+                if [ "$operation_index" = "$choice" ]; then
+                    eval "$operation"
+                fi
+                operation_index=$((operation_index + 1))
             done
             echo ""
-
-            read -n 1 -p "│ 请输入选项(0 ~ $option_index): " choice
+        else
+            echo "无效选项，请重试！"
             echo ""
-            echo ""
-
-            # 判断输入是否合法
-            if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
-                operation_index=1
-                for operation in $menu_operations; do
-                    if [ "$operation_index" = "$choice" ]; then
-                        eval "$operation"
-                    fi
-                    operation_index=$((operation_index + 1))
-                done
-                echo ""
-            else
-                echo "无效选项，请重试！"
-                echo ""
-                break
-            fi
-        done
+            break
+        fi
     done
 }
 
@@ -863,6 +885,7 @@ main() {
     clear
     script_info
     init
+    sleep 1
     clear
     script_info
     option_menu
