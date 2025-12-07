@@ -179,15 +179,15 @@ get_tailscale_info() {
     attempt_timeout=10
     
     if [ "$NO_TINY" == "true" ]; then
-        tailscale_file_name="tailscaled-linux-${arch}-normal"
+        TAILSCALE_FILE="tailscaled-linux-${arch}-normal"
     else
-        tailscale_file_name="tailscaled-linux-${arch}"
+        TAILSCALE_FILE="tailscaled-linux-${arch}"
     fi
 
     if [ "$USE_CUSTOM_PROXY" == "true" ]; then
         attempt_url="$available_proxy/$TAILSCALE_URL/download/build-info.txt"
         tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-        file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$tailscale_file_name " | awk '{print $2}')
+        file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
 
         if [ -z "$tailscale_latest_version" ] && [ -z "$file_size" ]; then
             echo ""
@@ -199,7 +199,7 @@ get_tailscale_info() {
             for attempt_proxy in $URL_PROXYS; do
                 attempt_url="$attempt_proxy/$TAILSCALE_URL/download/build-info.txt"
                 tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-                file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$tailscale_file_name " | awk '{print $2}')
+                file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
 
                 if [ -n "$tailscale_latest_version" ] && [ -n "$file_size" ]; then
                     available_proxy="$attempt_proxy"
@@ -371,16 +371,18 @@ persistent_install() {
         read -n 1 -p "Confirm persistent install? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-    echo "Persistent installing..."
-    fi 
+    fi
+    echo ""
+    echo "Persistent installing..." 
     downloader
     mv -f /tmp/tailscaled /usr/bin
     ln -sv /usr/bin/tailscaled /usr/bin/tailscale
     echo "Persistent installation complete!"
     tailscale_starter
-    script_exit
+    echo "Reinitializing the script, please wait..."
+    init "" "false"
 }
 
 # Function: Switch Temp to Persistent
@@ -397,17 +399,17 @@ temp_to_persistent() {
         read -n 1 -p "Confirm persistent install? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-        echo "Switching to persistent install..."
     fi
+    echo ""
+    echo "Switching to persistent install..."
     tailscale_stoper
     rm -rf /tmp/tailscale
     rm -rf /tmp/tailscaled
     rm -rf /usr/bin/tailscale
     rm -rf /usr/bin/tailscaled
-    persistent_install
-    script
+    persistent_install "true"
 }
 
 # Function: Temporary Install
@@ -426,10 +428,11 @@ temp_install() {
         read -n 1 -p "Confirm temporary install? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
-        echo "Temporary installing..."
-    fi 
+    fi
+    echo ""
+    echo "Temporary installing..."
     downloader
     ln -sv /tmp/tailscaled /tmp/tailscale
     if [ "$NO_TINY" == "true" ]; then
@@ -441,7 +444,8 @@ temp_install() {
     fi
     echo "Temporary installation complete!"
     tailscale_starter
-    script_exit
+    echo "Reinitializing the script, please wait..."
+    init "" "false"
 }
 
 # Function: Switch Persistent to Temp
@@ -460,25 +464,41 @@ persistent_to_temp() {
         read -n 1 -p "Confirm temporary install? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
-            exit
+            return
         fi
     fi 
+    echo ""
     echo "Switching to temporary install..."
     tailscale_stoper
     rm -rf /usr/bin/tailscale
     rm -rf /usr/bin/tailscaled
     temp_install "true"
-    script_exit
 }
 
 # Function: Downloader
 downloader() {
-    if [ "$NO_TINY" == "true" ]; then
-        wget -cO /tmp/tailscaled "$available_proxy/$TAILSCALE_URL/download/tailscaled-linux-${arch}-normal"
-    else
-        wget -cO /tmp/tailscaled "$available_proxy/$TAILSCALE_URL/download/tailscaled-linux-${arch}"
-    fi
-        wget -cO /etc/init.d/tailscale "$available_proxy/$INIT_URL"
+    attempt_range="1 2 3"
+    attempt_timeout=20
+
+    for attempt_times in $attempt_range; do
+        wget -cO "/tmp/$TAILSCALE_FILE" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE"
+        wget -cO /tmp/checksums.txt "$available_proxy/$TAILSCALE_URL/download/checksums.txt"
+        grep -E "  ${TAILSCALE_FILE}\$" checksums.txt > $TAILSCALE_FILE.sha256
+        if ! sha256sum -c $TAILSCALE_FILE.sha256; then
+            if [ "$attempt_times" == "3" ]; then
+                echo "Tailscale file failed to verify three times. The script will restart soon. Please try again!"
+                exec "$0" "$@"
+            else
+                echo "Tailscale file verification failed, attempting to re-download!"
+            fi
+        else
+            echo "Tailscale file verification passed!"
+            mv "/tmp/$TAILSCALE_FILE" "/tmp/tailscaled"
+            break
+        fi
+    done
+
+    wget -cO /etc/init.d/tailscale "$available_proxy/$INIT_URL"
 }
 
 # Function: Start Tailscale
@@ -542,18 +562,22 @@ tailscale_stoper() {
 # Function: Initialize
 init() {
     show_init_progress_bar=$1
+    change_dns=$2
+
     local functions="get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
-    local function_count=5
-    local total=50
+    local function_count=4
+    local total=$function_count
     local progress=0
     
     if [ "$show_init_progress_bar" != "false" ]; then
 
-        read -n 1 -p "Would you like to change the system DNS to (223.5.5.5,119.29.29.29) to improve resolution speed? (y/N): " dns_choice
-        if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
-            echo ""
-            set_system_dns
-            echo "System DNS changed"
+        if [ "$change_dns" != "false" ]; then
+            read -n 1 -p "Would you like to change the system DNS to (223.5.5.5,119.29.29.29) to improve resolution speed? (y/N): " dns_choice
+            if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
+                echo ""
+                set_system_dns
+                echo "System DNS changed"
+            fi
         fi
 
         echo ""
@@ -561,17 +585,20 @@ init() {
         printf "\rInitializing: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
         
         for function in $functions; do
-            printf "\rInitializing: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
             eval "$function"
-            progress=$((progress + $((total / $function_count))))
+            progress=$((progress + 1))
+            percent=$((progress * 100 / function_count))
+            bars=$((percent / 2))
+            printf "\rInitializing: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
         done
     
-        printf "\r   Done  : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
+        printf "\r    Done    : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$bars"))" "$percent"
     else
         for function in $functions; do
             eval "$function"
         done
     fi
+    echo ""
 }
 
 # Function: Exit message
@@ -699,34 +726,32 @@ option_menu() {
         menu_items="$menu_items $option_index).Exit"
         menu_operations="$menu_operations exit"
 
-        while true; do
-            echo ""
-            echo "┌───────────────────────── Menu ────────────────────────┐"
-            
-            for item in $menu_items; do
-                echo "│       $item"
+        echo ""
+        echo "┌───────────────────────── Menu ────────────────────────┐"
+        
+        for item in $menu_items; do
+            echo "│       $item"
+        done
+        echo ""
+
+        read -n 1 -p "│ Enter option (0 ~ $option_index): " choice
+        echo ""
+        echo ""
+
+        if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
+            operation_index=1
+            for operation in $menu_operations; do
+                if [ "$operation_index" = "$choice" ]; then
+                    eval "$operation"
+                fi
+                operation_index=$((operation_index + 1))
             done
             echo ""
-
-            read -n 1 -p "│ Enter option (0 ~ $option_index): " choice
+        else
+            echo "Invalid option, please retry!"
             echo ""
-            echo ""
-
-            if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
-                operation_index=1
-                for operation in $menu_operations; do
-                    if [ "$operation_index" = "$choice" ]; then
-                        eval "$operation"
-                    fi
-                    operation_index=$((operation_index + 1))
-                done
-                echo ""
-            else
-                echo "Invalid option, please retry!"
-                echo ""
-                break
-            fi
-        done
+            break
+        fi
     done
 }
 
@@ -791,6 +816,7 @@ main() {
     clear
     script_info
     init
+    sleep 1
     clear
     script_info
     option_menu
