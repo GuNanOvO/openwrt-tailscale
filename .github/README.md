@@ -165,6 +165,16 @@ LDFLAGS:
 ---
 
 <details open>
+<summary><h2>Luci 图形化界面推荐</h2></summary>
+
+来自于@Tokisaki-Galaxy开源项目[luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community)  
+可自行选择使用  
+
+</details>
+
+---
+
+<details open>
 <summary><h2>特别致谢 🙏</h2></summary>
 
 > **[[glinet-tailscale-updater](https://github.com/Admonstrator/glinet-tailscale-updater)]**: 永久安装与UPX压缩技术参考来源  
@@ -185,6 +195,20 @@ LDFLAGS:
 4. 相关日志片段
 
 </details>
+
+---
+
+## 自行复刻
+如果你需要对本项目进行fork复刻，你需要注意以下几点：
+
+**修改install脚本**
+ - 修改所有指向于`https://github.com/GuNanOvO/openwrt-tailscale/`的链接指向你的fork仓库链接。
+
+**修改github actions 工作流文件**
+ - 修改`.github/workflows/build-tailscale.yml`与`.github/workflows/check-version.yml`当中的所有`GuNanOvO/openwrt-tailscale`为你fork项目，通常只需要修改env部分。
+ - `secrets.USIGN_SECRET_KEY_B64`为使用usign生成的私钥，用于签名ipk包，使用base64对私钥进行编码后，设置于仓库的setting > security > secrets and variables > actions > Repository secrets。
+ - `secrets.PAT_TOKEN`为github账户`repo`权限token，用于供`.github/workflows/check-version.yml`触发`.github/workflows/build-tailscale.yml`进行构建工作。
+ - `secrets.GHCR_READ_TOKEN`为github账户`read:packages`权限token，用于供action检测上游ghcr发布版本，默认不使用ghcr版本，可去除。
 
 ---
 

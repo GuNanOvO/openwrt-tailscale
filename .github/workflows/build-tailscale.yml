@@ -629,8 +629,8 @@ jobs:
           body: ${{ steps.generate_release_markdown.outputs.release_body }}
           files: |
             ${{ env.ARTIFACT_DIR }}/*
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # env:
+        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 
       - name: Sync to small repo
@@ -638,7 +638,7 @@ jobs:
         with:
           script: |
             await github.rest.git.createTag({
-              owner: 'GuNanOvO',
+              owner: '${{ env.REPO_SMALL_OWNER }}',
               repo: 'openwrt-tailscale',
               tag: '${{ env.RELEASE_TAG }}',
               message: 'Release ${{ env.RELEASE_TAG }}',

@@ -17,6 +17,11 @@ on:
         default: 'ghcr'
         required: true
 
+env:
+  REPO_SMALL: "GuNanOvO/openwrt-tailscale"
+  REPO_SMALL_NAME: "openwrt-tailscale"
+  REPO_SMALL_OWNER: "GuNanOvO"
+
 jobs:
   version-check:
     name: Check Version Differences
@@ -112,8 +117,8 @@ jobs:
           script: |
             try {
               const { data } = await github.rest.repos.getLatestRelease({
-                owner: 'GuNanOvO',
-                repo: 'openwrt-tailscale'
+                owner: '${{ env.REPO_SMALL_OWNER }}',
+                repo: '${{ env.REPO_SMALL_NAME }}'
               });
               core.setOutput('tag', data?.tag_name || '');
             } catch (error) {
