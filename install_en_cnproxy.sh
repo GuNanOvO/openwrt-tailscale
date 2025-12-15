@@ -1,23 +1,14 @@
 #!/bin/sh
 
 # Script Information
-SCRIPT_VERSION="v1.07"
-SCRIPT_DATE="2025/09/29"
-script_info() {
-    echo "#╔╦╗┌─┐ ┬ ┬  ┌─┐┌─┐┌─┐┬  ┌─┐  ┌─┐┌┐┌  ╔═╗┌─┐┌─┐┌┐┌ ╦ ╦ ┬─┐┌┬┐  ╦ ┌┐┌┌─┐┌┬┐┌─┐┬  ┬  ┌─┐┬─┐#"
-    echo "# ║ ├─┤ │ │  └─┐│  ├─┤│  ├┤   │ ││││  ║ ║├─┘├┤ │││ ║║║ ├┬┘ │   ║ │││└─┐ │ ├─┤│  │  ├┤ ├┬┘#"
-    echo "# ╩ ┴ ┴ ┴ ┴─┘└─┘└─┘┴ ┴┴─┘└─┘  └─┘┘└┘  ╚═╝┴  └─┘┘└┘ ╚╩╝ ┴└─ ┴   ╩ ┘└┘└─┘ ┴ ┴ ┴┴─┘┴─┘└─┘┴└─#"
-    echo "┌────────────────────────────────────────────────────────────────────────────────────────┐"
-    echo "│ A script for installing/updating Tailscale on OpenWrt and related operations.          │"
-    echo "│ Project URL: https://github.com/GuNanOvO/openwrt-tailscale                             │"
-    echo "│ Script Version: "$SCRIPT_VERSION"                                                                  │"
-    echo "│ Update Date: "$SCRIPT_DATE"                                                                │"
-    echo "│ Thanks for using! If helpful, please give us a star /<3                                │"
-    echo "└────────────────────────────────────────────────────────────────────────────────────────┘"
-}
+SCRIPT_VERSION="v1.08"
+SCRIPT_DATE="2025/12/15"
+
+OPENWRT_TAILSCALE_REPO_URL="https://github.com/GuNanOvO/openwrt-tailscale"
+OPENWRT_TAILSCALE_REPO="gunanovo/openwrt-tailscale"
 
 # Basic Configuration
-TAILSCALE_URL="gunanovo/openwrt-tailscale/releases/latest"
+TAILSCALE_URL="${OPENWRT_TAILSCALE_REPO}/releases/latest"
 URL_PROXYS="https://ghfast.top/https://github.com
 https://cf.ghproxy.cc/https://github.com
 https://www.ghproxy.cc/https://github.com
@@ -26,7 +17,7 @@ https://ghproxy.cc/https://github.com
 https://ghproxy.cn/https://github.com
 https://www.ghproxy.cn/https://github.com
 https://github.com"
-INIT_URL="/gunanovo/openwrt-tailscale/blob/main/etc/init.d/tailscale"
+INIT_URL="/${OPENWRT_TAILSCALE_REPO}/blob/main/etc/init.d/tailscale"
 MOUNT_POINT="/"
 PACKAGES_TO_CHECK="libc kmod-tun ca-bundle"
 # tmp tailscale
@@ -75,6 +66,20 @@ file_size_mb=""
 tailscale_persistent_installable=""
 
 show_init_progress_bar="true"
+
+# Function: show script information
+script_info() {
+    echo "#╔╦╗┌─┐ ┬ ┬  ┌─┐┌─┐┌─┐┬  ┌─┐  ┌─┐┌┐┌  ╔═╗┌─┐┌─┐┌┐┌ ╦ ╦ ┬─┐┌┬┐  ╦ ┌┐┌┌─┐┌┬┐┌─┐┬  ┬  ┌─┐┬─┐#"
+    echo "# ║ ├─┤ │ │  └─┐│  ├─┤│  ├┤   │ ││││  ║ ║├─┘├┤ │││ ║║║ ├┬┘ │   ║ │││└─┐ │ ├─┤│  │  ├┤ ├┬┘#"
+    echo "# ╩ ┴ ┴ ┴ ┴─┘└─┘└─┘┴ ┴┴─┘└─┘  └─┘┘└┘  ╚═╝┴  └─┘┘└┘ ╚╩╝ ┴└─ ┴   ╩ ┘└┘└─┘ ┴ ┴ ┴┴─┘┴─┘└─┘┴└─#"
+    echo "┌────────────────────────────────────────────────────────────────────────────────────────┐"
+    echo "│ A script for installing/updating Tailscale on OpenWrt and related operations.          │"
+    echo "│ Project URL: "$OPENWRT_TAILSCALE_REPO_URL"                             │"
+    echo "│ Script Version: "$SCRIPT_VERSION"                                                                  │"
+    echo "│ Update Date: "$SCRIPT_DATE"                                                                │"
+    echo "│ Thanks for using! If helpful, please give us a star /<3                                │"
+    echo "└────────────────────────────────────────────────────────────────────────────────────────┘"
+}
 
 # Function: Set DNS
 set_system_dns() {
@@ -292,8 +297,8 @@ remove() {
             done
 
             ip link delete tailscale0
-            break
             script_exit
+            break
         else
             echo "Uninstall canceled"
             break
@@ -366,7 +371,7 @@ persistent_install() {
         echo "║                                                       ║"
         echo "║ Ensure free space ≥ $file_size_mb MB, recommended ≥ $(expr $file_size_mb \* 3)M.          ║"
         echo "║ Report issues at:                                     ║"
-        echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+        echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
         echo "╚═══════════════════════════════════════════════════════╝"
         read -n 1 -p "Confirm persistent install? (y/N): " choice
 
@@ -394,7 +399,7 @@ temp_to_persistent() {
         echo "║                                                       ║"
         echo "║ Ensure free space ≥ $file_size_mb MB, recommended ≥ $(expr $file_size_mb \* 3)M.          ║"
         echo "║ Report issues at:                                     ║"
-        echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+        echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
         echo "╚═══════════════════════════════════════════════════════╝"
         read -n 1 -p "Confirm persistent install? (y/N): " choice
 
@@ -423,7 +428,7 @@ temp_install() {
         echo "║ Services may fail if script fails after reboot.       ║"
         echo "║ Recommended to use persistent install if possible.    ║"
         echo "║ Report issues at:                                     ║"
-        echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+        echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
         echo "╚═══════════════════════════════════════════════════════╝"
         read -n 1 -p "Confirm temporary install? (y/N): " choice
 
@@ -459,7 +464,7 @@ persistent_to_temp() {
         echo "║ Services may fail if script fails after reboot.       ║"
         echo "║ Recommended to use persistent install if possible.    ║"
         echo "║ Report issues at:                                     ║"
-        echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+        echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
         echo "╚═══════════════════════════════════════════════════════╝"
         read -n 1 -p "Confirm temporary install? (y/N): " choice
 
@@ -535,7 +540,7 @@ tailscale_starter() {
     echo "║ To start directly: tailscale up                       ║"
     echo "║ If you encounter any issues after installation,       ║"
     echo "║ please submit feedback at:                            ║"
-    echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+    echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
     echo "║ Thank you for using! /<3                              ║"
     echo "║                                                       ║"
     echo "╚═══════════════════════════════════════════════════════╝"
@@ -607,9 +612,9 @@ script_exit() {
         echo "│ THANKS!!! Appreciate your trust and usage!            │"
         echo "│                                                       │"
         echo "│ Please consider giving a star if helpful:             │"
-        echo "│ https://github.com/GuNanOvO/openwrt-tailscale/        │"
+        echo "│ "$OPENWRT_TAILSCALE_REPO_URL"/        │"
         echo "│ Report issues at:                                     │"
-        echo "│ https://github.com/GuNanOvO/openwrt-tailscale/issues  │"
+        echo "│ "$OPENWRT_TAILSCALE_REPO_URL"/issues  │"
         echo "└───────────────────────────────────────────────────────┘"
         exit 0
 }
@@ -758,7 +763,7 @@ option_menu() {
 # Function: Show help
 show_help() {
     echo "Tailscale on OpenWrt installer script. $SCRIPT_VERSION"
-    echo "https://github.com/GuNanOvO/openwrt-tailscale"
+    echo ""$OPENWRT_TAILSCALE_REPO_URL""
     echo "  Usage:   "
     echo "      --help: Show this help"
     echo "      --notiny: Use uncompressed version "
@@ -785,7 +790,7 @@ for arg in "$@"; do
             echo "║ https://example.com                                   ║"
             echo "║                                                       ║"
             echo "║ Submit working proxies via:                          ║"
-            echo "║ https://github.com/GuNanOvO/openwrt-tailscale/issues  ║"
+            echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
             echo "╚═══════════════════════════════════════════════════════╝"
             read -p "Enter your proxy: " custom_proxy
             while true; do

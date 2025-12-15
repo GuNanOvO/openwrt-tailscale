@@ -152,6 +152,15 @@ Additionally, by applying [UPX](https://upx.github.io/) binary compression, the 
 </details>
 
 ---
+<details open>
+<summary><h2>Luci Web Interface (Recommended)</h2></summary>
+
+From the open-source project [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community) by @Tokisaki-Galaxy  
+You can choose to use it as needed  
+
+</details>
+
+---
 
 <details open>
 <summary><h2>Special Thanks 🙏</h2></summary>
@@ -174,6 +183,20 @@ Please submit issues at [Issues](https://github.com/GuNanOvO/openwrt-tailscale/i
 4. Relevant log snippets  
 
 </details>
+
+---
+
+## Self-Forking
+If you need to fork this project, please note the following:
+
+**Modify the install script**
+ - Change all links pointing to `https://github.com/GuNanOvO/openwrt-tailscale/` to your forked repository URL.
+
+**Modify GitHub Actions workflow files**
+ - Update `.github/workflows/build-tailscale.yml` and `.github/workflows/check-version.yml` by replacing all instances of `GuNanOvO/openwrt-tailscale` with your forked project name. Usually, you only need to modify the env section.
+ - `secrets.USIGN_SECRET_KEY_B64`: A private key generated using usign for signing ipk packages. Encode the private key with base64 and set it in your repository settings > security > secrets and variables > actions > Repository secrets.
+ - `secrets.PAT_TOKEN`: A GitHub account `repo` permission token used by `.github/workflows/check-version.yml` to trigger `.github/workflows/build-tailscale.yml` for builds.
+ - `secrets.GHCR_READ_TOKEN`: A GitHub account `read:packages` permission token used by actions to detect upstream ghcr releases. GHCR versions are not used by default and can be removed.
 
 ---
 
