@@ -543,7 +543,7 @@ downloader() {
     for attempt_times in $attempt_range; do
         wget -cO "/tmp/$TAILSCALE_FILE" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE"
         wget -cO /tmp/checksums.txt "$available_proxy/$TAILSCALE_URL/download/checksums.txt"
-        grep -E "  ${TAILSCALE_FILE}\$" /tmp/checksums.txt > $TAILSCALE_FILE.sha256
+        grep -E "  ${TAILSCALE_FILE}\$" checksums.txt > $TAILSCALE_FILE.sha256
         if ! sha256sum -c $TAILSCALE_FILE.sha256; then
             if [ "$attempt_times" == "3" ]; then
                 echo "tailscale 文件三次下载均失败, 即将重启脚本, 请重试!"
