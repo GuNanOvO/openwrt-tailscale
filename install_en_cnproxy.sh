@@ -488,7 +488,7 @@ downloader() {
     for attempt_times in $attempt_range; do
         wget -cO "/tmp/$TAILSCALE_FILE" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE"
         wget -cO /tmp/checksums.txt "$available_proxy/$TAILSCALE_URL/download/checksums.txt"
-        grep -E "  ${TAILSCALE_FILE}\$" checksums.txt > $TAILSCALE_FILE.sha256
+        grep -E "  ${TAILSCALE_FILE}\$" /tmp/checksums.txt > $TAILSCALE_FILE.sha256
         if ! sha256sum -c $TAILSCALE_FILE.sha256; then
             if [ "$attempt_times" == "3" ]; then
                 echo "Tailscale file failed to verify three times. The script will restart soon. Please try again!"
