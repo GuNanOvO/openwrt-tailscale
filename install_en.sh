@@ -442,25 +442,36 @@ persistent_to_temp() {
 # Function: Downloader
 downloader() {
     attempt_range="1 2 3"
-    attempt_timeout=10
+    attempt_timeout=20
+
+    TMP_DIR="/tmp"
+    FILE_PATH="$TMP_DIR/$TAILSCALE_FILE"
+    SHA_FILE="$TMP_DIR/$TAILSCALE_FILE.sha256"
 
     for attempt_times in $attempt_range; do
-        wget -cO "/tmp/$TAILSCALE_FILE" "$TAILSCALE_URL/download/$TAILSCALE_FILE"
-        wget -cO /tmp/checksums.txt "$TAILSCALE_URL/download/checksums.txt"
-        grep -E "  ${TAILSCALE_FILE}\$" /tmp/checksums.txt > "/tmp/$TAILSCALE_FILE.sha256"
-        if ! sha256sum -c "/tmp/$TAILSCALE_FILE.sha256"; then
-            if [ "$attempt_times" == "3" ]; then
-                echo "Tailscale file failed to verify three times. The script will restart soon. Please try again!"
-                exec "$0" "$@"
+        wget -cO "$FILE_PATH" "$TAILSCALE_URL/download/$TAILSCALE_FILE" || continue
+
+        wget -cO "$TMP_DIR/checksums.txt" "$TAILSCALE_URL/download/checksums.txt" || continue
+
+        grep -E "  ${TAILSCALE_FILE}\$" "$TMP_DIR/checksums.txt" \
+            | sed "s|  ${TAILSCALE_FILE}\$|  $FILE_PATH|" \
+            > "$SHA_FILE"
+
+        if ! sha256sum -c "$SHA_FILE"; then
+            if [ "$attempt_times" = "3" ]; then
+                echo "Tailscale file failed to verify three times. Restarting script..."
+                init
             else
-                echo "Tailscale file verification failed, attempting to re-download!"
+                echo "Verification failed, retrying download..."
+                sleep 3
             fi
         else
             echo "Tailscale file verification passed!"
-            mv "/tmp/$TAILSCALE_FILE" "/tmp/tailscaled"
+            mv "$FILE_PATH" "$TMP_DIR/tailscaled"
             break
         fi
     done
+
 
     wget -cO /etc/init.d/tailscale "$INIT_URL"
 }
