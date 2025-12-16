@@ -540,20 +540,31 @@ downloader() {
     attempt_range="1 2 3"
     # 超时时间（秒）
     attempt_timeout=20
+
+    TMP_DIR="/tmp"
+    FILE_PATH="$TMP_DIR/$TAILSCALE_FILE"
+    SHA_FILE="$TMP_DIR/$TAILSCALE_FILE.sha256"
+
     for attempt_times in $attempt_range; do
-        wget -cO "/tmp/$TAILSCALE_FILE" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE"
-        wget -cO /tmp/checksums.txt "$available_proxy/$TAILSCALE_URL/download/checksums.txt"
-        grep -E "  ${TAILSCALE_FILE}\$" /tmp/checksums.txt > "/tmp/$TAILSCALE_FILE.sha256"
-        if ! sha256sum -c "/tmp/$TAILSCALE_FILE.sha256"; then
+        wget -cO "$FILE_PATH" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE" || continue
+
+        wget -cO "$TMP_DIR/checksums.txt" "$available_proxy/$TAILSCALE_URL/download/checksums.txt" || continue
+
+        grep -E "  ${TAILSCALE_FILE}\$" "$TMP_DIR/checksums.txt" \
+            | sed "s|  ${TAILSCALE_FILE}\$|  $FILE_PATH|" \
+            > "$SHA_FILE"
+
+        if ! sha256sum -c "$SHA_FILE"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "tailscale 文件三次下载均失败, 即将重启脚本, 请重试!"
-                exit
+                init
             else
                 echo "tailscale 文件校验不通过, 正在尝试重新下载!"
+                sleep 3
             fi
         else
             echo "tailscale 文件校验通过!"
-            mv "/tmp/$TAILSCALE_FILE" "/tmp/tailscaled"
+            mv "$FILE_PATH" "$TMP_DIR/tailscaled"
             break
         fi
     done
