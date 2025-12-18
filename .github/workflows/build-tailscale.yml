@@ -128,43 +128,56 @@ jobs:
         with:
           path: tailscale_pkg
 
+      - name: Update tailscale Makefile with commit and version
+        run: |
+          # Update Makefile with the specific commit and version from version file
+          UPSTREAM_COMMIT="${{ steps.read_commit.outputs.upstream_commit }}"
+          VERSION_TAG="${{ steps.read_commit.outputs.version_tag }}"
+          VERSION_NUM=$(echo "$VERSION_TAG" | sed 's/^v//')
+          
+          echo "Updating Makefile with:"
+          echo "  Upstream commit: $UPSTREAM_COMMIT"
+          echo "  Version tag: $VERSION_TAG"
+          echo "  Version number: $VERSION_NUM"
+          
+          # Update PKG_VERSION in Makefile
+          sed -i "s/PKG_VERSION:=.*/PKG_VERSION:=$VERSION_NUM/" tailscale_pkg/package/tailscale/Makefile
+          
+          # Show the updated line
+          grep "PKG_VERSION" tailscale_pkg/package/tailscale/Makefile
+
       - name: Build with OpenWRT SDK Docker
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}"
           mkdir -p staging_out
           
-          # Get UPX path
-          UPX_PATH=$(which upx || echo "")
-          
           docker run --rm \
-            -v "$PWD/tailscale_pkg:/mnt/tailscale_pkg:ro" \
-            -v "$PWD/staging_out:/mnt/staging_out:rw" \
-            $([ -n "$UPX_PATH" ] && echo "-v $UPX_PATH:/usr/local/bin/upx:ro") \
+            -v "$PWD/tailscale_pkg:/builder/package/tailscale:z" \
+            -v "$PWD/staging_out:/builder/bin:z" \
             ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0 \
             bash -c '
               set -e
-              cd /home/builder/openwrt
+              cd /builder
               
-              # Copy tailscale package to the SDK
-              rm -rf package/tailscale
-              cp -r /mnt/tailscale_pkg package/tailscale
+              echo "=== OpenWRT SDK Environment ==="
+              echo "Working directory: $(pwd)"
+              echo "Available tools:"
+              which upx || echo "UPX not available"
               
               # Ensure feeds are initialized
-              if [ ! -f feeds.conf.default ]; then
-                echo "Feeds configuration not found"
-                ls -la .
-              fi
-              
-              # Update and install feeds
+              echo ""
+              echo "=== Updating feeds ==="
               ./scripts/feeds update -a 2>&1 | tail -20 || true
               ./scripts/feeds install -a 2>&1 | tail -20 || true
               
               # Compile tailscale package with verbose output
+              echo ""
               echo "=== Starting tailscale package compilation ==="
               make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log
               BUILD_STATUS=${PIPESTATUS[0]}
               
               # Find and copy compiled IPK
+              echo ""
               echo "=== Searching for compiled IPK files ==="
               found_ipk=0
               for arch_dir in bin/packages/*/; do
@@ -173,7 +186,6 @@ jobs:
                   for ipk in "$arch_dir"tailscale_*.ipk; do
                     if [ -f "$ipk" ]; then
                       echo "Found IPK: $ipk"
-                      cp "$ipk" /mnt/staging_out/
                       found_ipk=1
                     fi
                   done
@@ -188,19 +200,25 @@ jobs:
                 echo "Directory structure:"
                 find bin -type f 2>/dev/null | grep -E "(ipk|log)" | head -20
               else
-                echo "=== IPK files successfully copied to staging ==="
+                echo "=== IPK files successfully compiled ==="
+                echo "Contents of bin/packages:"
+                find bin/packages -name "*.ipk" -exec ls -lh {} \;
               fi
               
               exit $BUILD_STATUS
             '
           
           # Copy artifacts
-          echo "=== Copying artifacts from staging_out ==="
-          if ls staging_out/*.ipk 1> /dev/null 2>&1; then
-            cp staging_out/*.ipk "${{ env.ARTIFACT_DIR }}/"
+          echo ""
+          echo "=== Copying artifacts ==="
+          if ls staging_out/bin/packages/*/tailscale_*.ipk 1> /dev/null 2>&1; then
+            find staging_out/bin/packages -name "tailscale_*.ipk" -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
             echo "Successfully copied IPK files"
+            ls -lh "${{ env.ARTIFACT_DIR }}/"
           else
-            echo "No IPK files to copy"
+            echo "No IPK files found in staging_out"
+            echo "Contents of staging_out:"
+            find staging_out -type f 2>/dev/null | head -20 || true
           fi
 
       - name: List artifacts
