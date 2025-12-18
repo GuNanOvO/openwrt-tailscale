@@ -123,59 +123,84 @@ jobs:
         with:
           version: latest
 
-      - name: Prepare SDK workspace
-        run: |
-          mkdir -p sdk_work/openwrt/package/tailscale
-          mkdir -p sdk_work/staging
-
       - name: Checkout packaging files
         uses: actions/checkout@v4
         with:
-          path: sdk_work/openwrt/package/tailscale
+          path: tailscale_pkg
 
       - name: Build with OpenWRT SDK Docker
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}"
-          mkdir -p sdk_work/openwrt/staging
+          mkdir -p staging_out
           
           # Get UPX path
           UPX_PATH=$(which upx || echo "")
           
           docker run --rm \
-            -v "$PWD/sdk_work/openwrt/package/tailscale:/home/builder/openwrt/package/tailscale:ro" \
-            -v "$PWD/sdk_work/openwrt/staging:/home/builder/openwrt/staging:rw" \
+            -v "$PWD/tailscale_pkg:/mnt/tailscale_pkg:ro" \
+            -v "$PWD/staging_out:/mnt/staging_out:rw" \
             $([ -n "$UPX_PATH" ] && echo "-v $UPX_PATH:/usr/local/bin/upx:ro") \
             ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0 \
             bash -c '
               set -e
               cd /home/builder/openwrt
               
-              # Update feeds
-              ./scripts/feeds update -a
-              ./scripts/feeds install -a
+              # Copy tailscale package to the SDK
+              rm -rf package/tailscale
+              cp -r /mnt/tailscale_pkg package/tailscale
               
-              # Compile tailscale package
-              make package/tailscale/compile V=sc JOBS=$(nproc) || true
+              # Ensure feeds are initialized
+              if [ ! -f feeds.conf.default ]; then
+                echo "Feeds configuration not found"
+                ls -la .
+              fi
+              
+              # Update and install feeds
+              ./scripts/feeds update -a 2>&1 | tail -20 || true
+              ./scripts/feeds install -a 2>&1 | tail -20 || true
+              
+              # Compile tailscale package with verbose output
+              echo "=== Starting tailscale package compilation ==="
+              make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log
+              BUILD_STATUS=${PIPESTATUS[0]}
               
               # Find and copy compiled IPK
-              for ipk in bin/packages/*/tailscale_*.ipk; do
-                if [ -f "$ipk" ]; then
-                  cp "$ipk" /home/builder/openwrt/staging/
-                  echo "Copied: $(basename $ipk)"
+              echo "=== Searching for compiled IPK files ==="
+              found_ipk=0
+              for arch_dir in bin/packages/*/; do
+                if [ -d "$arch_dir" ]; then
+                  echo "Checking directory: $arch_dir"
+                  for ipk in "$arch_dir"tailscale_*.ipk; do
+                    if [ -f "$ipk" ]; then
+                      echo "Found IPK: $ipk"
+                      cp "$ipk" /mnt/staging_out/
+                      found_ipk=1
+                    fi
+                  done
                 fi
               done
               
-              # If no IPK found, show build logs
-              if [ ! -f /home/builder/openwrt/staging/*.ipk ]; then
-                echo "Warning: No IPK files found in staging"
-                find bin/packages -name "*.ipk" 2>/dev/null || true
-                find bin/targets -name "*.ipk" 2>/dev/null || true
+              if [ "$found_ipk" -eq 0 ]; then
+                echo "=== No IPK files found ==="
+                echo "Build log tail:"
+                tail -100 /tmp/build.log
+                echo ""
+                echo "Directory structure:"
+                find bin -type f 2>/dev/null | grep -E "(ipk|log)" | head -20
+              else
+                echo "=== IPK files successfully copied to staging ==="
               fi
+              
+              exit $BUILD_STATUS
             '
           
           # Copy artifacts
-          if [ -d "sdk_work/openwrt/staging" ] && [ -n "$(ls -A sdk_work/openwrt/staging/*.ipk 2>/dev/null)" ]; then
-            cp sdk_work/openwrt/staging/*.ipk "${{ env.ARTIFACT_DIR }}/" 2>/dev/null || true
+          echo "=== Copying artifacts from staging_out ==="
+          if ls staging_out/*.ipk 1> /dev/null 2>&1; then
+            cp staging_out/*.ipk "${{ env.ARTIFACT_DIR }}/"
+            echo "Successfully copied IPK files"
+          else
+            echo "No IPK files to copy"
           fi
 
       - name: List artifacts
