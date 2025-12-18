@@ -93,6 +93,7 @@ jobs:
             sdk: 'riscv64_riscv64'
           - id: 'x86_64'
             sdk: 'x86_64'
+      max-parallel: 1
       fail-fast: false
 
     steps:
@@ -150,68 +151,75 @@ jobs:
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}"
           mkdir -p staging_out
+          cat > build_script.sh << 'SCRIPT_EOF'
+          #!/bin/bash
+          set -e
+          cd /builder
+          
+          echo "=== OpenWRT SDK Environment ==="
+          echo "Working directory: $(pwd)"
+          
+          # Pre-create .config to avoid menuconfig
+          echo "=== Pre-configuring build ==="
+          echo "CONFIG_ALL=y" > .config
+          echo "CONFIG_AUTOREMOVE=y" >> .config
+          
+          # Ensure feeds are initialized
+          echo ""
+          echo "=== Updating feeds ==="
+          ./scripts/feeds update -a 2>&1 | tail -10 || true
+          ./scripts/feeds install -a 2>&1 | tail -10 || true
+          
+          # Skip menuconfig by using defconfig
+          echo ""
+          echo "=== Preparing build environment ==="
+          make defconfig > /dev/null 2>&1 || true
+          
+          # Compile only the tailscale package
+          echo ""
+          echo "=== Starting tailscale package compilation ==="
+          make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
+          
+          # Find and copy compiled IPK
+          echo ""
+          echo "=== Searching for compiled IPK files ==="
+          found_ipk=0
+          for arch_dir in bin/packages/*/; do
+            if [ -d "$arch_dir" ]; then
+              echo "Checking directory: $arch_dir"
+              for ipk in "$arch_dir"tailscale_*.ipk; do
+                if [ -f "$ipk" ]; then
+                  echo "Found IPK: $ipk"
+                  found_ipk=1
+                fi
+              done
+            fi
+          done
+          
+          if [ "$found_ipk" -eq 0 ]; then
+            echo "=== No IPK files found ==="
+            echo "Build log tail (last 50 lines):"
+            tail -50 /tmp/build.log
+          else
+            echo "=== IPK files successfully compiled ==="
+            find bin/packages -name "*.ipk" -exec ls -lh {} \;
+          fi
+          
+          exit ${BUILD_STATUS:-0}
+          SCRIPT_EOF
           
           docker run --rm \
             -v "$PWD/tailscale_pkg:/builder/package/tailscale:z" \
             -v "$PWD/staging_out:/builder/bin:z" \
+            -v "$PWD/build_script.sh:/build_script.sh:ro" \
+            -e TERM=xterm \
             ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0 \
-            bash -c '
-              set -e
-              cd /builder
-              
-              echo "=== OpenWRT SDK Environment ==="
-              echo "Working directory: $(pwd)"
-              echo "Available tools:"
-              which upx || echo "UPX not available"
-              
-              # Ensure feeds are initialized
-              echo ""
-              echo "=== Updating feeds ==="
-              ./scripts/feeds update -a 2>&1 | tail -20 || true
-              ./scripts/feeds install -a 2>&1 | tail -20 || true
-              
-              # Compile tailscale package with verbose output
-              echo ""
-              echo "=== Starting tailscale package compilation ==="
-              make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log
-              BUILD_STATUS=${PIPESTATUS[0]}
-              
-              # Find and copy compiled IPK
-              echo ""
-              echo "=== Searching for compiled IPK files ==="
-              found_ipk=0
-              for arch_dir in bin/packages/*/; do
-                if [ -d "$arch_dir" ]; then
-                  echo "Checking directory: $arch_dir"
-                  for ipk in "$arch_dir"tailscale_*.ipk; do
-                    if [ -f "$ipk" ]; then
-                      echo "Found IPK: $ipk"
-                      found_ipk=1
-                    fi
-                  done
-                fi
-              done
-              
-              if [ "$found_ipk" -eq 0 ]; then
-                echo "=== No IPK files found ==="
-                echo "Build log tail:"
-                tail -100 /tmp/build.log
-                echo ""
-                echo "Directory structure:"
-                find bin -type f 2>/dev/null | grep -E "(ipk|log)" | head -20
-              else
-                echo "=== IPK files successfully compiled ==="
-                echo "Contents of bin/packages:"
-                find bin/packages -name "*.ipk" -exec ls -lh {} \;
-              fi
-              
-              exit $BUILD_STATUS
-            '
+            bash /build_script.sh
           
           # Copy artifacts
           echo ""
           echo "=== Copying artifacts ==="
-          if ls staging_out/bin/packages/*/tailscale_*.ipk 1> /dev/null 2>&1; then
+          if find staging_out/bin/packages -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
             find staging_out/bin/packages -name "tailscale_*.ipk" -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
             echo "Successfully copied IPK files"
             ls -lh "${{ env.ARTIFACT_DIR }}/"
