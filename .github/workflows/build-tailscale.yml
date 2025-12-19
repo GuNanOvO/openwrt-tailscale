@@ -25,6 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        sdk:
+          - 24.10.4
         platform:
           # - 'aarch64_cortex-a53'
           # - 'aarch64_cortex-a72'
@@ -116,7 +118,7 @@ jobs:
       - name: Build
         uses: openwrt/gh-action-sdk@main
         env:
-          ARCH: ${{ matrix.platform }}
+          ARCH: ${{ matrix.platform }}-${{ matrix.sdk }}
           FEEDNAME: packages_ci
           FEED_DIR: package
           PACKAGES: tailscale
