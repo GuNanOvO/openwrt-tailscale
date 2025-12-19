@@ -4,74 +4,529 @@ on:
   workflow_dispatch: 
   push:
     branches: [ main ]
+    paths:
+      - version
+  repository_dispatch:
+    types: [ build-tailscale ]
+
+env:
+  SOFTWARE_NAME: "Tailscale"
+  FILE_NAME: "tailscaled"
+  REPO: "tailscale/tailscale"
+  REPO_SMALL: "GuNanOvO/openwrt-tailscale"
+  REPO_SMALL_NAME: "openwrt-tailscale"
+  REPO_SMALL_OWNER: "GuNanOvO"
+  ARTIFACT_DIR: "artifacts"
+  BUILD_DATE: ""
 
 jobs:
   build:
+    name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
-    container: ghcr.io/openwrt/sdk:${{ matrix.id }}-V24.10.4
     strategy:
       matrix:
-        include:
-          - id: 'aarch64_cortex-a53'
-          - id: 'mips_24kc'
+        platform:
+          # - 'aarch64_cortex-a53'
+          # - 'aarch64_cortex-a72'
+          # - 'aarch64_cortex-a76'
+          # - 'aarch64_generic'
+          # - 'arm_arm1176jzf-s_vfp'
+          # - 'arm_arm926ej-s'
+          # - 'arm_cortex-a15_neon-vfpv4'
+          # - 'arm_cortex-a5_vfpv4'
+          # - 'arm_cortex-a7'
+          # - 'arm_cortex-a7_neon-vfpv4'
+          # - 'arm_cortex-a7_vfpv4'
+          # - 'arm_cortex-a8_vfpv3'
+          # - 'arm_cortex-a9'
+          # - 'arm_cortex-a9_neon'
+          # - 'arm_cortex-a9_vfpv3-d16'
+          # - 'arm_fa526'
+          # - 'arm_xscale'
+          # - 'i386_pentium-mmx'
+          # - 'i386_pentium4'
+          # - 'loongarch64_generic'
+          # - 'mips64_mips64r2'
+          # - 'mips64_octeonplus'
+          # - 'mips64el_mips64r2'
+          # - 'mips_24kc'
+          # - 'mips_4kec'
+          # - 'mips_mips32'
+          # - 'mipsel_24kc'
+          # - 'mipsel_24kc_24kf'
+          # - 'mipsel_74kc'
+          # - 'mipsel_mips32'
+          # - 'riscv64_riscv64'
+          - 'x86_64'
+      max-parallel: 1
+      fail-fast: false
 
     steps:
-      - name: Initialize SDK Environment
+      - name: Checkout repository (develop branch)
+        uses: actions/checkout@v4
+        with:
+          ref: develop
+          path: repo
+
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Download and extract UPX
         run: |
-          cp -r /builder/. .
+          echo "=== Downloading latest UPX release ==="
+          UPX_VERSION=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          echo "UPX version: $UPX_VERSION"
           
+          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_VERSION}/upx-${UPX_VERSION#v}-amd64_linux.tar.xz"
+          echo "Downloading from: $UPX_URL"
+          
+          mkdir -p upx_extracted
+          curl -L -o upx.tar.xz "$UPX_URL"
+          
+          echo "=== Extracting UPX ==="
+          tar -xf upx.tar.xz -C upx_extracted --strip-components=1
+          
+          echo "=== UPX extracted contents ==="
+          ls -lh upx_extracted/
+          
+          # Make upx executable
+          chmod +x upx_extracted/upx || true
+
+      - name: Pull OpenWRT SDK Docker image
+        run: |
+          echo "=== Pulling OpenWRT SDK Docker image ==="
+          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4
+
+      - name: Prepare build directories
+        run: |
+          mkdir -p bin
+          mkdir -p "${{ env.ARTIFACT_DIR }}"
+          echo "=== Build directories prepared ==="
+          ls -la
+
+      - name: Build with OpenWRT SDK Docker
+        run: |
+          echo "=== Starting build process ==="
+          echo "Platform: ${{ matrix.platform }}"
+          echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
+          
+          # Create build script that will run inside container
+          cat > build_script.sh << 'SCRIPT_EOF'
+          #!/bin/bash
+          set -e
+          cd /builder
+          
+          echo "=== OpenWRT SDK Environment ==="
+          echo "Working directory: $(pwd)"
+          echo "Contents:"
+          ls -la
+          
+          echo ""
+          echo "=== Checking mounted directories ==="
+          echo "Tailscale package directory:"
+          ls -la /builder/tailscale/ || echo "Tailscale directory not found"
+          echo ""
+          echo "UPX directory:"
+          ls -la /builder/upx/ || echo "UPX directory not found"
+          echo ""
+          echo "Bin directory:"
+          ls -la /builder/bin/ || echo "Bin directory not found"
+          
+          echo ""
+          echo "=== Updating feeds ==="
           ./scripts/feeds update packages
-          ./scripts/feeds install golang tailscale
+          
+          echo ""
+          echo "=== Making defconfig ==="
           make defconfig
-
-      - name: Extract Go Variables
-        run: |
-          # 动态提取 SDK 为当前架构计算出的 Go 参数
-          cat << 'EOF' > get_go_vars.mk
-          include rules.mk
-          include feeds/packages/lang/golang/golang-package.mk
-          show_go_vars:
-          	@echo "GOARCH=$(GO_ARCH)"
-          	@echo "GOARM=$(GO_ARM)"
-          	@echo "GOMIPS=$(GO_MIPS)"
-          	@echo "GOMIPS64=$(GO_MIPS64)"
-          	@echo "GO386=$(GO_386)"
-          EOF
-          make -s -f get_go_vars.mk show_go_vars >> $GITHUB_ENV
-
-      - name: Fast Go Build
-        run: |
-          git clone https://github.com/tailscale/tailscale --depth 1
-          cd tailscale
-          # 使用提取的环境变量进行编译
-          GOOS=linux \
-          GOARCH=${{ env.GOARCH }} \
-          GOARM=${{ env.GOARM }} \
-          GOMIPS=${{ env.GOMIPS }} \
-          GOMIPS64=${{ env.GOMIPS64 }} \
-          CGO_ENABLED=0 \
-          go build -v -trimpath -ldflags="-s -w" -o ../tailscaled ./cmd/tailscaled
-
-      - name: Inject Binary and Package IPK
-        run: |
-          # 定位包路径（在 feeds 安装后）
-          PKG_PATH="package/feeds/packages/tailscale"
           
-          # 获取构建目录
-          PKG_BUILD_DIR=$(make -C $PKG_PATH -V PKG_BUILD_DIR)
-          BIN_DIR=$(make -C $PKG_PATH -V GO_PKG_BUILD_BIN_DIR)
+          echo ""
+          echo "=== Installing feeds ==="
+          ./scripts/feeds install -a
           
-          # 注入预编译二进制
-          mkdir -p $BIN_DIR
-          cp ./tailscaled $BIN_DIR/
-          mkdir -p $PKG_BUILD_DIR
-          touch $PKG_BUILD_DIR/.built
+          echo ""
+          echo "=== Copying tailscale package ==="
+          cp -r /builder/tailscale /builder/package/tailscale
+          echo "Tailscale package copied to:"
+          ls -la /builder/package/tailscale/
           
-          # 只执行打包逻辑
-          make $PKG_PATH/compile V=s
+          echo ""
+          echo "=== Cleaning tailscale package ==="
+          make package/tailscale/clean || true
+          
+          echo ""
+          echo "=== Compiling tailscale package ==="
+          make package/tailscale/compile V=s JOBS=$(nproc) || BUILD_STATUS=$?
+          
+          echo ""
+          echo "=== Searching for compiled IPK files ==="
+          found_ipk=0
+          for ipk in bin/packages/*/tailscale_*.ipk; do
+            if [ -f "$ipk" ]; then
+              echo "Found IPK: $ipk"
+              found_ipk=1
+            fi
+          done
+          
+          if [ "$found_ipk" -eq 0 ]; then
+            echo "=== No IPK files found ==="
+            echo "Searching in bin/packages:"
+            find bin/packages -type f -name "*.ipk" 2>/dev/null || true
+            exit ${BUILD_STATUS:-1}
+          else
+            echo "=== IPK files successfully compiled ==="
+            find bin/packages -name "tailscale_*.ipk" -exec ls -lh {} \;
+          fi
+          
+          exit ${BUILD_STATUS:-0}
+          SCRIPT_EOF
+          
+          chmod +x build_script.sh
+          
+          # Run docker container with proper mounts
+          docker run --rm \
+            -v "$(pwd)/bin:/builder/bin" \
+            -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro" \
+            -v "$(pwd)/upx_extracted:/builder/upx:ro" \
+            -v "$(pwd)/build_script.sh:/build_script.sh:ro" \
+            -e TERM=xterm \
+            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
+            bash /build_script.sh
+          
+          echo ""
+          echo "=== Build completed ==="
 
-      - name: Upload Artifact
+      - name: Collect build artifacts
+        run: |
+          echo "=== Collecting build artifacts ==="
+          if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+            echo "Found IPK files:"
+            find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
+            find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
+            echo ""
+            echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
+            ls -lh "${{ env.ARTIFACT_DIR }}/"
+          else
+            echo "ERROR: No IPK files found in bin directory"
+            echo "Contents of bin directory:"
+            find bin -type f 2>/dev/null | head -20 || true
+            exit 1
+          fi
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-${{ matrix.id }}
-          path: bin/targets/*/*/packages/tailscale*.ipk
+          name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform }}
+          path: ${{ env.ARTIFACT_DIR }}/*
+          if-no-files-found: error
+
+  # release:
+  #   name: Create Release
+  #   needs: [build]
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RELEASE_TAG: ${{ needs.build.outputs.version_tag }}
+  #   steps:
+  #     - name: Prepare workspace
+  #       run: |
+  #         mkdir -p ${{ env.ARTIFACT_DIR }}
+
+  #     - name: Download artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: ${{ env.ARTIFACT_DIR }}
+  #         merge-multiple: true
+
+  #     - name: Generate release files
+  #       run: |
+  #         echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+          
+  #         # Since we're using SDK, just copy all IPK files
+  #         cd ${{ env.ARTIFACT_DIR }}
+          
+  #         # Create checksums
+  #         sha256sum *.ipk > checksums.txt
+          
+  #         # Create info file
+  #         {
+  #           echo "Version: ${{ env.RELEASE_TAG }}"
+  #           echo "Build date: ${{ env.BUILD_DATE }}"
+  #           echo ""
+  #           echo "File sizes:"
+  #           for file in *.ipk; do
+  #             size=$(stat -c %s "${file}")
+  #             echo "${file} ${size} bytes"
+  #           done
+  #         } > build-info.txt
+  #         cd ..
+          
+  #         # Generate artifacts index JSON from IPK files
+  #         echo "[" > ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #         first=true
+  #         for ipk in ${{ env.ARTIFACT_DIR }}/*.ipk; do
+  #           if [ -f "$ipk" ]; then
+  #             filename=$(basename "$ipk")
+  #             # Extract architecture from IPK filename (e.g., tailscale_1.52.0_aarch64_cortex-a72.ipk)
+  #             arch=$(echo "$filename" | sed 's/.*_\([^_]*\)\.ipk$/\1/')
+              
+  #             if [ "$first" = true ]; then
+  #               first=false
+  #             else
+  #               echo "," >> ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #             fi
+  #             echo "{\"target\":\"${arch}\",\"ipk\":\"${filename}\"}" >> ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #           fi
+  #         done
+  #         echo "]" >> ${{ env.ARTIFACT_DIR }}/artifacts.json
+      
+  #     - name: Checkout feed branch
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: feed
+  #         path: feed
+      
+  #     - name: Setup Usign
+  #       run: |
+  #         git clone https://git.openwrt.org/project/usign.git
+  #         cd usign
+  #         mkdir build
+  #         cd build
+  #         cmake ..
+  #         make
+  #         make install
+          
+  #     - name: Restore usign private key
+  #       env:
+  #         USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
+  #       shell: bash
+  #       run: |
+  #         echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
+  #         chmod 600 key-build.sec
+          
+  #     - name: Prepare feed files
+  #       run: |
+  #         rm -rf feed/tailscale* feed/Packages* feed/version*
+                
+  #         # Copy all IPK files from artifacts
+  #         find ${{ env.ARTIFACT_DIR }} -name "tailscale_*.ipk" -exec cp {} feed/ \; 2>/dev/null || true
+
+  #         # Try to generate package index if opkg-utils is available
+  #         if command -v opkg-make-index &> /dev/null; then
+  #           cd feed
+  #           opkg-make-index -a -f -v --checksum sha256 . > Packages 2>&1 || echo "Failed to generate package index, continuing..."
+  #           gzip -kf Packages
+  #           cd ..
+  #         else
+  #           echo "opkg-utils not available, skipping package index generation"
+  #         fi
+              
+  #         ls -lh feed/ || true
+          
+  #         [ -f feed/Packages ] && file feed/Packages || true
+  #         [ -f key-build.sec ] && file key-build.sec || true
+
+  #         if [ -f feed/Packages ] && [ -f key-build.sec ]; then
+  #           usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig || echo "Signing failed, continuing..."
+  #           [ -f feed/Packages.sig ] && cat feed/Packages.sig || true
+  #         fi
+          
+  #         generate_tbody() {
+  #           echo "          <tbody>"
+  #           for file in feed/Packages* feed/tailscale*; do
+  #             [ -f "${file}" ] || continue
+  #             fname=$(basename "${file}")
+  #             fsize=$(du -h "${file}" | cut -f1)
+  #             fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
+  #             echo "                        <tr>"
+  #             echo "                            <td><a href=\"$fname\">$fname</a></td>"
+  #             echo "                            <td>$fsize</td>"
+  #             echo "                            <td>$fdate</td>"
+  #             echo "                        </tr>"
+  #           done
+  #           echo "          </tbody>"
+  #         }
+
+  #         generate_tbody > feed/tbody.tmp
+  #         sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
+  #           /<!-- tbody-anchor -->/!{
+  #             /<!-- end-tbody-anchor -->/!d
+  #           }
+  #         }' feed/index.html
+  #         sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
+
+  #         current_date="${{ env.BUILD_DATE }}"
+  #         sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
+  #             /<span id="date">/ {
+  #                 s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+  #             }
+  #         }' feed/index.html
+
+  #         version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
+  #         sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
+  #             /<span id="version">/ {
+  #                 s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
+  #             }
+  #         }' feed/index.html
+  #         rm -f feed/tbody.tmp
+
+  #     - name: Commit and push to feed branch
+  #       run: |
+  #         git config --local user.email "action@github.com"
+  #         git config --local user.name "GitHub Action"
+  #         git add -A
+  #         git diff --cached --quiet && echo "No changes" && exit 0
+  #         git commit -m "Update feed: ${{ env.BUILD_DATE }}"
+  #         git push origin HEAD:feed
+  #       working-directory: feed
+
+  #     - name: Generate release markdown
+  #       id: generate_release_markdown
+  #       run: |
+  #         # Read artifacts.json and generate markdown table
+  #         artifacts_file="${{ env.ARTIFACT_DIR }}/artifacts.json"
+          
+  #         if [[ ! -f "${artifacts_file}" ]]; then
+  #           echo "No artifacts.json found, skipping table generation."
+  #           exit 1
+  #         fi
+          
+  #         # Generate Markdown table for IPK files only
+  #         owner="${{ env.REPO_SMALL_OWNER }}"
+  #         repo="${{ env.REPO_SMALL_NAME }}"
+  #         tag="${{ env.RELEASE_TAG }}"
+  #         table="| Target Platform 目标平台 | IPK Package |
+  #         |----------------------|------------|
+  #         $(jq -r --arg owner "$owner" --arg repo "$repo" --arg tag "$tag" '
+  #         .[] | 
+  #         "| \(.target) | [\(.ipk)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk)) |"
+  #         ' ${artifacts_file})"
+
+  #         # Print the table for debugging
+  #         echo "$table"
+
+  #         # Set release body with table included
+  #         release_body="## 🚀 Smaller Tailscale / 更小的Tailscale
+
+  #         **Version 版本** :&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${{ env.RELEASE_TAG }}   
+  #         **Build date 构建日期** : &nbsp;&nbsp;&nbsp;&nbsp;${{ env.BUILD_DATE }}   
+  #         **Changelog 更新日志** : &nbsp;&nbsp;&nbsp;https://github.com/${{ env.REPO }}/releases/tag/${{ env.RELEASE_TAG }}   
+
+  #         ---
+
+  #         ### 🌏 中文说明
+  #         <details>
+  #         <summary>点击展开</summary>
+  #         这是一个为 OpenWRT 构建的 Tailscale 的极简版本，使用 OpenWRT 官方 SDK 编译，旨在提供更小的二进制文件和更少的资源占用。包含 IPK 包，适用于多种 OpenWRT 目标平台。
+
+  #         ### 🛠️ 构建特性
+  #         - 使用 OpenWRT 官方 SDK 进行编译
+  #         - Tailscale 使用精简的 TAGS 与 LDFLAGS 编译
+  #         - 使用 UPX 压缩技术对二进制文件进行压缩（某些架构除外），大幅减小 IPK 体积
+  #         - 完整的 IPK 包格式，可直接通过 opkg 安装
+
+  #         ### ⚠️ 系统需求
+  #         - **存储空间**: IPK 文件通常小于 10MB
+  #         - **运行内存**: 大约 60MB
+  #         - **注意事项**: 可能无法在内存小于 256MB 的设备上正常运行，请谨慎使用。
+
+  #         ### 📖 如何确定目标平台
+  #         在您的 OpenWRT 设备上运行以下命令以确定支持的目标平台：
+  #         \`\`\`bash
+  #         opkg print-architecture
+  #         \`\`\`
+  #         该命令将列出设备支持的架构类型（不包括 \`all\` 和 \`noarch\`）。根据输出结果选择对应的文件进行安装。
+
+  #         ### 📦 安装方法
+  #         \`\`\`bash
+  #         opkg install tailscale_X.XX.X_<your_architecture>.ipk
+  #         \`\`\`
+
+  #         </details>
+
+  #         ### 🌎 English Description
+  #         <details>
+  #         <summary>Click to expand</summary>
+  #         This is a minimal build of Tailscale for OpenWRT, compiled using the official OpenWRT SDK, designed to provide smaller binaries and lower resource usage. It includes IPK packages for various OpenWRT target platforms.
+
+  #         ### 🛠️ Build Features
+  #         - Compiled using the official OpenWRT SDK
+  #         - Tailscale uses streamlined TAGS and LDFLAGS for compilation
+  #         - UPX compression applied to binaries (except for some architectures) to significantly reduce IPK size
+  #         - Complete IPK package format, can be installed directly via opkg
+
+  #         ### ⚠️ System Requirements
+  #         - **Storage Space**: IPK files are typically less than 10MB
+  #         - **RAM**: Approximately 60MB
+  #         - **Note**: May not work on devices with less than 256MB of RAM. Use with caution.
+
+  #         ### 📖 How to Determine the Target Platform
+  #         Run the following command on your OpenWRT device to determine the supported target platform:
+  #         \`\`\`bash
+  #         opkg print-architecture
+  #         \`\`\`
+  #         This command will list the supported architecture types (excluding \`all\` and \`noarch\`). Choose the corresponding file based on the output.
+
+  #         ### 📦 Installation Method
+  #         \`\`\`bash
+  #         opkg install tailscale_X.XX.X_<your_architecture>.ipk
+  #         \`\`\`
+
+  #         </details>
+
+  #         ---
+
+  #         > [!WARNING]
+  #         > 如果 \`opkg\` 安装显示安装失败，请先通过运行以下命令测试：
+  #         > \`\`\`bash
+  #         > tailscale --version
+  #         > \`\`\`
+  #         > 如果命令正确输出版本号，则安装成功。否则请提交反馈。
+  #         >
+  #         > If the \`opkg\` installation shows failure, please test first by running:
+  #         > \`\`\`bash
+  #         > tailscale --version
+  #         > \`\`\`
+  #         > If the command correctly outputs the version number, the installation is successful. Otherwise, please submit feedback.
+
+  #         ---
+
+  #         ### 📥 Download Links List / 下载链接清单
+  #         > [!NOTE]
+  #         > 请确保选择正确的目标平台架构和 Tailscale 版本。
+  #         > Make sure to select the correct target platform architecture and Tailscale version.
+  #         <details>
+  #         <summary>Click to expand  /  点击展开</summary>
+
+  #         ${table}
+
+  #         </details>
+  #         "
+
+  #         echo "release_body<<EOF" >> $GITHUB_OUTPUT
+  #         echo "${release_body}" >> $GITHUB_OUTPUT
+  #         echo "EOF" >> $GITHUB_OUTPUT
+
+  #     - name: Create GitHub Release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         tag_name: ${{ env.RELEASE_TAG }}
+  #         name: "Smaller ${{ env.SOFTWARE_NAME }} ${{ env.RELEASE_TAG }}"
+  #         body: ${{ steps.generate_release_markdown.outputs.release_body }}
+  #         files: |
+  #           ${{ env.ARTIFACT_DIR }}/*.ipk
+  #           ${{ env.ARTIFACT_DIR }}/checksums.txt
+  #           ${{ env.ARTIFACT_DIR }}/build-info.txt
+
+
+  #     - name: Sync to small repo
+  #       uses: actions/github-script@v6
+  #       with:
+  #         script: |
+  #           await github.rest.git.createTag({
+  #             owner: '${{ env.REPO_SMALL_OWNER }}',
+  #             repo: 'openwrt-tailscale',
+  #             tag: '${{ env.RELEASE_TAG }}',
+  #             message: 'Release ${{ env.RELEASE_TAG }}',
+  #             object: '${{ github.sha }}',
+  #             type: 'commit'
+  #           })
