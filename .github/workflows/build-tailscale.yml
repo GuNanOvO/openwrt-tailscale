@@ -101,6 +101,8 @@ jobs:
         run: |
           mkdir -p bin
           mkdir -p "${{ env.ARTIFACT_DIR }}"
+          # Set permissions to allow container to write
+          chmod -R 777 bin || true
           echo "=== Build directories prepared ==="
           ls -la
 
@@ -133,6 +135,13 @@ jobs:
           ls -la /builder/bin/ || echo "Bin directory not found"
           
           echo ""
+          echo "=== Ensuring bin directory permissions ==="
+          # Ensure bin directory is writable and create necessary subdirectories
+          chmod -R 777 /builder/bin 2>/dev/null || true
+          mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
+          echo "Bin directory permissions set"
+          
+          echo ""
           echo "=== Updating feeds ==="
           ./scripts/feeds update packages
           
@@ -161,7 +170,8 @@ jobs:
           echo ""
           echo "=== Searching for compiled IPK files ==="
           found_ipk=0
-          for ipk in bin/packages/*/tailscale_*.ipk; do
+          # Search in both bin/packages and bin/targets (OpenWRT SDK uses different paths)
+          for ipk in bin/packages/*/tailscale_*.ipk bin/targets/*/*/packages/tailscale_*.ipk; do
             if [ -f "$ipk" ]; then
               echo "Found IPK: $ipk"
               found_ipk=1
@@ -172,10 +182,12 @@ jobs:
             echo "=== No IPK files found ==="
             echo "Searching in bin/packages:"
             find bin/packages -type f -name "*.ipk" 2>/dev/null || true
+            echo "Searching in bin/targets:"
+            find bin/targets -type f -name "tailscale_*.ipk" 2>/dev/null || true
             exit ${BUILD_STATUS:-1}
           else
             echo "=== IPK files successfully compiled ==="
-            find bin/packages -name "tailscale_*.ipk" -exec ls -lh {} \;
+            find bin/packages bin/targets -name "tailscale_*.ipk" -exec ls -lh {} \; 2>/dev/null || true
           fi
           
           exit ${BUILD_STATUS:-0}
@@ -184,11 +196,12 @@ jobs:
           chmod +x build_script.sh
           
           # Run docker container with proper mounts
+          # Use 'z' option for SELinux context and ensure writable permissions
           docker run --rm \
-            -v "$(pwd)/bin:/builder/bin" \
-            -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro" \
-            -v "$(pwd)/upx_extracted:/builder/upx:ro" \
-            -v "$(pwd)/build_script.sh:/build_script.sh:ro" \
+            -v "$(pwd)/bin:/builder/bin:z" \
+            -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
+            -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
+            -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
             -e TERM=xterm \
             ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
             bash /build_script.sh
@@ -199,6 +212,7 @@ jobs:
       - name: Collect build artifacts
         run: |
           echo "=== Collecting build artifacts ==="
+          # Search in both bin/packages and bin/targets directories
           if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
             echo "Found IPK files:"
             find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
@@ -209,7 +223,9 @@ jobs:
           else
             echo "ERROR: No IPK files found in bin directory"
             echo "Contents of bin directory:"
-            find bin -type f 2>/dev/null | head -20 || true
+            find bin -type d 2>/dev/null | head -20 || true
+            echo "Searching for any IPK files:"
+            find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
             exit 1
           fi
 
