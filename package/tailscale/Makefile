@@ -40,7 +40,7 @@ UPX_EXCLUDED_TARGETS := \
 UPX_CUR_TARGET := $(ARCH)_$(SUBTARGET)
 
 include $(INCLUDE_DIR)/package.mk
-include ../../lang/golang/golang-package.mk
+include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/tailscale
   SECTION:=net
