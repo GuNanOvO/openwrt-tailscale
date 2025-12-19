@@ -105,6 +105,7 @@ jobs:
 
       - name: Prepare UPX
         run: |
+          mkdir -p repo/package/tailscale/upx
           cp -r upx_extracted/* repo/package/tailscale/upx
 
       - name: Build
