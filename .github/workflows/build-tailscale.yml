@@ -32,7 +32,9 @@ jobs:
     steps:
       - name: Prepare SDK and Feeds
         run: |
+          [ ! -d ./scripts ] && ./setup.sh
           ./scripts/feeds update packages
+          make defconfig
           ./scripts/feeds install golang tailscale
 
       - name: Extract Go Variables
