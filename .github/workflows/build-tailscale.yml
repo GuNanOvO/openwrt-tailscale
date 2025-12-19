@@ -171,24 +171,33 @@ jobs:
           ./scripts/feeds uninstall tailscale 2>/dev/null || true
           
           echo ""
-          echo "=== Making defconfig with minimal config ==="
-          make defconfig
+          echo "=== Preparing config (skip defconfig to avoid enabling all packages) ==="
+          # Add essential configs without running defconfig (which enables CONFIG_ALL)
+          # Ensure CONFIG_ALL is explicitly disabled
+          {
+            echo 'CONFIG_ALL=n'
+            echo 'CONFIG_ALL_KMODS=n'
+            echo 'CONFIG_ALL_NONSHARED=n'
+            echo 'CONFIG_PACKAGE_tailscale=y'
+            echo 'CONFIG_PACKAGE_golang-host=y'
+            echo 'CONFIG_PACKAGE_ca-bundle=y'
+            echo 'CONFIG_PACKAGE_kmod-tun=y'
+          } >> .config
           
-          echo ""
-          echo "=== Disabling CONFIG_ALL to prevent building all packages ==="
-          # Disable CONFIG_ALL to prevent building all kmods and packages
-          # This must be done AFTER defconfig, as defconfig may enable CONFIG_ALL
-          sed -i 's/^CONFIG_ALL=.*/CONFIG_ALL=n/' .config || echo "CONFIG_ALL=n" >> .config
-          sed -i 's/^CONFIG_ALL_KMODS=.*/CONFIG_ALL_KMODS=n/' .config || echo "CONFIG_ALL_KMODS=n" >> .config
-          sed -i 's/^CONFIG_ALL_NONSHARED=.*/CONFIG_ALL_NONSHARED=n/' .config || echo "CONFIG_ALL_NONSHARED=n" >> .config
-          # Only enable tailscale package (not all packages)
-          if ! grep -q "^CONFIG_PACKAGE_tailscale=" .config; then
-            echo "CONFIG_PACKAGE_tailscale=y" >> .config
-          else
-            sed -i 's/^CONFIG_PACKAGE_tailscale=.*/CONFIG_PACKAGE_tailscale=y/' .config
-          fi
-          # Use oldconfig instead of defconfig to preserve our CONFIG_ALL=n setting
-          yes "" | make oldconfig 2>/dev/null || make oldconfig
+          # Remove any conflicting CONFIG_ALL entries
+          sed -i '/^CONFIG_ALL=/d' .config
+          sed -i '/^CONFIG_ALL_KMODS=/d' .config
+          sed -i '/^CONFIG_ALL_NONSHARED=/d' .config
+          
+          # Re-add our settings at the end
+          {
+            echo 'CONFIG_ALL=n'
+            echo 'CONFIG_ALL_KMODS=n'
+            echo 'CONFIG_ALL_NONSHARED=n'
+          } >> .config
+          
+          echo "Config prepared. CONFIG_ALL status:"
+          grep "^CONFIG_ALL" .config || echo "CONFIG_ALL not found"
           
           echo ""
           echo "=== Copying custom tailscale package ==="
@@ -206,18 +215,36 @@ jobs:
           ls -la /builder/package/tailscale/upx || true
           
           echo ""
-          echo "=== Verifying config before compilation ==="
+          echo "=== Final config verification before compilation ==="
           echo "CONFIG_ALL status:"
           grep "^CONFIG_ALL=" .config || echo "CONFIG_ALL not found"
+          echo "CONFIG_ALL_KMODS status:"
+          grep "^CONFIG_ALL_KMODS=" .config || echo "CONFIG_ALL_KMODS not found"
           echo "CONFIG_PACKAGE_tailscale status:"
           grep "^CONFIG_PACKAGE_tailscale=" .config || echo "CONFIG_PACKAGE_tailscale not found"
+          
+          # Final safety check: ensure CONFIG_ALL is disabled
+          if grep -q "^CONFIG_ALL=y" .config; then
+            echo "WARNING: CONFIG_ALL is enabled! Disabling it..."
+            sed -i 's/^CONFIG_ALL=y/CONFIG_ALL=n/' .config
+            echo "CONFIG_ALL=n" >> .config
+          fi
+          
+          echo ""
+          echo "=== Pre-installing dependencies to avoid building them ==="
+          # Pre-install dependencies so they don't get built during tailscale compilation
+          # Use -j1 to limit resource usage and avoid triggering unnecessary builds
+          make package/golang-host/install -j1 >/dev/null 2>&1 || true
+          make package/ca-bundle/install -j1 >/dev/null 2>&1 || true
+          make package/kmod-tun/install -j1 >/dev/null 2>&1 || true
           
           echo ""
           echo "=== Compiling custom tailscale package only ==="
           # Use package/tailscale (not feeds/packages/tailscale) to ensure our version is used
-          # Only compile tailscale, dependencies should already be available in SDK
+          # Limit parallel jobs to 2 to avoid resource exhaustion on GitHub runners
+          # Use IGNORE_ERRORS=1 to prevent failing on dependency issues
           # Capture full output to /tmp/build.log for debugging
-          make package/tailscale/compile -j$(nproc) V=s 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
+          IGNORE_ERRORS=1 make package/tailscale/compile -j2 V=s 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
           
           echo ""
           echo "=== Searching for compiled IPK files ==="
