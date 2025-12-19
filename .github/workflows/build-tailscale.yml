@@ -28,8 +28,13 @@ jobs:
         include:
           - id: 'aarch64_cortex-a53'
           - id: 'mips_24kc'
-
+    defaults:
+          run:
+            working-directory: /builder
     steps:
+      - name: Fix Directory Permissions
+        # 官方 SDK 镜像通常以 buildbot 用户运行，确保权限正确
+        run: sudo chown -R buildbot:buildbot /builder
       - name: Prepare SDK and Feeds
         run: |
           [ ! -d ./scripts ] && ./setup.sh
