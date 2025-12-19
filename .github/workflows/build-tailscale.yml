@@ -119,7 +119,6 @@ jobs:
         uses: openwrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.platform }}-${{ matrix.sdk }}
-          FEEDNAME: packages_ci
           FEED_DIR: package
           PACKAGES: tailscale
           NO_REFRESH_CHECK: true
@@ -128,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.platform }}
-          path: bin/packages/${{ matrix.platform }}/packages_ci/*.{ipk,apk}
+          path: bin/packages/${{ matrix.platform }}/packages/*.{ipk,apk}
 
       # - name: Pull OpenWRT SDK Docker image
       #   run: |
