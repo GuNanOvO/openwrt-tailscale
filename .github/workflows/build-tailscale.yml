@@ -117,7 +117,7 @@ jobs:
 
       - name: Pull OpenWRT SDK Docker image
         run: |
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.5
+          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}
 
       - name: Setup UPX
         uses: crazy-max/ghaction-upx@v2
@@ -146,7 +146,7 @@ jobs:
           
           # Show the updated line
           grep "PKG_VERSION" tailscale_pkg/package/tailscale/Makefile
-          
+
       - name: Debug via tmate
         uses: mxschmitt/action-tmate@v3
 
