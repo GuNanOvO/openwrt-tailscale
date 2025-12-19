@@ -1,4 +1,3 @@
-#
 # Copyright (C) 2021 CZ.NIC, z. s. p. o. (https://www.nic.cz/)
 #
 # This is free software, licensed under the GNU General Public License v2.
@@ -49,7 +48,8 @@ define Package/tailscale
   SUBMENU:=VPN
   TITLE:=Zero config VPN
   URL:=https://tailscale.com
-  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +kmod-tun
+  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle
+  RDEPENDS:=+kmod-tun
   PROVIDES:=tailscaled
 endef
 
