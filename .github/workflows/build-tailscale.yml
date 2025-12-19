@@ -4,90 +4,74 @@ on:
   workflow_dispatch: 
   push:
     branches: [ main ]
-    paths:
-      - version
-  repository_dispatch:
-    types: [ build-tailscale ]
-
-env:
-  SOFTWARE_NAME: "Tailscale"
-  FILE_NAME: "tailscaled"
-  REPO: "tailscale/tailscale"
-  REPO_SMALL: "GuNanOvO/openwrt-tailscale"
-  REPO_SMALL_NAME: "openwrt-tailscale"
-  REPO_SMALL_OWNER: "GuNanOvO"
-  ARTIFACT_DIR: "artifacts"
-  BUILD_DATE: ""
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    container: ghcr.io/openwrt/sdk:${{ matrix.id }}
+    container: ghcr.io/openwrt/sdk:${{ matrix.id }}-V24.10.4
     strategy:
       matrix:
         include:
           - id: 'aarch64_cortex-a53'
           - id: 'mips_24kc'
-    defaults:
-          run:
-            working-directory: /builder
+
     steps:
-      - name: Fix Directory Permissions
-        # 官方 SDK 镜像通常以 buildbot 用户运行，确保权限正确
-        run: sudo chown -R buildbot:buildbot /builder
-      - name: Prepare SDK and Feeds
+      - name: Initialize SDK Environment
         run: |
-          [ ! -d ./scripts ] && ./setup.sh
+          cp -r /builder/. .
+          
           ./scripts/feeds update packages
-          make defconfig
           ./scripts/feeds install golang tailscale
+          make defconfig
 
       - name: Extract Go Variables
         run: |
+          # 动态提取 SDK 为当前架构计算出的 Go 参数
           cat << 'EOF' > get_go_vars.mk
           include rules.mk
           include feeds/packages/lang/golang/golang-package.mk
           show_go_vars:
-          	@echo "GOARCH=$(GO_ARCH)" >> $(GITHUB_ENV)
-          	@echo "GOARM=$(GO_ARM)" >> $(GITHUB_ENV)
-          	@echo "GOMIPS=$(GO_MIPS)" >> $(GITHUB_ENV)
-          	@echo "GOMIPS64=$(GO_MIPS64)" >> $(GITHUB_ENV)
-          	@echo "GO386=$(GO_386)" >> $(GITHUB_ENV)
+          	@echo "GOARCH=$(GO_ARCH)"
+          	@echo "GOARM=$(GO_ARM)"
+          	@echo "GOMIPS=$(GO_MIPS)"
+          	@echo "GOMIPS64=$(GO_MIPS64)"
+          	@echo "GO386=$(GO_386)"
           EOF
-          # 必须执行一次这个来导出变量到 GitHub 环境
-          make -f get_go_vars.mk show_go_vars
+          make -s -f get_go_vars.mk show_go_vars >> $GITHUB_ENV
 
-      - name: Fast Go Build (Outside SDK Logic)
+      - name: Fast Go Build
         run: |
-          # 克隆代码并直接用 Go 编译，利用上一步提取的参数
           git clone https://github.com/tailscale/tailscale --depth 1
           cd tailscale
-          GOOS=linux GOARCH=${{ env.GOARCH }} GOARM=${{ env.GOARM }} \
-          GOMIPS=${{ env.GOMIPS }} GOMIPS64=${{ env.GOMIPS64 }} \
+          # 使用提取的环境变量进行编译
+          GOOS=linux \
+          GOARCH=${{ env.GOARCH }} \
+          GOARM=${{ env.GOARM }} \
+          GOMIPS=${{ env.GOMIPS }} \
+          GOMIPS64=${{ env.GOMIPS64 }} \
           CGO_ENABLED=0 \
-          go build -v -ldflags="-s -w" -o ../tailscaled ./cmd/tailscaled
+          go build -v -trimpath -ldflags="-s -w" -o ../tailscaled ./cmd/tailscaled
 
       - name: Inject Binary and Package IPK
         run: |
-          # 1. 获取 SDK 为该包准备的构建目录
-          PKG_BUILD_DIR=$(make -C feeds/packages/net/tailscale -V PKG_BUILD_DIR)
-          BIN_DIR=$(make -C feeds/packages/net/tailscale -V GO_PKG_BUILD_BIN_DIR)
+          # 定位包路径（在 feeds 安装后）
+          PKG_PATH="package/feeds/packages/tailscale"
           
-          # 2. 注入二进制并标记已编译
+          # 获取构建目录
+          PKG_BUILD_DIR=$(make -C $PKG_PATH -V PKG_BUILD_DIR)
+          BIN_DIR=$(make -C $PKG_PATH -V GO_PKG_BUILD_BIN_DIR)
+          
+          # 注入预编译二进制
           mkdir -p $BIN_DIR
           cp ./tailscaled $BIN_DIR/
           mkdir -p $PKG_BUILD_DIR
           touch $PKG_BUILD_DIR/.built
           
-          # 3. 仅打包 (极其快速，因为跳过了编译)
-          make package/feeds/packages/tailscale/install V=s
-          
-          # 4. 收集产物
-          mkdir -p ./artifact
-          find bin/targets -name "tailscale*.ipk" -exec cp {} ./artifact/ \;
+          # 只执行打包逻辑
+          make $PKG_PATH/compile V=s
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: tailscale-${{ matrix.id }}
-          path: ./artifact/
+          path: bin/targets/*/*/packages/tailscale*.ipk
