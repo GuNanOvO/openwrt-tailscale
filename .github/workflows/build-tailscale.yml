@@ -113,7 +113,7 @@ jobs:
           echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
           
           # Create build script that will run inside container
-          cat > build_script.sh << 'SCRIPT_EOF'
+          cat > build_script.sh << 'BUILD_SCRIPT_END'
           #!/bin/bash
           set -e
           cd /builder
@@ -146,15 +146,49 @@ jobs:
           ./scripts/feeds update packages
           
           echo ""
-          echo "=== Making defconfig ==="
+          echo "=== Creating minimal config ==="
+          # Create minimal config - only enable what's needed for tailscale
+          # Tailscale needs: golang (host tool), ca-bundle, kmod-tun
+          {
+            echo 'CONFIG_TARGET_x86=y'
+            echo 'CONFIG_TARGET_x86_64=y'
+            echo 'CONFIG_PACKAGE_golang-host=y'
+            echo 'CONFIG_PACKAGE_ca-bundle=y'
+            echo 'CONFIG_PACKAGE_kmod-tun=y'
+            echo 'CONFIG_ALL_KMODS=n'
+            echo 'CONFIG_ALL_NONSHARED=n'
+            echo 'CONFIG_BUILD_TOOLCHAIN=y'
+            echo 'CONFIG_IB=y'
+            echo 'CONFIG_STRIP_KERNEL_EXPORTS=y'
+            echo 'CONFIG_USE_MKLIBS=y'
+          } > .config
+          
+          echo ""
+          echo "=== Installing only necessary feeds ==="
+          # Only install golang and ca-bundle, not all packages
+          ./scripts/feeds install golang ca-bundle || true
+          # Remove feeds tailscale if it exists, we'll use our own
+          ./scripts/feeds uninstall tailscale 2>/dev/null || true
+          
+          echo ""
+          echo "=== Making defconfig with minimal config ==="
           make defconfig
           
           echo ""
-          echo "=== Installing feeds (excluding tailscale) ==="
-          # Install all feeds except tailscale to avoid conflicts
-          ./scripts/feeds install -a
-          # Remove feeds tailscale if it exists, we'll use our own
-          ./scripts/feeds uninstall tailscale 2>/dev/null || true
+          echo "=== Disabling CONFIG_ALL to prevent building all packages ==="
+          # Disable CONFIG_ALL to prevent building all kmods and packages
+          # This must be done AFTER defconfig, as defconfig may enable CONFIG_ALL
+          sed -i 's/^CONFIG_ALL=.*/CONFIG_ALL=n/' .config || echo "CONFIG_ALL=n" >> .config
+          sed -i 's/^CONFIG_ALL_KMODS=.*/CONFIG_ALL_KMODS=n/' .config || echo "CONFIG_ALL_KMODS=n" >> .config
+          sed -i 's/^CONFIG_ALL_NONSHARED=.*/CONFIG_ALL_NONSHARED=n/' .config || echo "CONFIG_ALL_NONSHARED=n" >> .config
+          # Only enable tailscale package (not all packages)
+          if ! grep -q "^CONFIG_PACKAGE_tailscale=" .config; then
+            echo "CONFIG_PACKAGE_tailscale=y" >> .config
+          else
+            sed -i 's/^CONFIG_PACKAGE_tailscale=.*/CONFIG_PACKAGE_tailscale=y/' .config
+          fi
+          # Use oldconfig instead of defconfig to preserve our CONFIG_ALL=n setting
+          yes "" | make oldconfig 2>/dev/null || make oldconfig
           
           echo ""
           echo "=== Copying custom tailscale package ==="
@@ -172,11 +206,18 @@ jobs:
           ls -la /builder/package/tailscale/upx || true
           
           echo ""
+          echo "=== Verifying config before compilation ==="
+          echo "CONFIG_ALL status:"
+          grep "^CONFIG_ALL=" .config || echo "CONFIG_ALL not found"
+          echo "CONFIG_PACKAGE_tailscale status:"
+          grep "^CONFIG_PACKAGE_tailscale=" .config || echo "CONFIG_PACKAGE_tailscale not found"
+          
+          echo ""
           echo "=== Compiling custom tailscale package only ==="
           # Use package/tailscale (not feeds/packages/tailscale) to ensure our version is used
-          # Skip cleaning to avoid rebuilding dependencies (kmod, kernel, etc.)
-          # Use -j$(nproc) for parallel compilation
-          make package/tailscale/compile -j$(nproc) || BUILD_STATUS=$?
+          # Only compile tailscale, dependencies should already be available in SDK
+          # Capture full output to /tmp/build.log for debugging
+          make package/tailscale/compile -j$(nproc) V=s 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
           
           echo ""
           echo "=== Searching for compiled IPK files ==="
@@ -191,9 +232,12 @@ jobs:
             find bin/packages -type f -name "*.ipk" 2>/dev/null || true
             echo "Searching in bin/targets:"
             find bin/targets -type f -name "*.ipk" 2>/dev/null || true
+            echo "--- Build log tail (last 200 lines) ---"
+            [ -f /tmp/build.log ] && tail -200 /tmp/build.log || echo "No build log found"
+            echo "--- End build log tail ---"
             exit ${BUILD_STATUS:-1}
           fi
-          SCRIPT_EOF
+          BUILD_SCRIPT_END
           
           chmod +x build_script.sh
           
