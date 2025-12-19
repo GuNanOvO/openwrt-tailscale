@@ -128,7 +128,7 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.platform }}
-          path: bin/packages/${{ matrix.platform }}/packages_ci/*.ipk
+          path: bin/packages/${{ matrix.platform }}/packages_ci/*.{ipk,apk}
 
       # - name: Pull OpenWRT SDK Docker image
       #   run: |
