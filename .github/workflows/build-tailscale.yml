@@ -82,37 +82,26 @@ jobs:
           
           mkdir -p upx_extracted
           curl -L -o upx.tar.xz "$UPX_URL"
-          
-          echo "=== Extracting UPX ==="
           tar -xf upx.tar.xz -C upx_extracted --strip-components=1
-          
-          echo "=== UPX extracted contents ==="
-          ls -lh upx_extracted/
-          
-          # Make upx executable
           chmod +x upx_extracted/upx || true
 
-      - name: Download and extract Go
+      - name: Download and extract latest Go
         run: |
-          echo "=== Downloading Go (supporting tool directive) ==="
-          GO_VERSION="1.23.4"
+          echo "=== Downloading latest Go ==="
+          # Get latest Go version
+          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+          echo "Go version: $GO_VERSION"
+          
           GO_ARCH="amd64"
           GO_OS="linux"
-          
-          GO_URL="https://go.dev/dl/go${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
-          echo "Downloading Go from: $GO_URL"
+          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
           
           mkdir -p go_extracted
           curl -L -o go.tar.gz "$GO_URL"
-          
-          echo "=== Extracting Go ==="
           tar -C go_extracted -xzf go.tar.gz --strip-components=1
           
-          echo "=== Go extracted contents ==="
-          ls -lh go_extracted/
-          
-          # Verify Go version
-          ./go_extracted/bin/go version || echo "Go binary check failed"
+          echo "=== Verifying Go ==="
+          ./go_extracted/bin/go version
 
       - name: Pull OpenWRT SDK Docker image
         run: |
@@ -134,133 +123,37 @@ jobs:
           echo "Platform: ${{ matrix.platform }}"
           echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
           
-          # Create build script that will run inside container
+          # Create simplified build script
           cat > build_script.sh << 'BUILD_SCRIPT_END'
           #!/bin/bash
           set -e
           cd /builder
           
-          echo "=== OpenWRT SDK Environment ==="
-          echo "Working directory: $(pwd)"
-          echo "Contents:"
-          ls -la
-          
-          echo ""
-          echo "=== Checking mounted directories ==="
-          echo "Tailscale package directory:"
-          ls -la /builder/tailscale/ || echo "Tailscale directory not found"
-          echo ""
-          echo "UPX directory:"
-          ls -la /builder/upx/ || echo "UPX directory not found"
-          echo ""
-          echo "Bin directory:"
-          ls -la /builder/bin/ || echo "Bin directory not found"
-          
-          echo ""
-          echo "=== Ensuring bin directory permissions ==="
-          # Ensure bin directory is writable and create necessary subdirectories
+          echo "=== Setting up build environment ==="
           chmod -R 777 /builder/bin 2>/dev/null || true
           mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
-          echo "Bin directory permissions set"
           
-          echo ""
-          echo "=== Updating feeds ==="
-          ./scripts/feeds update packages
-          
-          echo ""
-          echo "=== Creating minimal config ==="
-          # Create minimal config - only enable what's needed for tailscale
-          # Tailscale needs: golang (host tool), ca-bundle, kmod-tun
-          {
-            echo 'CONFIG_TARGET_x86=y'
-            echo 'CONFIG_TARGET_x86_64=y'
-            echo 'CONFIG_PACKAGE_golang-host=y'
-            echo 'CONFIG_PACKAGE_ca-bundle=y'
-            echo 'CONFIG_PACKAGE_kmod-tun=y'
-            echo 'CONFIG_ALL_KMODS=n'
-            echo 'CONFIG_ALL_NONSHARED=n'
-            echo 'CONFIG_BUILD_TOOLCHAIN=y'
-            echo 'CONFIG_IB=y'
-            echo 'CONFIG_STRIP_KERNEL_EXPORTS=y'
-            echo 'CONFIG_USE_MKLIBS=y'
-          } > .config
-          
-          echo ""
-          echo "=== Installing only necessary feeds ==="
-          # Only install golang and ca-bundle, not all packages
-          ./scripts/feeds install golang ca-bundle || true
-          # Remove feeds tailscale if it exists, we'll use our own
-          ./scripts/feeds uninstall tailscale 2>/dev/null || true
-          
-          echo ""
-          echo "=== Making defconfig with minimal config ==="
-          make defconfig
-          
-          echo ""
-          echo "=== Disabling CONFIG_ALL to prevent building all packages ==="
-          # Disable CONFIG_ALL to prevent building all kmods and packages
-          # This must be done AFTER defconfig, as defconfig may enable CONFIG_ALL
-          sed -i 's/^CONFIG_ALL=.*/CONFIG_ALL=n/' .config || echo "CONFIG_ALL=n" >> .config
-          sed -i 's/^CONFIG_ALL_KMODS=.*/CONFIG_ALL_KMODS=n/' .config || echo "CONFIG_ALL_KMODS=n" >> .config
-          sed -i 's/^CONFIG_ALL_NONSHARED=.*/CONFIG_ALL_NONSHARED=n/' .config || echo "CONFIG_ALL_NONSHARED=n" >> .config
-          # Only enable tailscale package (not all packages)
-          if ! grep -q "^CONFIG_PACKAGE_tailscale=" .config; then
-            echo "CONFIG_PACKAGE_tailscale=y" >> .config
-          else
-            sed -i 's/^CONFIG_PACKAGE_tailscale=.*/CONFIG_PACKAGE_tailscale=y/' .config
-          fi
-          # Use oldconfig instead of defconfig to preserve our CONFIG_ALL=n setting
-          yes "" | make oldconfig 2>/dev/null || make oldconfig
-          
-          echo ""
-          echo "=== Copying custom tailscale package ==="
-          # Remove existing tailscale package if any
+          echo "=== Copying tailscale package ==="
           rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
-          # Copy our custom tailscale package
           cp -r /builder/tailscale /builder/package/tailscale
-          # Create UPX symlink for Makefile (Makefile expects upx/upx)
+          # Create UPX symlink (Makefile expects upx/upx)
           ln -sf /builder/upx /builder/package/tailscale/upx
-          echo "Tailscale package copied to:"
-          ls -la /builder/package/tailscale/
-          echo "Checking Makefile version:"
-          grep "PKG_VERSION" /builder/package/tailscale/Makefile || true
-          echo "UPX symlink created:"
-          ls -la /builder/package/tailscale/upx || true
           
-          echo ""
           echo "=== Setting up external Go ==="
-          # Verify external Go is available
+          # Verify Go is available
           if [ ! -f /builder/go/bin/go ]; then
-            echo "ERROR: External Go not found at /builder/go/bin/go"
+            echo "ERROR: Go not found at /builder/go/bin/go"
             exit 1
           fi
           
-          # Check external Go version (should support tool directive)
-          EXTERNAL_GO_VERSION=$(/builder/go/bin/go version | awk '{print $3}' | sed 's/go//')
-          echo "External Go version: $EXTERNAL_GO_VERSION"
-          GO_MAJOR=$(echo $EXTERNAL_GO_VERSION | cut -d. -f1)
-          GO_MINOR=$(echo $EXTERNAL_GO_VERSION | cut -d. -f2)
-          if [ "$GO_MAJOR" -lt 1 ] || ([ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 21 ]); then
-            echo "ERROR: External Go version $EXTERNAL_GO_VERSION is too old. Need Go 1.21+ for tool directive support."
-            exit 1
-          fi
-          
-          # Set up environment to use external Go
-          export PATH="/builder/go/bin:$PATH"
-          export GOROOT="/builder/go"
-          
-          # Replace SDK's go binaries with external Go
-          # Backup SDK's go if it exists
+          # Replace SDK's Go with external Go
+          mkdir -p /builder/staging_dir/hostpkg/bin
           if [ -f /builder/staging_dir/hostpkg/bin/go ]; then
-            echo "Backing up SDK's go binary"
             mv /builder/staging_dir/hostpkg/bin/go /builder/staging_dir/hostpkg/bin/go.sdk.backup || true
           fi
           if [ -f /builder/staging_dir/hostpkg/bin/gofmt ]; then
             mv /builder/staging_dir/hostpkg/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup || true
           fi
-          
-          # Create symlinks to external Go
-          mkdir -p /builder/staging_dir/hostpkg/bin
           ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
           ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
           
@@ -272,60 +165,32 @@ jobs:
             ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go || true
           fi
           
-          echo "External Go setup complete. Verifying:"
-          which go
-          go version
+          echo "Go version:"
+          /builder/go/bin/go version
           
           echo ""
-          echo "=== Verifying config before compilation ==="
-          echo "CONFIG_ALL status:"
-          grep "^CONFIG_ALL=" .config || echo "CONFIG_ALL not found"
-          echo "CONFIG_PACKAGE_tailscale status:"
-          grep "^CONFIG_PACKAGE_tailscale=" .config || echo "CONFIG_PACKAGE_tailscale not found"
+          echo "=== Initializing SDK ==="
+          make defconfig
           
           echo ""
-          echo "=== Compiling with external Go ==="
-          # Now compile using OpenWrt's build system, which will use our external Go
-          # The build system will get all build parameters (GOOS, GOARCH, CC, CXX, etc.) automatically
-          # Capture full output to /tmp/build.log for debugging
-          make package/tailscale/compile -j$(nproc) V=s 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
-          
-          echo ""
-          echo "=== Restoring SDK's Go binaries ==="
-          # Restore SDK's go if we backed it up (for cleanup, though container will be removed)
-          if [ -f /builder/staging_dir/hostpkg/bin/go.sdk.backup ]; then
-            rm -f /builder/staging_dir/hostpkg/bin/go
-            mv /builder/staging_dir/hostpkg/bin/go.sdk.backup /builder/staging_dir/hostpkg/bin/go || true
-          fi
-          if [ -f /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup ]; then
-            rm -f /builder/staging_dir/hostpkg/bin/gofmt
-            mv /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup /builder/staging_dir/hostpkg/bin/gofmt || true
-          fi
+          echo "=== Building tailscale ==="
+          make package/tailscale/compile V=s
           
           echo ""
           echo "=== Searching for compiled IPK files ==="
-          # Use find to recursively search for IPK files in all possible locations
           if find bin/packages bin/targets -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
             echo "=== IPK files successfully compiled ==="
             find bin/packages bin/targets -name "tailscale_*.ipk" -type f -exec ls -lh {} \; 2>/dev/null
-            exit 0
           else
-            echo "=== No IPK files found ==="
-            echo "Searching in bin/packages:"
-            find bin/packages -type f -name "*.ipk" 2>/dev/null || true
-            echo "Searching in bin/targets:"
-            find bin/targets -type f -name "*.ipk" 2>/dev/null || true
-            echo "--- Build log tail (last 200 lines) ---"
-            [ -f /tmp/build.log ] && tail -200 /tmp/build.log || echo "No build log found"
-            echo "--- End build log tail ---"
-            exit ${BUILD_STATUS:-1}
+            echo "ERROR: No IPK files found"
+            find bin -type f -name "*.ipk" 2>/dev/null || true
+            exit 1
           fi
           BUILD_SCRIPT_END
           
           chmod +x build_script.sh
           
-          # Run docker container with proper mounts
-          # Use 'z' option for SELinux context and ensure writable permissions
+          # Run docker container
           docker run --rm \
             -v "$(pwd)/bin:/builder/bin:z" \
             -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
@@ -335,9 +200,6 @@ jobs:
             -e TERM=xterm \
             ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
             bash /build_script.sh
-          
-          echo ""
-          echo "=== Build completed ==="
 
       - name: Collect build artifacts
         run: |
