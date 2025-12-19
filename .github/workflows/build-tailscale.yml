@@ -29,68 +29,68 @@ jobs:
     strategy:
       matrix:
         platform:
-          - id: 'aarch64_cortex-a53'
-            sdk: 'aarch64_cortex-a53'
-          - id: 'aarch64_cortex-a72'
-            sdk: 'aarch64_cortex-a72'
-          - id: 'aarch64_cortex-a76'
-            sdk: 'aarch64_cortex-a76'
-          - id: 'aarch64_generic'
-            sdk: 'aarch64_generic'
-          - id: 'arm_arm1176jzf-s_vfp'
-            sdk: 'arm_arm1176jzf-s_vfp'
-          - id: 'arm_arm926ej-s'
-            sdk: 'arm_arm926ej-s'
-          - id: 'arm_cortex-a15_neon-vfpv4'
-            sdk: 'arm_cortex-a15_neon-vfpv4'
-          - id: 'arm_cortex-a5_vfpv4'
-            sdk: 'arm_cortex-a5_vfpv4'
-          - id: 'arm_cortex-a7'
-            sdk: 'arm_cortex-a7'
-          - id: 'arm_cortex-a7_neon-vfpv4'
-            sdk: 'arm_cortex-a7_neon-vfpv4'
-          - id: 'arm_cortex-a7_vfpv4'
-            sdk: 'arm_cortex-a7_vfpv4'
-          - id: 'arm_cortex-a8_vfpv3'
-            sdk: 'arm_cortex-a8_vfpv3'
-          - id: 'arm_cortex-a9'
-            sdk: 'arm_cortex-a9'
-          - id: 'arm_cortex-a9_neon'
-            sdk: 'arm_cortex-a9_neon'
-          - id: 'arm_cortex-a9_vfpv3-d16'
-            sdk: 'arm_cortex-a9_vfpv3-d16'
-          - id: 'arm_fa526'
-            sdk: 'arm_fa526'
-          - id: 'arm_xscale'
-            sdk: 'arm_xscale'
-          - id: 'i386_pentium-mmx'
-            sdk: 'i386_pentium-mmx'
-          - id: 'i386_pentium4'
-            sdk: 'i386_pentium4'
-          - id: 'loongarch64_generic'
-            sdk: 'loongarch64_generic'
-          - id: 'mips64_mips64r2'
-            sdk: 'mips64_mips64r2'
-          - id: 'mips64_octeonplus'
-            sdk: 'mips64_octeonplus'
-          - id: 'mips64el_mips64r2'
-            sdk: 'mips64el_mips64r2'
-          - id: 'mips_24kc'
-            sdk: 'mips_24kc'
-          - id: 'mips_4kec'
-            sdk: 'mips_4kec'
-          - id: 'mips_mips32'
-            sdk: 'mips_mips32'
-          - id: 'mipsel_24kc'
-            sdk: 'mipsel_24kc'
-          - id: 'mipsel_24kc_24kf'
-            sdk: 'mipsel_24kc_24kf'
-          - id: 'mipsel_74kc'
-            sdk: 'mipsel_74kc'
-          - id: 'mipsel_mips32'
-            sdk: 'mipsel_mips32'
-          - id: 'riscv64_riscv64'
-            sdk: 'riscv64_riscv64'
+          # - id: 'aarch64_cortex-a53'
+          #   sdk: 'aarch64_cortex-a53'
+          # - id: 'aarch64_cortex-a72'
+          #   sdk: 'aarch64_cortex-a72'
+          # - id: 'aarch64_cortex-a76'
+          #   sdk: 'aarch64_cortex-a76'
+          # - id: 'aarch64_generic'
+          #   sdk: 'aarch64_generic'
+          # - id: 'arm_arm1176jzf-s_vfp'
+          #   sdk: 'arm_arm1176jzf-s_vfp'
+          # - id: 'arm_arm926ej-s'
+          #   sdk: 'arm_arm926ej-s'
+          # - id: 'arm_cortex-a15_neon-vfpv4'
+          #   sdk: 'arm_cortex-a15_neon-vfpv4'
+          # - id: 'arm_cortex-a5_vfpv4'
+          #   sdk: 'arm_cortex-a5_vfpv4'
+          # - id: 'arm_cortex-a7'
+          #   sdk: 'arm_cortex-a7'
+          # - id: 'arm_cortex-a7_neon-vfpv4'
+          #   sdk: 'arm_cortex-a7_neon-vfpv4'
+          # - id: 'arm_cortex-a7_vfpv4'
+          #   sdk: 'arm_cortex-a7_vfpv4'
+          # - id: 'arm_cortex-a8_vfpv3'
+          #   sdk: 'arm_cortex-a8_vfpv3'
+          # - id: 'arm_cortex-a9'
+          #   sdk: 'arm_cortex-a9'
+          # - id: 'arm_cortex-a9_neon'
+          #   sdk: 'arm_cortex-a9_neon'
+          # - id: 'arm_cortex-a9_vfpv3-d16'
+          #   sdk: 'arm_cortex-a9_vfpv3-d16'
+          # - id: 'arm_fa526'
+          #   sdk: 'arm_fa526'
+          # - id: 'arm_xscale'
+          #   sdk: 'arm_xscale'
+          # - id: 'i386_pentium-mmx'
+          #   sdk: 'i386_pentium-mmx'
+          # - id: 'i386_pentium4'
+          #   sdk: 'i386_pentium4'
+          # - id: 'loongarch64_generic'
+          #   sdk: 'loongarch64_generic'
+          # - id: 'mips64_mips64r2'
+          #   sdk: 'mips64_mips64r2'
+          # - id: 'mips64_octeonplus'
+          #   sdk: 'mips64_octeonplus'
+          # - id: 'mips64el_mips64r2'
+          #   sdk: 'mips64el_mips64r2'
+          # - id: 'mips_24kc'
+          #   sdk: 'mips_24kc'
+          # - id: 'mips_4kec'
+          #   sdk: 'mips_4kec'
+          # - id: 'mips_mips32'
+          #   sdk: 'mips_mips32'
+          # - id: 'mipsel_24kc'
+          #   sdk: 'mipsel_24kc'
+          # - id: 'mipsel_24kc_24kf'
+          #   sdk: 'mipsel_24kc_24kf'
+          # - id: 'mipsel_74kc'
+          #   sdk: 'mipsel_74kc'
+          # - id: 'mipsel_mips32'
+          #   sdk: 'mipsel_mips32'
+          # - id: 'riscv64_riscv64'
+          #   sdk: 'riscv64_riscv64'
           - id: 'x86_64'
             sdk: 'x86_64'
       max-parallel: 1
@@ -103,21 +103,21 @@ jobs:
           ref: main
           path: main
 
-      - name: Read commit from version file
-        id: read_commit
-        working-directory: main
-        run: |
-          upstream_commit="$(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')"
-          version="$(grep '^VERSION:' version | awk '{print $2}')"
-          echo "upstream_commit=$upstream_commit" >> $GITHUB_OUTPUT
-          echo "version_tag=$version" >>$GITHUB_OUTPUT
+      # - name: Read commit from version file
+      #   id: read_commit
+      #   working-directory: main
+      #   run: |
+      #     upstream_commit="$(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')"
+      #     version="$(grep '^VERSION:' version | awk '{print $2}')"
+      #     echo "upstream_commit=$upstream_commit" >> $GITHUB_OUTPUT
+      #     echo "version_tag=$version" >>$GITHUB_OUTPUT
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
 
       - name: Pull OpenWRT SDK Docker image
         run: |
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0
+          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.5
 
       - name: Setup UPX
         uses: crazy-max/ghaction-upx@v2
@@ -146,100 +146,103 @@ jobs:
           
           # Show the updated line
           grep "PKG_VERSION" tailscale_pkg/package/tailscale/Makefile
+          
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
 
-      - name: Build with OpenWRT SDK Docker
-        run: |
-          mkdir -p "${{ env.ARTIFACT_DIR }}"
-          mkdir -p staging_out
-          cat > build_script.sh << 'SCRIPT_EOF'
-          #!/bin/bash
-          set -e
-          cd /builder
+      # - name: Build with OpenWRT SDK Docker
+      #   run: |
+      #     mkdir -p "${{ env.ARTIFACT_DIR }}"
+      #     mkdir -p staging_out
+      #     cat > build_script.sh << 'SCRIPT_EOF'
+      #     #!/bin/bash
+      #     set -e
+      #     cd /builder
           
-          echo "=== OpenWRT SDK Environment ==="
-          echo "Working directory: $(pwd)"
+      #     echo "=== OpenWRT SDK Environment ==="
+      #     echo "Working directory: $(pwd)"
           
-          # Pre-create .config to avoid menuconfig
-          echo "=== Pre-configuring build ==="
-          echo "CONFIG_ALL=y" > .config
-          echo "CONFIG_AUTOREMOVE=y" >> .config
+      #     # Pre-create .config to avoid menuconfig
+      #     echo "=== Pre-configuring build ==="
+      #     echo "CONFIG_ALL=y" > .config
+      #     echo "CONFIG_AUTOREMOVE=y" >> .config
           
-          # Ensure feeds are initialized
-          echo ""
-          echo "=== Updating feeds ==="
-          ./scripts/feeds update -a 2>&1 | tail -10 || true
-          ./scripts/feeds install -a 2>&1 | tail -10 || true
+      #     # Ensure feeds are initialized
+      #     echo ""
+      #     echo "=== Updating feeds ==="
+      #     ./scripts/feeds update -a 2>&1 | tail -10 || true
+      #     ./scripts/feeds install -a 2>&1 | tail -10 || true
           
-          # Skip menuconfig by using defconfig
-          echo ""
-          echo "=== Preparing build environment ==="
-          make defconfig > /dev/null 2>&1 || true
+      #     # Skip menuconfig by using defconfig
+      #     echo ""
+      #     echo "=== Preparing build environment ==="
+      #     make defconfig > /dev/null 2>&1 || true
           
-          # Compile only the tailscale package
-          echo ""
-          echo "=== Starting tailscale package compilation ==="
-          make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
+      #     # Compile only the tailscale package
+      #     echo ""
+      #     echo "=== Starting tailscale package compilation ==="
+      #     make package/tailscale/compile V=s JOBS=$(nproc) 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
           
-          # Find and copy compiled IPK
-          echo ""
-          echo "=== Searching for compiled IPK files ==="
-          found_ipk=0
-          for arch_dir in bin/packages/*/; do
-            if [ -d "$arch_dir" ]; then
-              echo "Checking directory: $arch_dir"
-              for ipk in "$arch_dir"tailscale_*.ipk; do
-                if [ -f "$ipk" ]; then
-                  echo "Found IPK: $ipk"
-                  found_ipk=1
-                fi
-              done
-            fi
-          done
+      #     # Find and copy compiled IPK
+      #     echo ""
+      #     echo "=== Searching for compiled IPK files ==="
+      #     found_ipk=0
+      #     for arch_dir in bin/packages/*/; do
+      #       if [ -d "$arch_dir" ]; then
+      #         echo "Checking directory: $arch_dir"
+      #         for ipk in "$arch_dir"tailscale_*.ipk; do
+      #           if [ -f "$ipk" ]; then
+      #             echo "Found IPK: $ipk"
+      #             found_ipk=1
+      #           fi
+      #         done
+      #       fi
+      #     done
           
-          if [ "$found_ipk" -eq 0 ]; then
-            echo "=== No IPK files found ==="
-            echo "Build log tail (last 50 lines):"
-            tail -50 /tmp/build.log
-          else
-            echo "=== IPK files successfully compiled ==="
-            find bin/packages -name "*.ipk" -exec ls -lh {} \;
-          fi
+      #     if [ "$found_ipk" -eq 0 ]; then
+      #       echo "=== No IPK files found ==="
+      #       echo "Build log tail (last 50 lines):"
+      #       tail -50 /tmp/build.log
+      #     else
+      #       echo "=== IPK files successfully compiled ==="
+      #       find bin/packages -name "*.ipk" -exec ls -lh {} \;
+      #     fi
           
-          exit ${BUILD_STATUS:-0}
-          SCRIPT_EOF
+      #     exit ${BUILD_STATUS:-0}
+      #     SCRIPT_EOF
           
-          docker run --rm \
-            -v "$PWD/tailscale_pkg:/builder/package/tailscale:z" \
-            -v "$PWD/staging_out:/builder/bin:z" \
-            -v "$PWD/build_script.sh:/build_script.sh:ro" \
-            -e TERM=xterm \
-            ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0 \
-            bash /build_script.sh
+      #     docker run --rm \
+      #       -v "$PWD/tailscale_pkg:/builder/package/tailscale:z" \
+      #       -v "$PWD/staging_out:/builder/bin:z" \
+      #       -v "$PWD/build_script.sh:/build_script.sh:ro" \
+      #       -e TERM=xterm \
+      #       ghcr.io/openwrt/sdk:${{ matrix.platform.sdk }}-V24.10.0 \
+      #       bash /build_script.sh
           
-          # Copy artifacts
-          echo ""
-          echo "=== Copying artifacts ==="
-          if find staging_out/bin/packages -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-            find staging_out/bin/packages -name "tailscale_*.ipk" -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
-            echo "Successfully copied IPK files"
-            ls -lh "${{ env.ARTIFACT_DIR }}/"
-          else
-            echo "No IPK files found in staging_out"
-            echo "Contents of staging_out:"
-            find staging_out -type f 2>/dev/null | head -20 || true
-          fi
+      #     # Copy artifacts
+      #     echo ""
+      #     echo "=== Copying artifacts ==="
+      #     if find staging_out/bin/packages -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+      #       find staging_out/bin/packages -name "tailscale_*.ipk" -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
+      #       echo "Successfully copied IPK files"
+      #       ls -lh "${{ env.ARTIFACT_DIR }}/"
+      #     else
+      #       echo "No IPK files found in staging_out"
+      #       echo "Contents of staging_out:"
+      #       find staging_out -type f 2>/dev/null | head -20 || true
+      #     fi
 
-      - name: List artifacts
-        run: |
-          echo "Generated artifacts:"
-          ls -lh "${{ env.ARTIFACT_DIR }}/" || echo "No artifacts found"
+      # - name: List artifacts
+      #   run: |
+      #     echo "Generated artifacts:"
+      #     ls -lh "${{ env.ARTIFACT_DIR }}/" || echo "No artifacts found"
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}
-          path: ${{ env.ARTIFACT_DIR }}/*
-          if-no-files-found: warn
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}
+      #     path: ${{ env.ARTIFACT_DIR }}/*
+      #     if-no-files-found: warn
 
   # release:
   #   name: Create Release
