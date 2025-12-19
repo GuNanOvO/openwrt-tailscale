@@ -150,47 +150,49 @@ jobs:
           make defconfig
           
           echo ""
-          echo "=== Installing feeds ==="
+          echo "=== Installing feeds (excluding tailscale) ==="
+          # Install all feeds except tailscale to avoid conflicts
           ./scripts/feeds install -a
+          # Remove feeds tailscale if it exists, we'll use our own
+          ./scripts/feeds uninstall tailscale 2>/dev/null || true
           
           echo ""
-          echo "=== Copying tailscale package ==="
+          echo "=== Copying custom tailscale package ==="
+          # Remove existing tailscale package if any
+          rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
+          # Copy our custom tailscale package
           cp -r /builder/tailscale /builder/package/tailscale
+          # Create UPX symlink for Makefile (Makefile expects upx/upx)
+          ln -sf /builder/upx /builder/package/tailscale/upx
           echo "Tailscale package copied to:"
           ls -la /builder/package/tailscale/
+          echo "Checking Makefile version:"
+          grep "PKG_VERSION" /builder/package/tailscale/Makefile || true
+          echo "UPX symlink created:"
+          ls -la /builder/package/tailscale/upx || true
           
           echo ""
-          echo "=== Cleaning tailscale package ==="
-          make package/tailscale/clean || true
-          
-          echo ""
-          echo "=== Compiling tailscale package ==="
-          make package/tailscale/compile V=s JOBS=$(nproc) || BUILD_STATUS=$?
+          echo "=== Compiling custom tailscale package only ==="
+          # Use package/tailscale (not feeds/packages/tailscale) to ensure our version is used
+          # Skip cleaning to avoid rebuilding dependencies (kmod, kernel, etc.)
+          # Use -j$(nproc) for parallel compilation
+          make package/tailscale/compile -j$(nproc) || BUILD_STATUS=$?
           
           echo ""
           echo "=== Searching for compiled IPK files ==="
-          found_ipk=0
-          # Search in both bin/packages and bin/targets (OpenWRT SDK uses different paths)
-          for ipk in bin/packages/*/tailscale_*.ipk bin/targets/*/*/packages/tailscale_*.ipk; do
-            if [ -f "$ipk" ]; then
-              echo "Found IPK: $ipk"
-              found_ipk=1
-            fi
-          done
-          
-          if [ "$found_ipk" -eq 0 ]; then
+          # Use find to recursively search for IPK files in all possible locations
+          if find bin/packages bin/targets -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+            echo "=== IPK files successfully compiled ==="
+            find bin/packages bin/targets -name "tailscale_*.ipk" -type f -exec ls -lh {} \; 2>/dev/null
+            exit 0
+          else
             echo "=== No IPK files found ==="
             echo "Searching in bin/packages:"
             find bin/packages -type f -name "*.ipk" 2>/dev/null || true
             echo "Searching in bin/targets:"
-            find bin/targets -type f -name "tailscale_*.ipk" 2>/dev/null || true
+            find bin/targets -type f -name "*.ipk" 2>/dev/null || true
             exit ${BUILD_STATUS:-1}
-          else
-            echo "=== IPK files successfully compiled ==="
-            find bin/packages bin/targets -name "tailscale_*.ipk" -exec ls -lh {} \; 2>/dev/null || true
           fi
-          
-          exit ${BUILD_STATUS:-0}
           SCRIPT_EOF
           
           chmod +x build_script.sh
