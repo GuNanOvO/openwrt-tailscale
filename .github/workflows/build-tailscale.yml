@@ -92,6 +92,28 @@ jobs:
           # Make upx executable
           chmod +x upx_extracted/upx || true
 
+      - name: Download and extract Go
+        run: |
+          echo "=== Downloading Go (supporting tool directive) ==="
+          GO_VERSION="1.23.4"
+          GO_ARCH="amd64"
+          GO_OS="linux"
+          
+          GO_URL="https://go.dev/dl/go${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+          echo "Downloading Go from: $GO_URL"
+          
+          mkdir -p go_extracted
+          curl -L -o go.tar.gz "$GO_URL"
+          
+          echo "=== Extracting Go ==="
+          tar -C go_extracted -xzf go.tar.gz --strip-components=1
+          
+          echo "=== Go extracted contents ==="
+          ls -lh go_extracted/
+          
+          # Verify Go version
+          ./go_extracted/bin/go version || echo "Go binary check failed"
+
       - name: Pull OpenWRT SDK Docker image
         run: |
           echo "=== Pulling OpenWRT SDK Docker image ==="
@@ -206,6 +228,55 @@ jobs:
           ls -la /builder/package/tailscale/upx || true
           
           echo ""
+          echo "=== Setting up external Go ==="
+          # Verify external Go is available
+          if [ ! -f /builder/go/bin/go ]; then
+            echo "ERROR: External Go not found at /builder/go/bin/go"
+            exit 1
+          fi
+          
+          # Check external Go version (should support tool directive)
+          EXTERNAL_GO_VERSION=$(/builder/go/bin/go version | awk '{print $3}' | sed 's/go//')
+          echo "External Go version: $EXTERNAL_GO_VERSION"
+          GO_MAJOR=$(echo $EXTERNAL_GO_VERSION | cut -d. -f1)
+          GO_MINOR=$(echo $EXTERNAL_GO_VERSION | cut -d. -f2)
+          if [ "$GO_MAJOR" -lt 1 ] || ([ "$GO_MAJOR" -eq 1 ] && [ "$GO_MINOR" -lt 21 ]); then
+            echo "ERROR: External Go version $EXTERNAL_GO_VERSION is too old. Need Go 1.21+ for tool directive support."
+            exit 1
+          fi
+          
+          # Set up environment to use external Go
+          export PATH="/builder/go/bin:$PATH"
+          export GOROOT="/builder/go"
+          
+          # Replace SDK's go binaries with external Go
+          # Backup SDK's go if it exists
+          if [ -f /builder/staging_dir/hostpkg/bin/go ]; then
+            echo "Backing up SDK's go binary"
+            mv /builder/staging_dir/hostpkg/bin/go /builder/staging_dir/hostpkg/bin/go.sdk.backup || true
+          fi
+          if [ -f /builder/staging_dir/hostpkg/bin/gofmt ]; then
+            mv /builder/staging_dir/hostpkg/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup || true
+          fi
+          
+          # Create symlinks to external Go
+          mkdir -p /builder/staging_dir/hostpkg/bin
+          ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
+          ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
+          
+          # Also replace in lib/go-cross if it exists
+          if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
+            if [ -f /builder/staging_dir/hostpkg/lib/go-cross/bin/go ]; then
+              mv /builder/staging_dir/hostpkg/lib/go-cross/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go.sdk.backup || true
+            fi
+            ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go || true
+          fi
+          
+          echo "External Go setup complete. Verifying:"
+          which go
+          go version
+          
+          echo ""
           echo "=== Verifying config before compilation ==="
           echo "CONFIG_ALL status:"
           grep "^CONFIG_ALL=" .config || echo "CONFIG_ALL not found"
@@ -213,11 +284,23 @@ jobs:
           grep "^CONFIG_PACKAGE_tailscale=" .config || echo "CONFIG_PACKAGE_tailscale not found"
           
           echo ""
-          echo "=== Compiling custom tailscale package only ==="
-          # Use package/tailscale (not feeds/packages/tailscale) to ensure our version is used
-          # Only compile tailscale, dependencies should already be available in SDK
+          echo "=== Compiling with external Go ==="
+          # Now compile using OpenWrt's build system, which will use our external Go
+          # The build system will get all build parameters (GOOS, GOARCH, CC, CXX, etc.) automatically
           # Capture full output to /tmp/build.log for debugging
           make package/tailscale/compile -j$(nproc) V=s 2>&1 | tee /tmp/build.log || BUILD_STATUS=$?
+          
+          echo ""
+          echo "=== Restoring SDK's Go binaries ==="
+          # Restore SDK's go if we backed it up (for cleanup, though container will be removed)
+          if [ -f /builder/staging_dir/hostpkg/bin/go.sdk.backup ]; then
+            rm -f /builder/staging_dir/hostpkg/bin/go
+            mv /builder/staging_dir/hostpkg/bin/go.sdk.backup /builder/staging_dir/hostpkg/bin/go || true
+          fi
+          if [ -f /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup ]; then
+            rm -f /builder/staging_dir/hostpkg/bin/gofmt
+            mv /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup /builder/staging_dir/hostpkg/bin/gofmt || true
+          fi
           
           echo ""
           echo "=== Searching for compiled IPK files ==="
@@ -247,6 +330,7 @@ jobs:
             -v "$(pwd)/bin:/builder/bin:z" \
             -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
             -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
+            -v "$(pwd)/go_extracted:/builder/go:ro,z" \
             -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
             -e TERM=xterm \
             ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
