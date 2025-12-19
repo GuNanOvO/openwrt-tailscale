@@ -59,7 +59,7 @@ jobs:
           # - 'riscv64_riscv64'
           - 'x86_64'
       max-parallel: 1
-      fail-fast: false
+      fail-fast: true
 
     steps:
       - name: Checkout repository (develop branch)
@@ -85,152 +85,171 @@ jobs:
           tar -xf upx.tar.xz -C upx_extracted --strip-components=1
           chmod +x upx_extracted/upx || true
 
-      - name: Download and extract latest Go
-        run: |
-          echo "=== Downloading latest Go ==="
-          # Get latest Go version
-          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
-          echo "Go version: $GO_VERSION"
+      # - name: Download and extract latest Go
+      #   run: |
+      #     echo "=== Downloading latest Go ==="
+      #     # Get latest Go version
+      #     GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+      #     echo "Go version: $GO_VERSION"
           
-          GO_ARCH="amd64"
-          GO_OS="linux"
-          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+      #     GO_ARCH="amd64"
+      #     GO_OS="linux"
+      #     GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
           
-          mkdir -p go_extracted
-          curl -L -o go.tar.gz "$GO_URL"
-          tar -C go_extracted -xzf go.tar.gz --strip-components=1
+      #     mkdir -p go_extracted
+      #     curl -L -o go.tar.gz "$GO_URL"
+      #     tar -C go_extracted -xzf go.tar.gz --strip-components=1
           
-          echo "=== Verifying Go ==="
-          ./go_extracted/bin/go version
+      #     echo "=== Verifying Go ==="
+      #     ./go_extracted/bin/go version
 
-      - name: Pull OpenWRT SDK Docker image
+      - name: Prepare UPX
         run: |
-          echo "=== Pulling OpenWRT SDK Docker image ==="
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4
+          cp -r upx_extracted/* repo/package/tailscale/upx
 
-      - name: Prepare build directories
-        run: |
-          mkdir -p bin
-          mkdir -p "${{ env.ARTIFACT_DIR }}"
-          # Set permissions to allow container to write
-          chmod -R 777 bin || true
-          echo "=== Build directories prepared ==="
-          ls -la
+      - name: Build
+        uses: openwrt/gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.platform }}
+          FEEDNAME: packages_ci
+          FEED_DIR: repo/package
+          PACKAGES: tailscale
+          NO_REFRESH_CHECK: true
 
-      - name: Build with OpenWRT SDK Docker
-        run: |
-          echo "=== Starting build process ==="
-          echo "Platform: ${{ matrix.platform }}"
-          echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
-          
-          # Create simplified build script
-          cat > build_script.sh << 'BUILD_SCRIPT_END'
-          #!/bin/bash
-          set -e
-          cd /builder
-          
-          echo "=== Setting up build environment ==="
-          chmod -R 777 /builder/bin 2>/dev/null || true
-          mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
-          
-          echo "=== Copying tailscale package ==="
-          rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
-          cp -r /builder/tailscale /builder/package/tailscale
-          # Create UPX symlink (Makefile expects upx/upx)
-          ln -sf /builder/upx /builder/package/tailscale/upx
-          
-          echo "=== Setting up external Go ==="
-          # Verify Go is available
-          if [ ! -f /builder/go/bin/go ]; then
-            echo "ERROR: Go not found at /builder/go/bin/go"
-            exit 1
-          fi
-          
-          # Replace SDK's Go with external Go
-          mkdir -p /builder/staging_dir/hostpkg/bin
-          if [ -f /builder/staging_dir/hostpkg/bin/go ]; then
-            mv /builder/staging_dir/hostpkg/bin/go /builder/staging_dir/hostpkg/bin/go.sdk.backup || true
-          fi
-          if [ -f /builder/staging_dir/hostpkg/bin/gofmt ]; then
-            mv /builder/staging_dir/hostpkg/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup || true
-          fi
-          ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
-          ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
-          
-          # Also replace in lib/go-cross if it exists
-          if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
-            if [ -f /builder/staging_dir/hostpkg/lib/go-cross/bin/go ]; then
-              mv /builder/staging_dir/hostpkg/lib/go-cross/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go.sdk.backup || true
-            fi
-            ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go || true
-          fi
-          
-          echo "Go version:"
-          /builder/go/bin/go version
-          
-          echo ""
-          echo "=== Initializing SDK ==="
-          # Override prerequisite checks in SDK to avoid failing on missing host deps
-          # (the SDK will perform a prerequisite check; setting FORCE=1 skips it)
-          export FORCE=1
-          make defconfig FORCE=1
-          
-          echo ""
-          echo "=== Building tailscale ==="
-          make package/tailscale/compile V=s
-          
-          echo ""
-          echo "=== Searching for compiled IPK files ==="
-          if find bin/packages bin/targets -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-            echo "=== IPK files successfully compiled ==="
-            find bin/packages bin/targets -name "tailscale_*.ipk" -type f -exec ls -lh {} \; 2>/dev/null
-          else
-            echo "ERROR: No IPK files found"
-            find bin -type f -name "*.ipk" 2>/dev/null || true
-            exit 1
-          fi
-          BUILD_SCRIPT_END
-          
-          chmod +x build_script.sh
-          
-          # Run docker container
-          docker run --rm \
-            -v "$(pwd)/bin:/builder/bin:z" \
-            -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
-            -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
-            -v "$(pwd)/go_extracted:/builder/go:ro,z" \
-            -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
-            -e TERM=xterm \
-            -e FORCE=1 \
-            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
-            bash /build_script.sh
-
-      - name: Collect build artifacts
-        run: |
-          echo "=== Collecting build artifacts ==="
-          # Search in both bin/packages and bin/targets directories
-          if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-            echo "Found IPK files:"
-            find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
-            find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
-            echo ""
-            echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
-            ls -lh "${{ env.ARTIFACT_DIR }}/"
-          else
-            echo "ERROR: No IPK files found in bin directory"
-            echo "Contents of bin directory:"
-            find bin -type d 2>/dev/null | head -20 || true
-            echo "Searching for any IPK files:"
-            find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
-            exit 1
-          fi
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload artifacts
+        uses: actions/upload-artifact@main
         with:
-          name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform }}
-          path: ${{ env.ARTIFACT_DIR }}/*
-          if-no-files-found: error
+          name: ${{ matrix.platform }}
+          path: bin/packages/${{ matrix.platform }}/packages_ci/*.ipk
+
+      # - name: Pull OpenWRT SDK Docker image
+      #   run: |
+      #     echo "=== Pulling OpenWRT SDK Docker image ==="
+      #     docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4
+
+      # - name: Prepare build directories
+      #   run: |
+      #     mkdir -p bin
+      #     mkdir -p "${{ env.ARTIFACT_DIR }}"
+      #     # Set permissions to allow container to write
+      #     chmod -R 777 bin || true
+      #     echo "=== Build directories prepared ==="
+      #     ls -la
+
+      # - name: Build with OpenWRT SDK Docker
+      #   run: |
+      #     echo "=== Starting build process ==="
+      #     echo "Platform: ${{ matrix.platform }}"
+      #     echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
+          
+      #     # Create simplified build script
+      #     cat > build_script.sh << 'BUILD_SCRIPT_END'
+      #     #!/bin/bash
+      #     set -e
+      #     cd /builder
+          
+      #     echo "=== Setting up build environment ==="
+      #     chmod -R 777 /builder/bin 2>/dev/null || true
+      #     mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
+          
+      #     echo "=== Copying tailscale package ==="
+      #     rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
+      #     cp -r /builder/tailscale /builder/package/tailscale
+      #     # Create UPX symlink (Makefile expects upx/upx)
+      #     ln -sf /builder/upx /builder/package/tailscale/upx
+          
+      #     echo "=== Setting up external Go ==="
+      #     # Verify Go is available
+      #     if [ ! -f /builder/go/bin/go ]; then
+      #       echo "ERROR: Go not found at /builder/go/bin/go"
+      #       exit 1
+      #     fi
+          
+      #     # Replace SDK's Go with external Go
+      #     mkdir -p /builder/staging_dir/hostpkg/bin
+      #     if [ -f /builder/staging_dir/hostpkg/bin/go ]; then
+      #       mv /builder/staging_dir/hostpkg/bin/go /builder/staging_dir/hostpkg/bin/go.sdk.backup || true
+      #     fi
+      #     if [ -f /builder/staging_dir/hostpkg/bin/gofmt ]; then
+      #       mv /builder/staging_dir/hostpkg/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup || true
+      #     fi
+      #     ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
+      #     ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
+          
+      #     # Also replace in lib/go-cross if it exists
+      #     if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
+      #       if [ -f /builder/staging_dir/hostpkg/lib/go-cross/bin/go ]; then
+      #         mv /builder/staging_dir/hostpkg/lib/go-cross/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go.sdk.backup || true
+      #       fi
+      #       ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go || true
+      #     fi
+          
+      #     echo "Go version:"
+      #     /builder/go/bin/go version
+          
+      #     echo ""
+      #     echo "=== Initializing SDK ==="
+      #     # Override prerequisite checks in SDK to avoid failing on missing host deps
+      #     # (the SDK will perform a prerequisite check; setting FORCE=1 skips it)
+      #     export FORCE=1
+      #     make defconfig FORCE=1
+          
+      #     echo ""
+      #     echo "=== Building tailscale ==="
+      #     make package/tailscale/compile V=s
+          
+      #     echo ""
+      #     echo "=== Searching for compiled IPK files ==="
+      #     if find bin/packages bin/targets -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+      #       echo "=== IPK files successfully compiled ==="
+      #       find bin/packages bin/targets -name "tailscale_*.ipk" -type f -exec ls -lh {} \; 2>/dev/null
+      #     else
+      #       echo "ERROR: No IPK files found"
+      #       find bin -type f -name "*.ipk" 2>/dev/null || true
+      #       exit 1
+      #     fi
+      #     BUILD_SCRIPT_END
+          
+      #     chmod +x build_script.sh
+          
+      #     # Run docker container
+      #     docker run --rm \
+      #       -v "$(pwd)/bin:/builder/bin:z" \
+      #       -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
+      #       -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
+      #       -v "$(pwd)/go_extracted:/builder/go:ro,z" \
+      #       -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
+      #       -e TERM=xterm \
+      #       -e FORCE=1 \
+      #       ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
+      #       bash /build_script.sh
+
+      # - name: Collect build artifacts
+      #   run: |
+      #     echo "=== Collecting build artifacts ==="
+      #     # Search in both bin/packages and bin/targets directories
+      #     if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+      #       echo "Found IPK files:"
+      #       find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
+      #       find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
+      #       echo ""
+      #       echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
+      #       ls -lh "${{ env.ARTIFACT_DIR }}/"
+      #     else
+      #       echo "ERROR: No IPK files found in bin directory"
+      #       echo "Contents of bin directory:"
+      #       find bin -type d 2>/dev/null | head -20 || true
+      #       echo "Searching for any IPK files:"
+      #       find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
+      #       exit 1
+      #     fi
+
+      # - name: Upload artifact
+      #   uses: actions/upload-artifact@v4
+      #   with:
+      #     name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform }}
+      #     path: ${{ env.ARTIFACT_DIR }}/*
+      #     if-no-files-found: error
 
   # release:
   #   name: Create Release
