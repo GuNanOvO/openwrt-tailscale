@@ -72,7 +72,7 @@ jobs:
 
       - name: Prepare package
         run: |
-          mkdir -p package/tailscale
+          mkdir tailscale
           cp -r repo/package/tailscale/* tailscale
 
       - name: Setup Docker buildx
