@@ -123,6 +123,9 @@ jobs:
           PACKAGES: tailscale
           NO_REFRESH_CHECK: true
 
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
+
       - name: Upload artifacts
         uses: actions/upload-artifact@main
         with:
