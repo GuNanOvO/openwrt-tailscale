@@ -34,10 +34,11 @@ GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_
 GO_PKG_GCFLAGS:=-trimpath
 
 UPX_EXCLUDED_TARGETS := \
-    mips64_mips64r2 \
-    mips64_octeonplus \
-    mips64el_mips64r2 \
-    riscv64_riscv64
+	mips64_mips64r2 \
+	mips64_octeonplus \
+	mips64el_mips64r2 \
+	riscv64_riscv64
+	
 UPX_CUR_TARGET := $(ARCH)_$(SUBTARGET)
 
 include $(INCLUDE_DIR)/package.mk
@@ -68,16 +69,12 @@ define Package/tailscale/install
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
 
-	if [ -f "$(TOPDIR)/upx/upx" ]; then \
-		if echo "$(UPX_EXCLUDED_TARGETS)" | grep -q "$(UPX_CUR_TARGET)"; then \
-			echo "==> UPX disabled on target $(UPX_CUR_TARGET)"; \
-		else \
-			echo "==> UPX enabled on target $(UPX_CUR_TARGET)"; \
-			$(TOPDIR)/upx/upx --best --lzma $(1)/usr/sbin/tailscaled; \
-		fi; \
-	else \
-		echo "==> UPX binary not found at $(TOPDIR)/upx/upx, skipping compression"; \
-	fi
+ifneq ($(filter $(UPX_CUR_TARGET),$(UPX_EXCLUDED_TARGETS)),)
+	echo "==> UPX disabled on target $(UPX_CUR_TARGET)"
+else
+	echo "==> UPX enabled on target $(UPX_CUR_TARGET)"
+	$(TOPDIR)/upx/upx --best --lzma $(1)/usr/sbin/tailscaled
+endif
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
