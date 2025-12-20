@@ -73,7 +73,11 @@ jobs:
       - name: Prepare package
         run: |
           mkdir tailscale
-          cp -r repo/package/tailscale/* tailscale
+          cp -r repo/package/tailscale tailscale
+
+
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
