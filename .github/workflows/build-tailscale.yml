@@ -73,192 +73,166 @@ jobs:
       - name: Prepare package
         run: |
           mkdir tailscale
-          cp -r repo/package/tailscale/* tailscale/
+          cp -r repo/package/tailscale/. tailscale/
 
-      - name: Setup Docker buildx
-        uses: docker/setup-buildx-action@v3
+      # UPX 
 
-      - name: Download and extract UPX
+      - name: Check UPX Latest Version
+        id: check_upx
         run: |
-          echo "=== Downloading latest UPX release ==="
-          UPX_VERSION=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          echo "UPX version: $UPX_VERSION"
-          
-          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_VERSION}/upx-${UPX_VERSION#v}-amd64_linux.tar.xz"
-          echo "Downloading from: $UPX_URL"
-          
-          mkdir -p upx_extracted
-          curl -L -o upx.tar.xz "$UPX_URL"
-          tar -xf upx.tar.xz -C upx_extracted --strip-components=1
-          chmod +x upx_extracted/upx || true
+          UPX_TAG=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          UPX_VER="${UPX_TAG#v}"
+          echo "latest_tag=$UPX_TAG" >> $GITHUB_OUTPUT
+          echo "latest_ver=$UPX_VER" >> $GITHUB_OUTPUT
+          echo "Detected UPX Version: $UPX_TAG"
 
-      - name: Download and extract latest Go
-        run: |
-          echo "=== Downloading latest Go ==="
-          # Get latest Go version
-          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
-          echo "Go version: $GO_VERSION"
-          
-          GO_ARCH="amd64"
-          GO_OS="linux"
-          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
-          
-          mkdir -p go_extracted
-          curl -L -o go.tar.gz "$GO_URL"
-          tar -C go_extracted -xzf go.tar.gz --strip-components=1
-          
-          echo "=== Verifying Go ==="
-          ./go_extracted/bin/go version
+      - name: Cache UPX
+        id: cache-upx
+        uses: actions/cache@v4
+        with:
+          path: upx
+          key: upx-linux-amd64-${{ steps.check_upx.outputs.latest_tag }}
 
       - name: Prepare UPX
+        if: steps.cache-upx.outputs.cache-hit != 'true'
+        env:
+          UPX_TAG: ${{ steps.check_upx.outputs.latest_tag }}
+          UPX_VER: ${{ steps.check_upx.outputs.latest_ver }}
         run: |
+          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_TAG}/upx-${UPX_VER}-amd64_linux.tar.xz"
           mkdir -p upx
-          cp -r upx_extracted/* upx
+          curl -L -o upx.tar.xz "$UPX_URL"
+          tar -xf upx.tar.xz -C upx --strip-components=1
+          chmod +x upx/upx
 
-      # - name: Upload artifacts
-      #   uses: actions/upload-artifact@main
-      #   with:
-      #     name: ${{ matrix.platform }}
-      #     path: bin/packages/x86_64/packages/*
+      - name: Verify UPX
+        run: |
+          ./upx/upx --version
+          echo "UPX_BIN_PATH=$(pwd)/upx" >> $GITHUB_ENV
+      
+      # GO
+
+      - name: Check Go Latest Version
+        id: check_go
+        run: |
+          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+          echo "latest_version=$GO_VERSION" >> $GITHUB_OUTPUT
+          echo "Detected Go Version: $GO_VERSION"
+
+      - name: Cache Go
+        id: cache-go
+        uses: actions/cache@v4
+        with:
+          path: go
+          key: go-linux-amd64-${{ steps.check_go.outputs.latest_version }}
+
+      - name: Prepare Go
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        env:
+          GO_VERSION: ${{ steps.check_go.outputs.latest_version }}
+          GO_ARCH: amd64
+          GO_OS: linux
+        run: |
+          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+          mkdir -p go
+          curl -L -o go.tar.gz "$GO_URL"
+          tar -C go -xzf go.tar.gz --strip-components=1
+          rm go.tar.gz
+
+      - name: Verify Go
+        run: |
+          ./go/bin/go version
+          echo "GO_BIN_PATH=$(pwd)/go" >> $GITHUB_ENV
 
       - name: Pull OpenWRT SDK Docker image
         run: |
-          echo "=== Pulling OpenWRT SDK Docker image ==="
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4
+          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ matrix.sdk }}
 
-      - name: Prepare build directories
+      # BUILD
+
+      - name: Prepare build
         run: |
           mkdir -p bin
           mkdir -p "${{ env.ARTIFACT_DIR }}"
-          # Set permissions to allow container to write
           chmod -R 777 bin || true
-          echo "=== Build directories prepared ==="
           ls -la
 
       - name: Build with OpenWRT SDK Docker
         run: |
-          echo "=== Starting build process ==="
-          echo "Platform: ${{ matrix.platform }}"
-          echo "SDK Image: ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4"
-          
-          # Create simplified build script
           cat > build_script.sh << 'BUILD_SCRIPT_END'
           #!/bin/bash
           set -e
           cd /builder
-
-          ls -l
-          ls -l /builder/tailscale
-          ls -l /builder/upx
-          ls -l /builder/go
           
-          echo ""
-          echo "=== Initializing SDK ==="
-          ./scripts/feeds update packages
-          ./scripts/feeds install golang
-
-          # echo "=== Setting up build environment ==="
-          # chmod -R 777 /builder/bin 2>/dev/null || true
-          # mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
+          ./scripts/feeds update packages > /dev/null
+          ./scripts/feeds install golang > /dev/null
           
-          echo "=== Copying tailscale package ==="
-          rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
+          mkdir -p /builder/package/lang
+          # ln -sf /builder/feeds/packages/lang/golang /builder/package/lang/golang
+          
+          rm -rf /builder/package/tailscale
           mkdir -p /builder/package/tailscale
-          cp -r /builder/tailscale/* /builder/package/tailscale/
-          # Create UPX symlink (Makefile expects upx/upx)
-          # ln -sf /builder/upx /builder/package/tailscale/upx
+          cp -r /builder/tailscale/. /builder/package/tailscale/
           
-          echo "make defconfig"
-          make defconfig
+          make defconfig > /dev/null 2>&1
 
-          echo "=== Setting up external Go ==="
-          # Verify Go is available
-          if [ ! -f /builder/go/bin/go ]; then
-            echo "ERROR: Go not found at /builder/go/bin/go"
-            exit 1
-          fi
+          [ -f /builder/go/bin/go ] || { echo "Error: Go binary missing"; exit 1; }
           
-          # Replace SDK's Go with external Go
           mkdir -p /builder/staging_dir/hostpkg/bin
-          if [ -f /builder/staging_dir/hostpkg/bin/go ]; then
-            mv /builder/staging_dir/hostpkg/bin/go /builder/staging_dir/hostpkg/bin/go.sdk.backup || true
-          fi
-          if [ -f /builder/staging_dir/hostpkg/bin/gofmt ]; then
-            mv /builder/staging_dir/hostpkg/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt.sdk.backup || true
-          fi
           ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
           ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
           
-          # Also replace in lib/go-cross if it exists
           if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
-            if [ -f /builder/staging_dir/hostpkg/lib/go-cross/bin/go ]; then
-              mv /builder/staging_dir/hostpkg/lib/go-cross/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go.sdk.backup || true
-            fi
-            ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go || true
+            ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go
           fi
           
-          echo "Go version:"
-          /builder/go/bin/go version
+          echo "Using $(/builder/go/bin/go version)"
           
-          echo ""
-          echo "=== Building tailscale ==="
           make package/tailscale/compile V=s
           
-          echo ""
-          echo "=== Searching for compiled IPK files ==="
-          if find bin/packages bin/targets -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-            echo "=== IPK files successfully compiled ==="
-            find bin/packages bin/targets -name "tailscale_*.ipk" -type f -exec ls -lh {} \; 2>/dev/null
+          IPKS=$(find bin/packages bin/targets -name "tailscale_*.ipk" -type f)
+          if [ -n "$IPKS" ]; then
+            echo "Build Success:"
+            ls -lh $IPKS
           else
-            echo "ERROR: No IPK files found"
-            find bin -type f -name "*.ipk" 2>/dev/null || true
-            exit 1
+            echo "Error: No IPK found" && exit 1
           fi
           BUILD_SCRIPT_END
           
-          chmod +x build_script.sh
-          
-          # Run docker container
           docker run --rm \
             -v "$(pwd)/bin:/builder/bin:z" \
             -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
-            -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
-            -v "$(pwd)/go_extracted:/builder/go:ro,z" \
+            -v "${{ env.UPX_BIN_PATH }}:/builder/upx:ro,z" \
+            -v "${{ env.GO_BIN_PATH }}:/builder/go:ro,z" \
             -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
             -e TERM=xterm \
             -e FORCE=1 \
-            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
+            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ matrix.sdk }} \
             bash /build_script.sh
+
+      # UPLOAD
 
       - name: Collect build artifacts
         run: |
-          echo "=== Collecting build artifacts ==="
-          # Search in both bin/packages and bin/targets directories
-          if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-            echo "Found IPK files:"
-            find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
-            find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
-            echo ""
-            echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
-            ls -lh "${{ env.ARTIFACT_DIR }}/"
-          else
-            echo "ERROR: No IPK files found in bin directory"
-            echo "Contents of bin directory:"
-            find bin -type d 2>/dev/null | head -20 || true
-            echo "Searching for any IPK files:"
-            find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
+          mkdir -p "${{ env.ARTIFACT_DIR }}"
+          
+          find bin -name "tailscale_*.ipk" -type f -exec cp -v {} "${{ env.ARTIFACT_DIR }}/" \;
+          
+          if [ -z "$(ls -A "${{ env.ARTIFACT_DIR }}")" ]; then
+            echo "ERROR: No IPK files found!"
             exit 1
           fi
-
-      # - name: Debug via tmate
-      #   uses: mxschmitt/action-tmate@v3
+          
+          echo "Success: Artifacts ready in ${{ env.ARTIFACT_DIR }}"
+          ls -lh "${{ env.ARTIFACT_DIR }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform }}
-          path: ${{ env.ARTIFACT_DIR }}/*
+          name: tailscale-ipk-${{ matrix.platform }}
+          path: ${{ env.ARTIFACT_DIR }}/
           if-no-files-found: error
+          retention-days: 30
 
   # release:
   #   name: Create Release
