@@ -22,12 +22,12 @@ PKG_LICENSE_FILES:=LICENSE
 PKG_CPE_ID:=cpe:/a:tailscale:tailscale
 
 PKG_BUILD_DIR:=$(BUILD_DIR)/tailscale-$(PKG_VERSION)
-PKG_BUILD_DEPENDS:=golang/host
+# PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
 PKG_BUILD_FLAGS:=no-mips16
 
 GO_PKG:=tailscale.com/cmd/tailscaled
-GO_PKG_LDFLAGS:=-X 'tailscale.com/version.longStamp=$(PKG_VERSION)-$(PKG_RELEASE) (OpenWrt)'
+GO_PKG_LDFLAGS:=-s -w -X 'tailscale.com/version.longStamp=$(PKG_VERSION)-$(PKG_RELEASE) (OpenWrt)'
 GO_PKG_LDFLAGS_X:=tailscale.com/version.shortStamp=$(PKG_VERSION)
 GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm
 
@@ -49,7 +49,7 @@ define Package/tailscale
   SUBMENU:=VPN
   TITLE:=Zero config VPN
   URL:=https://tailscale.com
-  DEPENDS:=$(GO_ARCH_DEPENDS) +ca-bundle +kmod-tun
+  DEPENDS:=$(GO_ARCH_DEPENDS) ca-bundle kmod-tun
   PROVIDES:=tailscaled
 endef
 
