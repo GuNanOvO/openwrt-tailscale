@@ -23,6 +23,8 @@ jobs:
   build:
     name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ env.PKG_VERSION }}
     strategy:
       matrix:
         sdk:
@@ -71,8 +73,17 @@ jobs:
 
       - name: Prepare package
         run: |
+          VERSION=$(sed -n 's/^PKG_VERSION:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
+          RELEASE=$(sed -n 's/^PKG_COMMIT:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
+          
+          echo "PKG_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PKG_COMMIT=$RELEASE" >> $GITHUB_ENV
+          
           mkdir tailscale
           cp -r repo/package/tailscale/. tailscale/
+          
+          echo "Parsed version: $VERSION"
+          echo "Parsed release: $RELEASE"
 
       # UPX 
 
@@ -212,23 +223,51 @@ jobs:
       # UPLOAD
 
       - name: Collect build artifacts
+        shell: bash
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}"
+
+          mapfile -t ipk_files < <(find bin -name "tailscale_*.ipk" -type f)
+
+          if [ ${#ipk_files[@]} -eq 0 ]; then
+            echo "::error::No IPK files found!"
+            exit 1
+          elif [ ${#ipk_files[@]} -gt 1 ]; then
+            echo "::warning::Found multiple IPK files, picking the best match..."
+          fi
+
+          source_ipk="${ipk_files[0]}"
+          ipk_dir=$(dirname "$source_ipk")
           
-          find bin -name "tailscale_*.ipk" -type f -exec cp -v {} "${{ env.ARTIFACT_DIR }}/" \;
+          target_ipk="${{ env.ARTIFACT_DIR }}/tailscale_${{ env.PKG_VERSION }}_${{ matrix.platform }}.ipk"
+          target_packages="${{ env.ARTIFACT_DIR }}/Packages_${{ matrix.platform }}"
+
+          echo "Moving and organizing artifacts..."
           
-          if [ -z "$(ls -A "${{ env.ARTIFACT_DIR }}")" ]; then
-            echo "ERROR: No IPK files found!"
+          cp -v "$source_ipk" "$target_ipk"
+
+          if [ -f "$ipk_dir/Packages" ]; then
+            echo "Found Packages file in $ipk_dir"
+            cp -v "$ipk_dir/Packages" "$target_packages"
+            
+          else
+            echo "::warning::Packages index file not found in $ipk_dir"
+            find bin/packages -name "Packages" -exec cp {} "$target_packages" \; -quit
+          fi
+
+          if [ ! -s "$target_ipk" ]; then
+            echo "::error::Artifact collection failed or IPK file is empty!"
             exit 1
           fi
-          
+
           echo "Success: Artifacts ready in ${{ env.ARTIFACT_DIR }}"
           ls -lh "${{ env.ARTIFACT_DIR }}"
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: tailscale-ipk-${{ matrix.platform }}
+          name: tailscale_${{ env.PKG_VERSION }}_${{ matrix.platform }}
           path: ${{ env.ARTIFACT_DIR }}/
           if-no-files-found: error
           retention-days: 30
@@ -238,59 +277,77 @@ jobs:
   #   needs: [build]
   #   runs-on: ubuntu-latest
   #   env:
-  #     RELEASE_TAG: ${{ needs.build.outputs.version_tag }}
+  #     RELEASE_TAG: v${{ needs.build.outputs.version }}
+  #     VERSION: ${{ needs.build.outputs.version }}
+  #     ARTIFACT_DIR: "release_assets"
   #   steps:
   #     - name: Prepare workspace
-  #       run: |
-  #         mkdir -p ${{ env.ARTIFACT_DIR }}
+  #       run: mkdir -p ${{ env.ARTIFACT_DIR }}
 
   #     - name: Download artifacts
   #       uses: actions/download-artifact@v4
   #       with:
-  #         path: ${{ env.ARTIFACT_DIR }}
-  #         merge-multiple: true
+  #         path: temp_artifacts
 
-  #     - name: Generate release files
+  #     - name: Organize and Generate Files
   #       run: |
   #         echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
           
-  #         # Since we're using SDK, just copy all IPK files
-  #         cd ${{ env.ARTIFACT_DIR }}
+  #         INFO_FILE="${{ env.ARTIFACT_DIR }}/build-info.txt"
+  #         JSON_FILE="${{ env.ARTIFACT_DIR }}/artifacts.json"
           
-  #         # Create checksums
-  #         sha256sum *.ipk > checksums.txt
-          
-  #         # Create info file
   #         {
-  #           echo "Version: ${{ env.RELEASE_TAG }}"
-  #           echo "Build date: ${{ env.BUILD_DATE }}"
+  #           echo "Version: v${{ needs.build.outputs.pkg_version }}"
+  #           echo "Build date: $(date -u +'%Y-%m-%d %H:%M:%S UTC')"
   #           echo ""
   #           echo "File sizes:"
-  #           for file in *.ipk; do
-  #             size=$(stat -c %s "${file}")
-  #             echo "${file} ${size} bytes"
-  #           done
-  #         } > build-info.txt
-  #         cd ..
+  #         } > "$INFO_FILE"
           
-  #         # Generate artifacts index JSON from IPK files
-  #         echo "[" > ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #         echo "[" > "$JSON_FILE"
+          
   #         first=true
-  #         for ipk in ${{ env.ARTIFACT_DIR }}/*.ipk; do
-  #           if [ -f "$ipk" ]; then
-  #             filename=$(basename "$ipk")
-  #             # Extract architecture from IPK filename (e.g., tailscale_1.52.0_aarch64_cortex-a72.ipk)
-  #             arch=$(echo "$filename" | sed 's/.*_\([^_]*\)\.ipk$/\1/')
-              
-  #             if [ "$first" = true ]; then
-  #               first=false
-  #             else
-  #               echo "," >> ${{ env.ARTIFACT_DIR }}/artifacts.json
-  #             fi
-  #             echo "{\"target\":\"${arch}\",\"ipk\":\"${filename}\"}" >> ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #         for dir in temp_artifacts/*/; do
+  #           [ -d "$dir" ] || continue
+            
+  #           ipk_path=$(find "$dir" -name "*.ipk" -type f | head -n 1)
+  #           [ -z "$ipk_path" ] && continue
+            
+  #           ipk_name=$(basename "$ipk_path")
+  #           filename_no_ext="${ipk_name%.ipk}"
+  #           arch=$(echo "$filename_no_ext" | rev | cut -d'_' -f1 | rev)
+            
+  #           cp "$ipk_path" "${{ env.ARTIFACT_DIR }}/"
+            
+  #           size_val="Unknown"
+  #           [ -f "${dir}size" ] && size_val=$(cat "${dir}size")
+            
+  #           echo "${filename_no_ext} ${size_val} bytes" >> "$INFO_FILE"
+            
+  #           # 4. 写入 artifacts.json
+  #           if [ "$first" = true ]; then
+  #             first=false
+  #           else
+  #             echo "," >> "$JSON_FILE"
   #           fi
+  #           echo "{\"target\":\"${arch}\",\"ipk\":\"${ipk_name}\"}" >> "$JSON_FILE"
   #         done
-  #         echo "]" >> ${{ env.ARTIFACT_DIR }}/artifacts.json
+          
+  #         echo "]" >> "$JSON_FILE"
+
+  #     - name: Create Checksums
+  #       run: |
+  #         cd ${{ env.ARTIFACT_DIR }}
+  #         sha256sum *.ipk > checksums.txt
+
+  #     - name: Create GitHub Release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         tag_name: ${{ env.RELEASE_TAG }}
+  #         files: |
+  #           ${{ env.ARTIFACT_DIR }}/*.ipk
+  #           ${{ env.ARTIFACT_DIR }}/checksums.txt
+  #           ${{ env.ARTIFACT_DIR }}/build-info.txt
+  #           ${{ env.ARTIFACT_DIR }}/artifacts.json
       
   #     - name: Checkout feed branch
   #       uses: actions/checkout@v4
