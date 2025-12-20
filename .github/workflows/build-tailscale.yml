@@ -199,10 +199,7 @@ jobs:
           
           echo ""
           echo "=== Initializing SDK ==="
-          # Override prerequisite checks in SDK to avoid failing on missing host deps
-          # (the SDK will perform a prerequisite check; setting FORCE=1 skips it)
-          export FORCE=1
-          make defconfig FORCE=1
+          make defconfig
           
           echo ""
           echo "=== Building tailscale ==="
