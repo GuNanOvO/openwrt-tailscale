@@ -162,7 +162,8 @@ jobs:
           
           echo ""
           echo "=== Initializing SDK ==="
-          make defconfig
+          ./scripts/feeds update packages
+          ./scripts/feeds install golang
 
           # echo "=== Setting up build environment ==="
           # chmod -R 777 /builder/bin 2>/dev/null || true
@@ -174,6 +175,9 @@ jobs:
           # Create UPX symlink (Makefile expects upx/upx)
           # ln -sf /builder/upx /builder/package/tailscale/upx
           
+          echo "make defconfig"
+          make defconfig
+
           echo "=== Setting up external Go ==="
           # Verify Go is available
           if [ ! -f /builder/go/bin/go ]; then
