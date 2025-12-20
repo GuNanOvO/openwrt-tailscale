@@ -73,7 +73,7 @@ jobs:
       - name: Prepare package
         run: |
           mkdir -p package/tailscale
-          cp -r repo/package/tailscale/* package/tailscale
+          cp -r repo/package/tailscale/* tailscale
 
       - name: Setup Docker buildx
         uses: docker/setup-buildx-action@v3
@@ -119,9 +119,8 @@ jobs:
         uses: openwrt/gh-action-sdk@main
         env:
           ARCH: ${{ matrix.platform }}-${{ matrix.sdk }}
-          FEED_DIR: package
           FEEDNAME: tailscale
-          PACKAGES: tailscale
+          PACKAGES: openwrt-tailscale
           NO_REFRESH_CHECK: true
 
       - name: Debug via tmate
@@ -131,7 +130,7 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.platform }}
-          path: bin/*
+          path: bin/packages/x86_64/packages/*
 
       # - name: Pull OpenWRT SDK Docker image
       #   run: |

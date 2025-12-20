@@ -7,7 +7,7 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=tailscale
+PKG_NAME:=openwrt-tailscale
 PKG_VERSION:=1.92.2
 PKG_RELEASE:=1
 
