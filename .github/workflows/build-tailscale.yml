@@ -229,7 +229,7 @@ jobs:
           # Run docker container
           docker run --rm \
             -v "$(pwd)/bin:/builder/bin:z" \
-            -v "$(pwd)/repo/package/tailscale:/builder/tailscale:ro,z" \
+            -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
             -v "$(pwd)/upx_extracted:/builder/upx:ro,z" \
             -v "$(pwd)/go_extracted:/builder/go:ro,z" \
             -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
