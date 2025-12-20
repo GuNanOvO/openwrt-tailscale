@@ -71,7 +71,7 @@ ifneq ($(filter $(UPX_CUR_TARGET),$(UPX_EXCLUDED_TARGETS)),)
 	@echo "==> UPX disabled on target $(UPX_CUR_TARGET)"
 else
 	@echo "==> UPX enabled on target $(UPX_CUR_TARGET)"
-	$(TOPDIR)/package/tailscale/upx/upx --best --lzma \
+	$(TOPDIR)/upx/upx --best --lzma \
 		$(1)/usr/sbin/tailscaled
 endif
 

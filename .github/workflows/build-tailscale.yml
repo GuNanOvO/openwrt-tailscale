@@ -157,16 +157,22 @@ jobs:
           #!/bin/bash
           set -e
           cd /builder
+
+          ls -l
           
-          echo "=== Setting up build environment ==="
-          chmod -R 777 /builder/bin 2>/dev/null || true
-          mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
+          echo ""
+          echo "=== Initializing SDK ==="
+          make defconfig
+
+          # echo "=== Setting up build environment ==="
+          # chmod -R 777 /builder/bin 2>/dev/null || true
+          # mkdir -p /builder/bin/targets /builder/bin/packages 2>/dev/null || true
           
           echo "=== Copying tailscale package ==="
           rm -rf /builder/package/tailscale /builder/feeds/packages/net/tailscale 2>/dev/null || true
           cp -r /builder/tailscale /builder/package/tailscale
           # Create UPX symlink (Makefile expects upx/upx)
-          ln -sf /builder/upx /builder/package/tailscale/upx
+          # ln -sf /builder/upx /builder/package/tailscale/upx
           
           echo "=== Setting up external Go ==="
           # Verify Go is available
@@ -196,10 +202,6 @@ jobs:
           
           echo "Go version:"
           /builder/go/bin/go version
-          
-          echo ""
-          echo "=== Initializing SDK ==="
-          make defconfig
           
           echo ""
           echo "=== Building tailscale ==="
