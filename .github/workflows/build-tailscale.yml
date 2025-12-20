@@ -120,6 +120,7 @@ jobs:
         env:
           ARCH: ${{ matrix.platform }}-${{ matrix.sdk }}
           FEED_DIR: package
+          FEEDNAME: tailscale
           PACKAGES: tailscale
           NO_REFRESH_CHECK: true
 
