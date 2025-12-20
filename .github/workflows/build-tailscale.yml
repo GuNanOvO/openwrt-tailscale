@@ -60,7 +60,6 @@ jobs:
           - 'mipsel_mips32'
           - 'riscv64_riscv64'
           - 'x86_64'
-      max-parallel: 1
       fail-fast: true
 
     steps:
