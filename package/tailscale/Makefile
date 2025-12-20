@@ -33,13 +33,9 @@ GO_PKG_LDFLAGS_X:=tailscale.com/version.shortStamp=$(PKG_VERSION)
 GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 GO_PKG_GCFLAGS:=-trimpath
 
-UPX_EXCLUDED_TARGETS := \
-	mips64_mips64r2 \
-	mips64_octeonplus \
-	mips64el_mips64r2 \
-	riscv64_riscv64
-	
-UPX_CUR_TARGET := $(ARCH)_$(SUBTARGET)
+ifneq ($(filter mips64 riscv64,$(ARCH)),)
+  DISABLE_UPX:=1
+endif
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
@@ -69,12 +65,13 @@ define Package/tailscale/install
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
 
-ifneq ($(filter $(UPX_CUR_TARGET),$(UPX_EXCLUDED_TARGETS)),)
-	echo "==> UPX disabled on target $(UPX_CUR_TARGET)"
-else
-	echo "==> UPX enabled on target $(UPX_CUR_TARGET)"
+ifneq ($(DISABLE_UPX),1)
+	echo "==> UPX enabled on ARCH $(ARCH)"
 	$(TOPDIR)/upx/upx --best --lzma $(1)/usr/sbin/tailscaled
+else
+	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
+
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
