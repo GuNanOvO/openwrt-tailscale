@@ -115,17 +115,6 @@ jobs:
           mkdir -p upx
           cp -r upx_extracted/* upx
 
-      # - name: Build
-      #   uses: openwrt/gh-action-sdk@main
-      #   env:
-      #     ARCH: ${{ matrix.platform }}-${{ matrix.sdk }}
-      #     FEEDNAME: tailscale
-      #     PACKAGES: openwrt-tailscale
-      #     NO_REFRESH_CHECK: true
-
-      # - name: Debug via tmate
-      #   uses: mxschmitt/action-tmate@v3
-
       # - name: Upload artifacts
       #   uses: actions/upload-artifact@main
       #   with:
@@ -241,28 +230,28 @@ jobs:
             ghcr.io/openwrt/sdk:${{ matrix.platform }}-V24.10.4 \
             bash /build_script.sh
 
-      # - name: Collect build artifacts
-      #   run: |
-      #     echo "=== Collecting build artifacts ==="
-      #     # Search in both bin/packages and bin/targets directories
-      #     if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
-      #       echo "Found IPK files:"
-      #       find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
-      #       find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
-      #       echo ""
-      #       echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
-      #       ls -lh "${{ env.ARTIFACT_DIR }}/"
-      #     else
-      #       echo "ERROR: No IPK files found in bin directory"
-      #       echo "Contents of bin directory:"
-      #       find bin -type d 2>/dev/null | head -20 || true
-      #       echo "Searching for any IPK files:"
-      #       find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
-      #       exit 1
-      #     fi
+      - name: Collect build artifacts
+        run: |
+          echo "=== Collecting build artifacts ==="
+          # Search in both bin/packages and bin/targets directories
+          if find bin -name "tailscale_*.ipk" -type f 2>/dev/null | grep -q .; then
+            echo "Found IPK files:"
+            find bin -name "tailscale_*.ipk" -type f -exec ls -lh {} \;
+            find bin -name "tailscale_*.ipk" -type f -exec cp {} "${{ env.ARTIFACT_DIR }}/" \;
+            echo ""
+            echo "Artifacts copied to ${{ env.ARTIFACT_DIR }}:"
+            ls -lh "${{ env.ARTIFACT_DIR }}/"
+          else
+            echo "ERROR: No IPK files found in bin directory"
+            echo "Contents of bin directory:"
+            find bin -type d 2>/dev/null | head -20 || true
+            echo "Searching for any IPK files:"
+            find bin -type f -name "*.ipk" 2>/dev/null | head -20 || true
+            exit 1
+          fi
 
-      - name: Debug via tmate
-        uses: mxschmitt/action-tmate@v3
+      # - name: Debug via tmate
+      #   uses: mxschmitt/action-tmate@v3
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
