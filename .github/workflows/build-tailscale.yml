@@ -127,7 +127,7 @@ jobs:
         uses: actions/upload-artifact@main
         with:
           name: ${{ matrix.platform }}
-          path: bin/packages/*
+          path: bin/*
 
       # - name: Pull OpenWRT SDK Docker image
       #   run: |
