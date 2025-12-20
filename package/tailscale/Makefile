@@ -8,7 +8,7 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=openwrt-tailscale
+PKG_NAME:=tailscale
 PKG_VERSION:=1.92.2
 PKG_RELEASE:=1
 
@@ -48,7 +48,7 @@ define Package/tailscale
   CATEGORY:=Network
   SUBMENU:=VPN
   TITLE:=Zero config VPN (UPX Compressed)
-  URL:=https://tailscale.com
+  URL:=Original(https://tailscale.com), Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
   DEPENDS:=$(GO_ARCH_DEPENDS) ca-bundle kmod-tun
   PROVIDES:=tailscale tailscaled
 endef
