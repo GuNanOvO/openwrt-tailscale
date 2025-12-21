@@ -218,15 +218,15 @@ jobs:
           NEW_HASH=$(curl -L "$SOURCE_URL" | sha256sum | awk '{print $1}')
           echo "New Hash: $NEW_HASH"
 
-          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/" Makefile
-          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" Makefile
-          sed -i "s/PKG_COMMIT:=.*/PKG_COMMIT:=$NEW_COMMIT/" Makefile
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/" package/tailscale/Makefile
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" package/tailscale/Makefile
+          sed -i "s/PKG_COMMIT:=.*/PKG_COMMIT:=$NEW_COMMIT/" package/tailscale/Makefile
 
       - name: Commit and push changes
         run: |
           git config --local user.name "github-actions[bot]"
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git add Makefile
+          git add package/tailscale/Makefile
           git commit -m "chore: update tailscale to ${{ steps.get_commit.outputs.version}} (${{ steps.get_commit.outputs.commit }})" || true
           git push origin main
 
