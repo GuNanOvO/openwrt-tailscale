@@ -180,32 +180,26 @@ jobs:
         run: |
           check_method="${{ needs.version-check.outputs.check_method }}"
           version="${{ needs.version-check.outputs.selected_version }}"
-          echo "Using method: $check_method with version: $version"
           
           if [ "$check_method" = "ghcr" ]; then
-            echo "Getting commit from GHCR version ${version}"
             docker pull ghcr.io/tailscale/tailscale:${version}
             commit=$(docker run --rm ghcr.io/tailscale/tailscale:${version} tailscale version | grep -oP 'tailscale commit: \K\w+')
-            if [ -n "$commit" ]; then
-              echo "Commit from GHCR: $commit"
-              echo "commit=$commit" >> $GITHUB_OUTPUT
-              echo "version=$version" >> $GITHUB_OUTPUT
-              exit 0
-            fi
           else
-            echo "Getting commit from tag release $version"
-            git ls-remote https://github.com/tailscale/tailscale.git refs/tags/${version} | cut -f1 > tag_commit.txt
-            commit=$(cat tag_commit.txt)
-            if [ -n "$commit" ]; then
-              echo "Commit from tag: $commit"
-              echo "commit=$commit" >> $GITHUB_OUTPUT
-              echo "version=$version" >> $GITHUB_OUTPUT
-              exit 0
+            commit=$(git ls-remote --tags https://github.com/tailscale/tailscale.git "refs/tags/${version}^{}" | cut -f1)
+            
+            if [ -z "$commit" ]; then
+              commit=$(git ls-remote --tags https://github.com/tailscale/tailscale.git "refs/tags/${version}" | cut -f1)
             fi
           fi
           
-          echo "Failed to get commit using $check_method method"
-          exit 1
+          if [ -n "$commit" ]; then
+            echo "Commit found: $commit"
+            echo "commit=$commit" >> $GITHUB_OUTPUT
+            echo "version=$version" >> $GITHUB_OUTPUT
+          else
+            echo "Failed to get commit"
+            exit 1
+          fi
           
       - name: Update Makefile with new version and hash
         id: update_makefile
