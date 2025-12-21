@@ -425,33 +425,35 @@ jobs:
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
           chmod 600 key-build.sec
           
-      - name: Prepare feed files
+      - name: Deploy to Feed Branch
+        env:
+          USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
         run: |
-          rm -rf feed/tailscale* feed/Packages* feed/version*
-                
-          jq -r '
-            .[] | select(.ipk_compressed != "") | .ipk_compressed
-          ' "${{ env.ARTIFACT_DIR }}/artifacts.json" | while read -r file; do
-            cp "${{ env.ARTIFACT_DIR }}/${file}" feed/
+          git clone --single-branch --branch feed https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git feed_repo
+          cd feed_repo
+
+          rm -f tailscale_*.ipk Packages* version*
+          
+          jq -r '.[] | select(.ipk_compressed != "") | .ipk_compressed' ../${{ env.ARTIFACT_DIR }}/artifacts.json | while read -r file; do
+            cp "../${{ env.ARTIFACT_DIR }}/${file}" .
           done
 
-          [ -f ${{ env.ARTIFACT_DIR }}/Packages ] && mv ${{ env.ARTIFACT_DIR }}/Packages feed/Packages && gzip -kf feed/Packages
-              
-          ls -l feed/
-          file feed/Packages
-          file key-build.sec
+          if [ -f "../${{ env.ARTIFACT_DIR }}/Packages" ]; then
+            cp "../${{ env.ARTIFACT_DIR }}/Packages" .
+            gzip -kf Packages
+          fi
 
-          usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
+          echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
+          usign -S -m Packages -s key-build.sec -x Packages.sig
+          rm -f key-build.sec
 
-          cat feed/Packages.sig
-          
           generate_tbody() {
             echo "          <tbody>"
-            for file in feed/Packages* feed/tailscale*; do
+            for file in Packages* tailscale_*; do
               [ -f "${file}" ] || continue
               fname=$(basename "${file}")
               fsize=$(du -h "${file}" | cut -f1)
-              fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
+              fdate=$(date -r "${file}" +"%Y-%m-%d %H:%M:%S UTC")
               echo "                        <tr>"
               echo "                            <td><a href=\"$fname\">$fname</a></td>"
               echo "                            <td>$fsize</td>"
@@ -461,28 +463,42 @@ jobs:
             echo "          </tbody>"
           }
 
-          generate_tbody > feed/tbody.tmp
-          sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
-            /<!-- tbody-anchor -->/!{
-              /<!-- end-tbody-anchor -->/!d
-            }
-          }' feed/index.html
-          sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
-
-          current_date="${{ env.BUILD_DATE }}"
-          sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
-              /<span id="date">/ {
-                  s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+          if [ -f "index.html" ]; then
+            generate_tbody > tbody.tmp
+            
+            sed -i '//,// {
+              //!{
+                //!d
               }
-          }' feed/index.html
+            }' index.html
+            sed -i '//r tbody.tmp' index.html
 
-          version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
-          sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
-              /<span id="version">/ {
-                  s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
-              }
-          }' feed/index.html
-          rm -f feed/tbody.tmp
+            current_date="${{ env.BUILD_DATE }}"
+            sed -i '//,// {
+                /<span id="date">/ {
+                    s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+                }
+            }' index.html
+
+            version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
+            sed -i '//,// {
+                /<span id="version">/ {
+                    s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
+                }
+            }' index.html
+            
+            rm -f tbody.tmp
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          if ! git diff --cached --quiet; then
+            git commit -m "Update feed: ${{ env.BUILD_DATE }} ($version)"
+            git push origin feed --force
+          else
+            echo "No changes detected."
+          fi
 
       - name: Commit and push to feed branch
         run: |
