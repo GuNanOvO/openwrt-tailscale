@@ -138,7 +138,7 @@ check_tailscale_install_status() {
     if command -v tailscale >/dev/null 2>&1; then
         local version_output
         version_output=$(tailscale version 2>/dev/null | head -n 1 | tr -d '[:space:]')
-        [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="v$version_output"
+        [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="$version_output"
     fi
 
     # 灵活状态判定
@@ -192,18 +192,18 @@ check_device_storage() {
     local mount_point="${1:-/}"
 
     local storage_info=$(df -Pk "$mount_point")
-    local storage_total_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-3)}')
+    local storage_used_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-3)}')
     local storage_available_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-2)}')
     
-    if [ -z "$storage_total_kb" ] || ! echo "$storage_total_kb" | grep -q '^[0-9]\+$'; then
-        echo "[ERROR]: 无法识别 $mount_point 的总空间数值" && exit 1
+    if [ -z "$storage_used_kb" ] || ! echo "$storage_used_kb" | grep -q '^[0-9]\+$'; then
+        echo "[ERROR]: 无法识别 $mount_point 的已用空间数值" && exit 1
     fi
 
     if ! echo "$storage_available_kb" | grep -q '^[0-9]\+$'; then
         echo "[ERROR]: 无法识别 $mount_point 的可用空间数值" && exit 1
     fi
 
-    DEVICE_STORAGE_TOTAL=$((storage_total_kb / 1024))
+    DEVICE_STORAGE_TOTAL=$(( (storage_used_kb + storage_available_kb) / 1024 ))
     DEVICE_STORAGE_AVAILABLE=$((storage_available_kb / 1024))
 }
 
@@ -253,10 +253,10 @@ get_tailscale_info() {
 
     for attempt_times in $attempt_range; do
         version=$(wget -qO- --timeout=$attempt_timeout "$AVAILABLE_PROXY/$TAILSCALE_URL/download/version" | tr -d ' \n\r')
-        file="tailscale_${version}_${DEVICE_TARGET}.ipk"
+        file="tailscale_${version}_${DEVICE_TARGET}"
 
         file_size=$(wget -qO- --timeout=$attempt_timeout "$AVAILABLE_PROXY/$TAILSCALE_URL/download/Packages" | \
-            awk -v ipk="$file" '
+            awk -v ipk="${file}.ipk" '
             BEGIN { RS=""; FS="\n" }
             $0 ~ ipk {
                 for(i=1; i<=NF; i++) {
@@ -275,6 +275,7 @@ get_tailscale_info() {
     done
 
     if [ -z "$version" ] || [ -z "$file_size" ]; then
+        echo ""
         echo "[ERROR]: 无法获取 tailscale 版本或文件大小"
         echo "1. 确保网络连接正常"
         echo "2. 重试"
@@ -284,7 +285,7 @@ get_tailscale_info() {
 
     TAILSCALE_LATEST_VERSION="$version"
     TAILSCALE_FILE="$file"
-    TAILSCALE_FILE_SIZE=$((file_size / 1024))
+    TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
         TAILSCALE_PERSISTENT_INSTALLABLE="true"
@@ -347,6 +348,10 @@ remove() {
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
             tailscale_stoper
+
+            if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+                opkg remove tailscale
+            fi
 
             # remove指定目录的 tailscale 或 tailscaled 文件
             local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
@@ -425,14 +430,16 @@ remove_unknown_file() {
 
 # 函数：清理旧的安装文件
 clean_old_installation() {
-    echo "[INFO]: 清理旧的安装文件..."
-    local old_paths="/usr/bin/tailscale /usr/bin/tailscaled"
-    for file in $old_paths; do
-        if [ -f "$file" ]; then
-            rm -f "$file"
-            echo "[INFO]: 已删除旧文件: $file"
-        fi
-    done
+    if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        echo "[INFO]: 清理旧的安装文件..."
+        local old_paths="/usr/bin/tailscale /usr/bin/tailscaled"
+        for file in $old_paths; do
+            if [ -f "$file" ]; then
+                rm -f "$file"
+                echo "[INFO]: 已删除旧文件: $file"
+            fi
+        done
+    fi
 }
 
 # 函数：持久安装
@@ -458,6 +465,7 @@ persistent_install() {
         fi
     fi
 
+    echo ""
     clean_old_installation
 
     if [ "$confirm2persistent_install" = "true" ]; then
@@ -523,6 +531,7 @@ temp_install() {
         fi
     fi
 
+    echo ""
     clean_old_installation
 
     if [ "$confirm2temp_install" = "true" ]; then
@@ -541,7 +550,7 @@ temp_install() {
     mkdir -p "$extract_dir"
 
     echo "[INFO]: 正在解压并部署文件..."
-    tar -xOf "$ipk_file" data.tar.gz 2>/dev/null | tar -xzC "$extract_dir" 2>/dev/null
+    tar -xOzf "$ipk_file" ./data.tar.gz 2>/dev/null | tar -xzC "$extract_dir" 2>/dev/null
 
     [ -d "$extract_dir/etc" ] && cp -r "$extract_dir/etc/"* /etc/
     [ -d "$extract_dir/lib" ] && cp -r "$extract_dir/lib/"* /lib/
@@ -604,7 +613,7 @@ downloader() {
     local tmp="/tmp"
     local file_path="$tmp/$TAILSCALE_FILE.ipk"
     local sha_file="$tmp/$TAILSCALE_FILE.sha256"
-    local target_ipk="tailscale_${version}_${DEVICE_TARGET}.ipk"
+    local target_ipk="${TAILSCALE_FILE}.ipk"
     local download_url="${AVAILABLE_PROXY}/${TAILSCALE_URL}/download"
     for attempt_times in $attempt_range; do
         if ! wget -cO "$file_path" "$download_url/$target_ipk"; then
@@ -615,11 +624,12 @@ downloader() {
         wget -qO- --timeout=$attempt_timeout "$download_url/Packages" | \
             awk -v ipk="$target_ipk" -v path="$file_path" '
             BEGIN { RS=""; FS="\n" }
-            $0 ~ ipk {
+            $0 ~ "Filename: " ipk {
                 for(i=1; i<=NF; i++) {
                     if($i ~ /^SHA256sum:/) {
-                        print $2 "  " path
-                        exit
+                        split($i, a, ": ");
+                        print a[2] "  " path;
+                        exit;
                     }
                 }
             }' > "$sha_file"

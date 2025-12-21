@@ -115,7 +115,7 @@ check_tailscale_install_status() {
     if command -v tailscale >/dev/null 2>&1; then
         local version_output
         version_output=$(tailscale version 2>/dev/null | head -n 1 | tr -d '[:space:]')
-        [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="v$version_output"
+        [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="$version_output"
     fi
 
     # Flexible Status Judgment
@@ -169,18 +169,18 @@ check_device_storage() {
     local mount_point="${1:-/}"
 
     local storage_info=$(df -Pk "$mount_point")
-    local storage_total_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-3)}')
+    local storage_used_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-3)}')
     local storage_available_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-2)}')
-    
-    if [ -z "$storage_total_kb" ] || ! echo "$storage_total_kb" | grep -q '^[0-9]\+$'; then
-        echo "[ERROR]: Unable to identify total storage space value for $mount_point" && exit 1
+
+    if [ -z "$storage_used_kb" ] || ! echo "$storage_used_kb" | grep -q '^[0-9]\+$'; then
+        echo "[ERROR]: Unable to identify used storage space value for $mount_point" && exit 1
     fi
 
     if ! echo "$storage_available_kb" | grep -q '^[0-9]\+$'; then
         echo "[ERROR]: Unable to identify available storage space value for $mount_point" && exit 1
     fi
 
-    DEVICE_STORAGE_TOTAL=$((storage_total_kb / 1024))
+    DEVICE_STORAGE_TOTAL=$(( (storage_used_kb + storage_available_kb) / 1024 ))
     DEVICE_STORAGE_AVAILABLE=$((storage_available_kb / 1024))
 }
 
@@ -196,9 +196,9 @@ get_tailscale_info() {
 
     for attempt_times in $attempt_range; do
         version=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/download/version" | tr -d ' \n\r')
-        file="tailscale_${version}_${DEVICE_TARGET}.ipk"
+        file="tailscale_${version}_${DEVICE_TARGET}"
         file_size=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/download/Packages" | \
-            awk -v ipk="$file" '
+            awk -v ipk="${file}.ipk" '
             BEGIN { RS=""; FS="\n" }
             $0 ~ ipk {
                 for(i=1; i<=NF; i++) {
@@ -217,6 +217,7 @@ get_tailscale_info() {
     done
 
     if [ -z "$version" ] || [ -z "$file_size" ]; then
+        echo ""
         echo "[ERROR]: Unable to get tailscale version or file size"
         echo "1. Ensure network connection is normal"
         echo "2. Retry"
@@ -226,7 +227,7 @@ get_tailscale_info() {
 
     TAILSCALE_LATEST_VERSION="$version"
     TAILSCALE_FILE="$file"
-    TAILSCALE_FILE_SIZE=$((file_size / 1024))
+    TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
         TAILSCALE_PERSISTENT_INSTALLABLE="true"
@@ -291,6 +292,10 @@ remove() {
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
             tailscale_stoper
+
+            if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+                opkg remove tailscale
+            fi
 
             # Remove tailscale or tailscaled files in specified directories
             local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
@@ -370,14 +375,16 @@ remove_unknown_file() {
 
 # Function: Clean Old Installation
 clean_old_installation() {
-    echo "[INFO]: Cleaning old installation files..."
-    local old_paths="/usr/bin/tailscale /usr/bin/tailscaled"
-    for file in $old_paths; do
-        if [ -f "$file" ]; then
-            rm -f "$file"
-            echo "[INFO]: Removed old file: $file"
-        fi
-    done
+    if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        echo "[INFO]: Cleaning old installation files..."
+        local old_paths="/usr/bin/tailscale /usr/bin/tailscaled"
+        for file in $old_paths; do
+            if [ -f "$file" ]; then
+                rm -f "$file"
+                echo "[INFO]: Removed old file: $file"
+            fi
+        done
+    fi
 }
 
 # Function: Persistent Installation
@@ -404,6 +411,7 @@ persistent_install() {
         fi
     fi
 
+    echo ""
     clean_old_installation
 
     if [ "$confirm2persistent_install" = "true" ]; then
@@ -472,6 +480,7 @@ temp_install() {
         fi
     fi
 
+    echo ""
     clean_old_installation
 
     if [ "$confirm2temp_install" = "true" ]; then
@@ -490,7 +499,7 @@ temp_install() {
     mkdir -p "$extract_dir"
 
     echo "[INFO]: Extracting and deploying files..."
-    tar -xOf "$ipk_file" data.tar.gz 2>/dev/null | tar -xzC "$extract_dir" 2>/dev/null
+    tar -xOzf "$ipk_file" ./data.tar.gz 2>/dev/null | tar -xzC "$extract_dir" 2>/dev/null
 
     [ -d "$extract_dir/etc" ] && cp -r "$extract_dir/etc/"* /etc/
     [ -d "$extract_dir/lib" ] && cp -r "$extract_dir/lib/"* /lib/
@@ -569,11 +578,12 @@ downloader() {
         wget -qO- --timeout=$attempt_timeout "$download_url/Packages" | \
             awk -v ipk="$target_ipk" -v path="$file_path" '
             BEGIN { RS=""; FS="\n" }
-            $0 ~ ipk {
+            $0 ~ "Filename: " ipk {
                 for(i=1; i<=NF; i++) {
                     if($i ~ /^SHA256sum:/) {
-                        print $2 "  " path
-                        exit
+                        split($i, a, ": ");
+                        print a[2] "  " path;
+                        exit;
                     }
                 }
             }' > "$sha_file"
