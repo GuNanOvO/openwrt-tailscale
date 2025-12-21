@@ -9,6 +9,9 @@ on:
   repository_dispatch:
     types: [ build-tailscale ]
 
+permissions:
+  contents: read
+
 env:
   SOFTWARE_NAME: "Tailscale"
   FILE_NAME: "tailscaled"
@@ -275,6 +278,8 @@ jobs:
     name: Create Release
     needs: [build]
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     env:
       RELEASE_TAG: v${{ needs.build.outputs.version }}
       VERSION: ${{ needs.build.outputs.version }}
