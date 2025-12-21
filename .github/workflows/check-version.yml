@@ -170,6 +170,11 @@ jobs:
     outputs:
       ghcr_commit: ${{ steps.get_commit.outputs.commit }}
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Get commit based on selected method
         id: get_commit
         run: |
@@ -201,11 +206,6 @@ jobs:
           
           echo "Failed to get commit using $check_method method"
           exit 1
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
           
       - name: Update Makefile with new version and hash
         id: update_makefile
