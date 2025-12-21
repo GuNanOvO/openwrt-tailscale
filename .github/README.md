@@ -1,5 +1,3 @@
-# Major update in testing. DO NOT USE!
-
 **简体中文文档** | [English Docs](README_en.md)
 
 ![Tailscale & OpenWrt](./banner.png)  
@@ -60,9 +58,9 @@ Bring the latest Tailscale to small-storage OpenWrt device. space-saving & easy 
 **一键式命令行脚本:**
 > SSH链接至OpenWrt设备执行:
 > ```bash
-> wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh
+> wget -O /usr/sbin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/sbin/install.sh && /usr/sbin/install.sh
 > ```
-> 仅中国大陆用户，其他地区请见[English README](README_en.md)  
+> For Mainland China users only. For other regions, please refer to [English README](README_en.md)  
 
 **添加opkg软件源:**
 > 详见本项目分支 [软件源项目分支](../feed/README.md) 或本项目opkg软件源页面 [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale/)  
@@ -72,17 +70,6 @@ Bring the latest Tailscale to small-storage OpenWrt device. space-saving & easy 
 
 <details>
 <summary><h3>更多可选方式</h3></summary>
-
-#### 不支持中文的终端
-```bash
-wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en_cnproxy.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh
-```
-
-#### 安装未压缩的版本（约25mb）
-使用参数`--notiny`
-```bash
-wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --notiny
-```
 
 #### 自定义代理
 使用参数`--custom-proxy`
@@ -94,22 +81,10 @@ wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com
 
 
 <details>
-<summary><h3>手动持久安装</h3></summary>
-
-#### 安装二进制文件:
- 1. 于本项目[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的tailscaled文件  
- 2. 将该二进制可执行文件置于您设备的`/usr/bin`目录下  
- 3. 重命名该二进制可执行文件重命名为`tailscaled`  
- 4. 使用命令`ln -sv /usr/bin/tailscaled /usr/bin/tailscale`  
- 5. 于本项目[目录](https://github.com/GuNanOvO/openwrt-tailscale/tree/main/etc/init.d)下的tailscale文件（您也可以手动创建文件并填入该文件的内容）  
- 6. 将该文件置于您设备的`/etc/init.d`目录下  
- 7. 将上述文件添加可执行权限`chmod +x /etc/init.d/tailscale && chmod +x /usr/bin/tailscale && chmod +x /usr/bin/tailscaled`
- 8. 执行命令`/etc/init.d/tailscale start`稍等一会，再执行`tailscale up`  
- 9. 如果你的OpenWrt版本为22.03，你还需要添加 `--netfilter-mode=off`参数， 对于OpenWrt 23+ 则不应该包含该参数  
- 10. enjoy～🫰🏻
+<summary><h3>手动安装</h3></summary>
 
 #### 安装ipk软件包:
- 1. 于本项目[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的ipk软件包(自由选择压缩版与未压缩版)； 
+ 1. 于本项目[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的ipk软件包； 
  2. 可以于OpenWrt设备后台网页界面 -> 系统 -> 软件包 -> 上传软件包，选择您下载的软件包进行上传并安装；
 > 注意: 显示安装错误，则先测试 `tailscale up` ，如若正常，则安装成功。
 
@@ -147,10 +122,10 @@ wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com
 #### 编译优化:  
 使用了下列编译参数，精简了tailscale： 
 ```
-TAGS: ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
+ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 
 LDFLAGS:
--s -w
+-s -w -buildid=
 
 ```
  加之[UPX](https://upx.github.io/)的二进制文件压缩技术，将tailscale压缩至原来的20%，使得在小存储空间的openwrt设备上使用tailscale变得可能🎉
