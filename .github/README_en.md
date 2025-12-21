@@ -58,7 +58,7 @@ Bring the latest Tailscale to small-storage OpenWrt device. space-saving & easy 
 **One-Click Installation Script:**
 > SSH into your OpenWrt device and execute:
 > ```bash
-> wget -O /usr/bin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh
+> wget -O /usr/sbin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/sbin/install.sh && /usr/sbin/install.sh
 > ```
 
 **Add opkg Repository:**
@@ -69,33 +69,10 @@ Bring the latest Tailscale to small-storage OpenWrt device. space-saving & easy 
 </details>
 
 <details>
-<summary><h3>Additional Options</h3></summary>
-
-#### Install uncompressed version (~25MB)
-Use `--notiny` parameter:
-```bash
-wget -O /usr/bin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --notiny
-```
-
-</details>
-
-<details>
-<summary><h3>Manual Persistent Installation</h3></summary>
-
-#### Install binary files:
- 1. Download the tailscaled file matching your device architecture from [Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)  
- 2. Place the binary in your device's `/usr/bin` directory  
- 3. Rename the binary to `tailscaled`  
- 4. Create symbolic link: `ln -sv /usr/bin/tailscaled /usr/bin/tailscale`  
- 5. Get the init script from our [directory](https://github.com/GuNanOvO/openwrt-tailscale/tree/main/etc/init.d) or create manually  
- 6. Place the file in your device's `/etc/init.d` directory  
- 7. Add execute permissions: `chmod +x /etc/init.d/tailscale && chmod +x /usr/bin/tailscale && chmod +x /usr/bin/tailscaled`  
- 8. Start service: `/etc/init.d/tailscale start` then run `tailscale up`  
- 9. For OpenWrt 22.03, add `--netfilter-mode=off` parameter. Not required for OpenWrt 23+  
- 10. Enjoy～🫰🏻  
+<summary><h3>Manual Installation</h3></summary>
 
 #### Install ipk package:
- 1. Download matching ipk package from [Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases) (choose compressed or uncompressed version)  
+ 1. Download matching ipk package from [Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)  
  2. Install via OpenWrt web UI: System → Software → Upload Package  
 > Note: Ignore "failed log upload" error when install if `tailscale up` works normally  
 
@@ -134,10 +111,10 @@ wget -O /usr/bin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-t
 The following build parameters were used to slim down Tailscale:
 
 ```
-TAGS: ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
+ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 
 LDFLAGS:
--s -w
+-s -w -buildid=
 ```
 
 Additionally, by applying [UPX](https://upx.github.io/) binary compression, the Tailscale binary was reduced to only 20% of its original size, making it feasible to run Tailscale on OpenWrt devices with limited storage space 🎉.
