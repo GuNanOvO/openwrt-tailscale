@@ -25,42 +25,43 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ env.PKG_VERSION }}
+      date: ${{ env.BUILD_DATE }}
     strategy:
       matrix:
         sdk:
           - 24.10.4
         platform:
-          - 'aarch64_cortex-a53'
-          - 'aarch64_cortex-a72'
-          - 'aarch64_cortex-a76'
-          - 'aarch64_generic'
-          - 'arm_arm1176jzf-s_vfp'
-          - 'arm_arm926ej-s'
-          - 'arm_cortex-a15_neon-vfpv4'
-          - 'arm_cortex-a5_vfpv4'
-          - 'arm_cortex-a7'
-          - 'arm_cortex-a7_neon-vfpv4'
-          - 'arm_cortex-a7_vfpv4'
-          - 'arm_cortex-a8_vfpv3'
-          - 'arm_cortex-a9'
-          - 'arm_cortex-a9_neon'
-          - 'arm_cortex-a9_vfpv3-d16'
-          - 'arm_fa526'
-          - 'arm_xscale'
-          - 'i386_pentium-mmx'
-          - 'i386_pentium4'
-          - 'loongarch64_generic'
-          - 'mips64_mips64r2'
-          - 'mips64_octeonplus'
-          - 'mips64el_mips64r2'
-          - 'mips_24kc'
-          - 'mips_4kec'
-          - 'mips_mips32'
-          - 'mipsel_24kc'
-          - 'mipsel_24kc_24kf'
-          - 'mipsel_74kc'
-          - 'mipsel_mips32'
-          - 'riscv64_riscv64'
+          # - 'aarch64_cortex-a53'
+          # - 'aarch64_cortex-a72'
+          # - 'aarch64_cortex-a76'
+          # - 'aarch64_generic'
+          # - 'arm_arm1176jzf-s_vfp'
+          # - 'arm_arm926ej-s'
+          # - 'arm_cortex-a15_neon-vfpv4'
+          # - 'arm_cortex-a5_vfpv4'
+          # - 'arm_cortex-a7'
+          # - 'arm_cortex-a7_neon-vfpv4'
+          # - 'arm_cortex-a7_vfpv4'
+          # - 'arm_cortex-a8_vfpv3'
+          # - 'arm_cortex-a9'
+          # - 'arm_cortex-a9_neon'
+          # - 'arm_cortex-a9_vfpv3-d16'
+          # - 'arm_fa526'
+          # - 'arm_xscale'
+          # - 'i386_pentium-mmx'
+          # - 'i386_pentium4'
+          # - 'loongarch64_generic'
+          # - 'mips64_mips64r2'
+          # - 'mips64_octeonplus'
+          # - 'mips64el_mips64r2'
+          # - 'mips_24kc'
+          # - 'mips_4kec'
+          # - 'mips_mips32'
+          # - 'mipsel_24kc'
+          # - 'mipsel_24kc_24kf'
+          # - 'mipsel_74kc'
+          # - 'mipsel_mips32'
+          # - 'riscv64_riscv64'
           - 'x86_64'
       fail-fast: true
 
@@ -270,249 +271,250 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-  release:
-    name: Create Release
-    needs: [build]
-    runs-on: ubuntu-latest
-    env:
-      RELEASE_TAG: v${{ needs.build.outputs.version }}
-      VERSION: ${{ needs.build.outputs.version }}
-      ARTIFACT_DIR: "release_assets"
-    steps:
-      - name: Prepare workspace
-        run: mkdir -p ${{ env.ARTIFACT_DIR }}
+  # release:
+  #   name: Create Release
+  #   needs: [build]
+  #   runs-on: ubuntu-latest
+  #   env:
+  #     RELEASE_TAG: v${{ needs.build.outputs.version }}
+  #     VERSION: ${{ needs.build.outputs.version }}
+  #     BUILD_DATE: ${{ needs.build.outputs.date }}
+  #     ARTIFACT_DIR: "release_assets"
+  #   steps:
+  #     - name: Prepare workspace
+  #       run: mkdir -p ${{ env.ARTIFACT_DIR }}
 
-      - name: Download artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: temp_artifacts
+  #     - name: Download artifacts
+  #       uses: actions/download-artifact@v4
+  #       with:
+  #         path: temp_artifacts
 
-      - name: Organize and Generate Files
-        run: |
-          JSON_FILE="${{ env.ARTIFACT_DIR }}/artifacts.json"
-          PACKAGES_FILE="${{ env.ARTIFACT_DIR }}/Packages"
+  #     - name: Organize and Generate Files
+  #       run: |
+  #         JSON_FILE="${{ env.ARTIFACT_DIR }}/artifacts.json"
+  #         PACKAGES_FILE="${{ env.ARTIFACT_DIR }}/Packages"
           
-          echo "[" > "$JSON_FILE"
-          : > "$PACKAGES_FILE" # 使用 : > 清空文件更简洁
+  #         echo "[" > "$JSON_FILE"
+  #         : > "$PACKAGES_FILE" # 使用 : > 清空文件更简洁
           
-          first=true
-          # 遍历所有下载的 artifacts 目录
-          for dir in temp_artifacts/*/; do
-            [ -d "$dir" ] || continue
+  #         first=true
+  #         # 遍历所有下载的 artifacts 目录
+  #         for dir in temp_artifacts/*/; do
+  #           [ -d "$dir" ] || continue
             
-            ipk_path=$(find "$dir" -name "tailscale_*.ipk" -type f | head -n 1)
-            [ -z "$ipk_path" ] && continue
+  #           ipk_path=$(find "$dir" -name "tailscale_*.ipk" -type f | head -n 1)
+  #           [ -z "$ipk_path" ] && continue
             
-            ipk_name=$(basename "$ipk_path")
+  #           ipk_name=$(basename "$ipk_path")
             
-            # 改进后的架构提取逻辑：提取第3个下划线之后的部分
-            arch=$(echo "$ipk_name" | cut -d'_' -f3- | sed 's/\.ipk$//')
+  #           # 改进后的架构提取逻辑：提取第3个下划线之后的部分
+  #           arch=$(echo "$ipk_name" | cut -d'_' -f3- | sed 's/\.ipk$//')
             
-            # 复制 IPK 到发布目录
-            cp "$ipk_path" "${{ env.ARTIFACT_DIR }}/"
+  #           # 复制 IPK 到发布目录
+  #           cp "$ipk_path" "${{ env.ARTIFACT_DIR }}/"
             
-            echo "Processing $ipk_name for $arch..."
+  #           echo "Processing $ipk_name for $arch..."
             
-            # 提取 control 内容
-            CONTROL_CONTENT=$(tar -xOzf "$ipk_path" ./control.tar.gz | tar -xOzf - ./control 2>/dev/null || \
-                              tar -xOzf "$ipk_path" control.tar.gz | tar -xOzf - control)
-            # 计算文件大小和 SHA256
-            FILE_SIZE=$(stat -c%s "$ipk_path")
-            FILE_SHA256=$(sha256sum "$ipk_path" | awk '{print $1}')
+  #           # 提取 control 内容
+  #           CONTROL_CONTENT=$(tar -xOzf "$ipk_path" ./control.tar.gz | tar -xOzf - ./control 2>/dev/null || \
+  #                             tar -xOzf "$ipk_path" control.tar.gz | tar -xOzf - control)
+  #           # 计算文件大小和 SHA256
+  #           FILE_SIZE=$(stat -c%s "$ipk_path")
+  #           FILE_SHA256=$(sha256sum "$ipk_path" | awk '{print $1}')
             
-            # 组合写入 Packages
-            # 使用 sed 确保每个 control 段落后都有换行符，避免字段粘连
-            {
-              echo "$CONTROL_CONTENT" | sed '$a\' 
-              echo "Filename: $ipk_name"
-              echo "Size: $FILE_SIZE"
-              echo "SHA256sum: $FILE_SHA256"
-              echo "" 
-            } >> "$PACKAGES_FILE"
+  #           # 组合写入 Packages
+  #           # 使用 sed 确保每个 control 段落后都有换行符，避免字段粘连
+  #           {
+  #             echo "$CONTROL_CONTENT" | sed '$a\' 
+  #             echo "Filename: $ipk_name"
+  #             echo "Size: $FILE_SIZE"
+  #             echo "SHA256sum: $FILE_SHA256"
+  #             echo "" 
+  #           } >> "$PACKAGES_FILE"
             
-            # 写入 JSON
-            if [ "$first" = true ]; then
-              first=false
-            else
-              echo "," >> "$JSON_FILE"
-            fi
-            echo "{\"target\":\"${arch}\",\"ipk\":\"${ipk_name}\",\"sha256\":\"${FILE_SHA256}\"}" >> "$JSON_FILE"
-          done
+  #           # 写入 JSON
+  #           if [ "$first" = true ]; then
+  #             first=false
+  #           else
+  #             echo "," >> "$JSON_FILE"
+  #           fi
+  #           echo "{\"target\":\"${arch}\",\"ipk\":\"${ipk_name}\",\"sha256\":\"${FILE_SHA256}\"}" >> "$JSON_FILE"
+  #         done
           
-          echo "${{ env.VERSION }}" > version
+  #         echo "]" >> "$JSON_FILE"
 
-          echo "]" >> "$JSON_FILE"
+  #         echo "${{ env.VERSION }}" > "${{ env.ARTIFACT_DIR }}/version"
           
-          # 生成 Packages.gz
-          gzip -kf "$PACKAGES_FILE"
+  #         # 生成 Packages.gz
+  #         gzip -kf "$PACKAGES_FILE"
 
-      - name: Checkout feed branch
-        uses: actions/checkout@v4
-        with:
-          ref: feed
-          path: feed
+  #     - name: Checkout feed branch
+  #       uses: actions/checkout@v4
+  #       with:
+  #         ref: feed
+  #         path: feed
       
-      - name: Setup Usign
-        run: |
-          git clone --depth 1 https://git.openwrt.org/project/usign.git
-          cd usign && mkdir build && cd build
-          cmake .. && make -j$(nproc) && sudo make install
+  #     - name: Setup Usign
+  #       run: |
+  #         git clone --depth 1 https://git.openwrt.org/project/usign.git
+  #         cd usign && mkdir build && cd build
+  #         cmake .. && make -j$(nproc) && sudo make install
           
-      - name: Deploy to Feed Branch
-        env:
-          USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # 清理旧的 tailscale 相关文件
-          git rm -rf feed/tailscale_*.ipk feed/Packages* 2>/dev/null || true
+  #     - name: Deploy to Feed Branch
+  #       env:
+  #         USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #       run: |
+  #         # 清理旧的 tailscale 相关文件
+  #         git rm -rf feed/tailscale_*.ipk feed/Packages* 2>/dev/null || true
           
-          # 拷贝新生成的文件
-          cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk feed/
-          cp ${{ env.ARTIFACT_DIR }}/Packages feed/
-          cp ${{ env.ARTIFACT_DIR }}/Packages.gz feed/
+  #         # 拷贝新生成的文件
+  #         cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk feed/
+  #         cp ${{ env.ARTIFACT_DIR }}/Packages feed/
+  #         cp ${{ env.ARTIFACT_DIR }}/Packages.gz feed/
 
-          # 签名逻辑
-          echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
-          usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
-          rm -f key-build.sec
+  #         # 签名逻辑
+  #         echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
+  #         usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
+  #         rm -f key-build.sec
 
-          generate_tbody() {
-            echo "          <tbody>"
-            for file in feed/Packages* feed/tailscale*; do
-              [ -f "${file}" ] || continue
-              fname=$(basename "${file}")
-              fsize=$(du -h "${file}" | cut -f1)
-              fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
-              echo "                        <tr>"
-              echo "                            <td><a href=\"$fname\">$fname</a></td>"
-              echo "                            <td>$fsize</td>"
-              echo "                            <td>$fdate</td>"
-              echo "                        </tr>"
-            done
-            echo "          </tbody>"
-          }
+  #         generate_tbody() {
+  #           echo "          <tbody>"
+  #           for file in feed/Packages* feed/tailscale*; do
+  #             [ -f "${file}" ] || continue
+  #             fname=$(basename "${file}")
+  #             fsize=$(du -h "${file}" | cut -f1)
+  #             fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
+  #             echo "                        <tr>"
+  #             echo "                            <td><a href=\"$fname\">$fname</a></td>"
+  #             echo "                            <td>$fsize</td>"
+  #             echo "                            <td>$fdate</td>"
+  #             echo "                        </tr>"
+  #           done
+  #           echo "          </tbody>"
+  #         }
 
           
-          generate_tbody > feed/tbody.tmp
-          sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
-            /<!-- tbody-anchor -->/!{
-              /<!-- end-tbody-anchor -->/!d
-            }
-          }' feed/index.html
-          sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
+  #         generate_tbody > feed/tbody.tmp
+  #         sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
+  #           /<!-- tbody-anchor -->/!{
+  #             /<!-- end-tbody-anchor -->/!d
+  #           }
+  #         }' feed/index.html
+  #         sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
             
-          current_date="${{ env.BUILD_DATE }}"
-          sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
-              /<span id="date">/ {
-                  s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
-              }
-          }' feed/index.html
+  #         current_date="${{ env.BUILD_DATE }}"
+  #         sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
+  #             /<span id="date">/ {
+  #                 s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+  #             }
+  #         }' feed/index.html
 
-          version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
-          sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
-              /<span id="version">/ {
-                  s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
-              }
-          }' feed/index.html
+  #         version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
+  #         sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
+  #             /<span id="version">/ {
+  #                 s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
+  #             }
+  #         }' feed/index.html
 
-          rm -f feed/tbody.tmp
+  #         rm -f feed/tbody.tmp
 
-      - name: Commit and push to feed branch
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update feed: ${{ env.BUILD_DATE }}"
-          git push origin feed --force
-        working-directory: feed
+  #     - name: Commit and push to feed branch
+  #       run: |
+  #         git config user.name "github-actions[bot]"
+  #         git config user.email "github-actions[bot]@users.noreply.github.com"
+  #         git add -A
+  #         git diff --cached --quiet && echo "No changes" && exit 0
+  #         git commit -m "Update feed: ${{ env.BUILD_DATE }}"
+  #         git push origin feed --force
+  #       working-directory: feed
 
-      - name: Generate release markdown
-        id: generate_release_markdown
-        run: |
-          # 读取 artifacts.json 并生成简单的 markdown 表格
-          artifacts_file="${{ env.ARTIFACT_DIR }}/artifacts.json"
-          if [[ ! -f "${artifacts_file}" ]]; then
-            echo "Error: artifacts.json missing"
-            exit 1
-          fi
+  #     - name: Generate release markdown
+  #       id: generate_release_markdown
+  #       run: |
+  #         # 读取 artifacts.json 并生成简单的 markdown 表格
+  #         artifacts_file="${{ env.ARTIFACT_DIR }}/artifacts.json"
+  #         if [[ ! -f "${artifacts_file}" ]]; then
+  #           echo "Error: artifacts.json missing"
+  #           exit 1
+  #         fi
           
-          owner="${{ env.REPO_SMALL_OWNER }}"
-          repo="${{ env.REPO_SMALL_NAME }}"
-          tag="${{ env.RELEASE_TAG }}"
+  #         owner="${{ env.REPO_SMALL_OWNER }}"
+  #         repo="${{ env.REPO_SMALL_NAME }}"
+  #         tag="${{ env.RELEASE_TAG }}"
           
-          # 构建 Markdown 表格
-          table="| Target Platform / 目标平台 | IPK Package (Direct Link) |\n|:--- |:--- |"
-          rows=$(jq -r --arg owner "$owner" --arg repo "$repo" --arg tag "$tag" '
-          .[] | "| \(.target) | [\(.ipk)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk)) |"
-          ' ${artifacts_file})
-          full_table="${table}\n${rows}"
+  #         # 构建 Markdown 表格
+  #         table="| Target Platform / 目标平台 | IPK Package (Direct Link) |\n|:--- |:--- |"
+  #         rows=$(jq -r --arg owner "$owner" --arg repo "$repo" --arg tag "$tag" '
+  #         .[] | "| \(.target) | [\(.ipk)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk)) |"
+  #         ' ${artifacts_file})
+  #         full_table="${table}\n${rows}"
 
-          # 设置 Release Body
-          release_body="## Smaller Tailscale / 更小的Tailscale
+  #         # 设置 Release Body
+  #         release_body="
+  #         ## Smaller Tailscale / 更小的Tailscale  
+  #         #### Version / 版本 : ${{ env.RELEASE_TAG }}
+  #         #### Build Date / 构建日期 : ${{ env.BUILD_DATE }}
+  #         #### Upstream Changelog / 上游更新日志 : [https://tailscale.com/changelog](https://tailscale.com/changelog)
+  #         ---
 
-          **Version / 版本** : ${{ env.RELEASE_TAG }}
-          **Build Date / 构建日期** : ${{ env.BUILD_DATE }}
-          **Upstream Changelog / 上游更新日志** : [Release Notes](https://github.com/${{ env.REPO }}/releases/tag/${{ env.RELEASE_TAG }})
-          ---
+  #         #### 本项目是为 OpenWRT 构建的 Tailscale 精简版本，使用官方 SDK 编译，旨在降低存储空间占用。    
+  #         - 使用 OpenWRT 官方 SDK 编译。  
+  #         - 采用 UPX 压缩技术大幅缩小二进制体积。  
+  #         - 标准 IPK 格式，支持 opkg 直接安装。  
 
-          #### 本项目是为 OpenWRT 构建的 Tailscale 精简版本，使用官方 SDK 编译，旨在降低存储空间占用。    
-          - 使用 OpenWRT 官方 SDK 编译。  
-          - 采用 UPX 压缩技术大幅缩小二进制体积。  
-          - 标准 IPK 格式，支持 opkg 直接安装。  
+  #         #### Minimalistic Tailscale build for OpenWRT using the official SDK.  
+  #         - Compiled with official OpenWRT SDK.  
+  #         - Significant size reduction via UPX compression.  
+  #         - Standard IPK format for direct opkg installation.  
 
-          #### Minimalistic Tailscale build for OpenWRT using the official SDK.  
-          - Compiled with official OpenWRT SDK.  
-          - Significant size reduction via UPX compression.  
-          - Standard IPK format for direct opkg installation.  
+  #         #### Architecture Check / 架构查询  
+  #         Run the following command on your device to confirm target platform:  
+  #         \`\`\`bash
+  #         opkg print-architecture
+  #         \`\`\`
 
-          #### Architecture Check / 架构查询  
-          Run the following command on your device to confirm target platform:  
-          \`\`\`bash
-          opkg print-architecture
-          \`\`\`
-
-          ---
+  #         ---
         
-          #### Download Links / 下载清单
-          > [!IMPORTANT]
-          > 请根据设备架构选择对应的安装包。
-          > Please select the correct package for your device architecture.
+  #         #### Download Links / 下载清单
+  #         > [!IMPORTANT]
+  #         > 请根据设备架构选择对应的安装包。
+  #         > Please select the correct package for your device architecture.
 
-          <details open>
-          <summary>Package List / 文件列表</summary>
+  #         <details open>
+  #         <summary>Package List / 文件列表</summary>
 
-          ${full_table}
+  #         ${full_table}
 
-          </details>
-          "
+  #         </details>
+  #         "
 
-          echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          echo -e "${release_body}" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+  #         echo "release_body<<EOF" >> $GITHUB_OUTPUT
+  #         echo -e "${release_body}" >> $GITHUB_OUTPUT
+  #         echo "EOF" >> $GITHUB_OUTPUT
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          name: "Smaller ${{ env.SOFTWARE_NAME }} ${{ env.RELEASE_TAG }}"
-          body: ${{ steps.generate_release_markdown.outputs.release_body }}
-          files: |
-            ${{ env.ARTIFACT_DIR }}/*.ipk
-            ${{ env.ARTIFACT_DIR }}/Packages
-            ${{ env.ARTIFACT_DIR }}/Packages.gz
-            ${{ env.ARTIFACT_DIR }}/artifacts.json
-            ${{ env.ARTIFACT_DIR }}/version
+  #     - name: Create GitHub Release
+  #       uses: softprops/action-gh-release@v1
+  #       with:
+  #         tag_name: ${{ env.RELEASE_TAG }}
+  #         name: "Smaller ${{ env.SOFTWARE_NAME }} ${{ env.RELEASE_TAG }}"
+  #         body: ${{ steps.generate_release_markdown.outputs.release_body }}
+  #         files: |
+  #           ${{ env.ARTIFACT_DIR }}/*.ipk
+  #           ${{ env.ARTIFACT_DIR }}/Packages
+  #           ${{ env.ARTIFACT_DIR }}/Packages.gz
+  #           ${{ env.ARTIFACT_DIR }}/artifacts.json
+  #           ${{ env.ARTIFACT_DIR }}/version
 
-      - name: Sync to small repo
-        uses: actions/github-script@v6
-        with:
-          script: |
-            await github.rest.git.createTag({
-              owner: '${{ env.REPO_SMALL_OWNER }}',
-              repo: '${{ env.REPO_SMALL_NAME }}',
-              tag: '${{ env.RELEASE_TAG }}',
-              message: 'Release ${{ env.RELEASE_TAG }}',
-              object: '${{ github.sha }}',
-              type: 'commit'
-            })
+  #     - name: Sync to small repo
+  #       uses: actions/github-script@v6
+  #       with:
+  #         script: |
+  #           await github.rest.git.createTag({
+  #             owner: '${{ env.REPO_SMALL_OWNER }}',
+  #             repo: '${{ env.REPO_SMALL_NAME }}',
+  #             tag: '${{ env.RELEASE_TAG }}',
+  #             message: 'Release ${{ env.RELEASE_TAG }}',
+  #             object: '${{ github.sha }}',
+  #             type: 'commit'
+  #           })
