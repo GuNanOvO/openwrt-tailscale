@@ -363,31 +363,26 @@ jobs:
           USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 检出完整的 feed 分支
-          git clone --single-branch --branch feed https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git feed_repo
-          cd feed_repo
-
           # 清理旧的 tailscale 相关文件
-          git rm -rf tailscale_*.ipk Packages* 2>/dev/null || true
+          git rm -rf feed/tailscale_*.ipk feed/Packages* 2>/dev/null || true
           
           # 拷贝新生成的文件
-          cp ../${{ env.ARTIFACT_DIR }}/tailscale_*.ipk .
-          cp ../${{ env.ARTIFACT_DIR }}/Packages .
-          cp ../${{ env.ARTIFACT_DIR }}/Packages.gz .
+          cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk feed/
+          cp ${{ env.ARTIFACT_DIR }}/Packages feed/
+          cp ${{ env.ARTIFACT_DIR }}/Packages.gz feed/
 
           # 签名逻辑
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
-          usign -S -m Packages -s key-build.sec -x Packages.sig
+          usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
           rm -f key-build.sec
 
-          # 生成 HTML 表格 (tbody)
           generate_tbody() {
             echo "          <tbody>"
-            for file in Packages* tailscale_*; do
+            for file in feed/Packages* feed/tailscale*; do
               [ -f "${file}" ] || continue
               fname=$(basename "${file}")
               fsize=$(du -h "${file}" | cut -f1)
-              fdate=$(date -u -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
+              fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
               echo "                        <tr>"
               echo "                            <td><a href=\"$fname\">$fname</a></td>"
               echo "                            <td>$fsize</td>"
@@ -397,37 +392,40 @@ jobs:
             echo "          </tbody>"
           }
 
-          # 更新 index.html (保留原分支的其他 HTML 内容)
-          if [ -f "index.html" ]; then
-            generate_tbody > tbody.tmp
-            # 替换表格
-            sed -i '//,// {
-              //!{
-                //!d
-              }
-            }' index.html
-            sed -i '//r tbody.tmp' index.html
+          
+          generate_tbody > feed/tbody.tmp
+          sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
+            /<!-- tbody-anchor -->/!{
+              /<!-- end-tbody-anchor -->/!d
+            }
+          }' feed/index.html
+          sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
             
-            # 替换日期和版本
-            current_date="${{ env.BUILD_DATE }}"
-            version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
-            sed -i "s|<span id=\"date\">.*</span>|<span id=\"date\">${current_date}</span>|g" index.html
-            sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${version}</span>|g" index.html
-            rm -f tbody.tmp
-          fi
+          current_date="${{ env.BUILD_DATE }}"
+          sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
+              /<span id="date">/ {
+                  s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+              }
+          }' feed/index.html
 
-          # 提交并推送
+          version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
+          sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
+              /<span id="version">/ {
+                  s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
+              }
+          }' feed/index.html
+
+          rm -f feed/tbody.tmp
+
+      - name: Commit and push to feed branch
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
-          
-          # 检查是否有变化
-          if git diff --cached --quiet; then
-            echo "No changes to commit"
-          else
-            git commit -m "Update feed: ${{ env.BUILD_DATE }}"
-            git push origin feed --force
-          fi
+          git add -A
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Update feed: ${{ env.BUILD_DATE }}"
+          git push origin feed --force
+        working-directory: feed
 
       - name: Generate release markdown
         id: generate_release_markdown
