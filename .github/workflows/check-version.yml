@@ -220,7 +220,7 @@ jobs:
 
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/" Makefile
           sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" Makefile
-          sed -i "s/PKG_RELEASE:=.*/PKG_RELEASE:=1/" Makefile
+          sed -i "s/PKG_COMMIT:=.*/PKG_COMMIT:=$NEW_COMMIT/" Makefile
 
       - name: Commit and push changes
         run: |
