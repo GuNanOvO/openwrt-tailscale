@@ -1,4 +1,4 @@
-name: Daily Tailscale GHCR Check
+name: Daily Tailscale Version Check
 
 permissions:
   contents: read
