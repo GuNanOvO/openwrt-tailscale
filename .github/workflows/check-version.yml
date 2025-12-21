@@ -210,10 +210,11 @@ jobs:
       - name: Update Makefile with new version and hash
         id: update_makefile
         run: |
-          NEW_VER="${{ steps.get_commit.outputs.version }}"
+          RAW_VER="${{ steps.get_commit.outputs.version }}"
+          NEW_VER=$(echo "$RAW_VER" | sed 's/^v//')
           NEW_COMMIT="${{ steps.get_commit.outputs.commit }}"
           
-          SOURCE_URL="https://codeload.github.com/tailscale/tailscale/tar.gz/${NEW_VER}?"
+          SOURCE_URL="https://codeload.github.com/tailscale/tailscale/tar.gz/v${NEW_VER}?"
           echo "Downloading from $SOURCE_URL to calculate hash..."
           NEW_HASH=$(curl -L "$SOURCE_URL" | sha256sum | awk '{print $1}')
           echo "New Hash: $NEW_HASH"
