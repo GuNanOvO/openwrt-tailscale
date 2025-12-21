@@ -207,15 +207,27 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Commit and push new version file
-        id: push_new_version
+      - name: Update Makefile with new version and hash
+        id: update_makefile
         run: |
-          echo "UPSTREAM_COMMIT: ${{ steps.get_commit.outputs.commit }}" > version
-          echo "VERSION: ${{ steps.get_commit.outputs.version}}" >> version
-          git config --local user.name "action@github.com"
-          git config --local user.email "GitHub Action"
-          git add version
-          git commit -m "chore: update version to ${{ steps.get_commit.outputs.commit }} [CI-BUILD-NEW-VERSION]" || true
+          NEW_VER="${{ steps.get_commit.outputs.version }}"
+          NEW_COMMIT="${{ steps.get_commit.outputs.commit }}"
+          
+          SOURCE_URL="https://codeload.github.com/tailscale/tailscale/tar.gz/v${NEW_VER}?"
+          echo "Downloading from $SOURCE_URL to calculate hash..."
+          NEW_HASH=$(curl -L "$SOURCE_URL" | sha256sum | awk '{print $1}')
+          echo "New Hash: $NEW_HASH"
+
+          sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/" Makefile
+          sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" Makefile
+          sed -i "s/PKG_COMMIT:=.*/PKG_COMMIT:=$NEW_COMMIT/" Makefile
+
+      - name: Commit and push changes
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git add Makefile
+          git commit -m "chore: update tailscale to ${{ steps.get_commit.outputs.version}} (${{ steps.get_commit.outputs.commit }})" || true
           git push origin main
 
       - name: Trigger build workflow

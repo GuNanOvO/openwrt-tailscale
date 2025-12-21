@@ -8,16 +8,8 @@ OPENWRT_TAILSCALE_REPO_URL="https://github.com/GuNanOvO/openwrt-tailscale"
 OPENWRT_TAILSCALE_REPO="gunanovo/openwrt-tailscale"
 
 # Basic Configuration
-TAILSCALE_URL="${OPENWRT_TAILSCALE_REPO}/releases/latest"
-URL_PROXYS="https://ghfast.top/https://github.com
-https://cf.ghproxy.cc/https://github.com
-https://www.ghproxy.cc/https://github.com
-https://gh-proxy.com/https://github.com
-https://ghproxy.cc/https://github.com
-https://ghproxy.cn/https://github.com
-https://www.ghproxy.cn/https://github.com
-https://github.com"
-INIT_URL="/${OPENWRT_TAILSCALE_REPO}/blob/main/etc/init.d/tailscale"
+TAILSCALE_URL="${OPENWRT_TAILSCALE_REPO_URL}/releases/latest"
+INIT_URL="https://raw.githubusercontent.com/${OPENWRT_TAILSCALE_REPO}/refs/heads/main/etc/init.d/tailscale"
 MOUNT_POINT="/"
 PACKAGES_TO_CHECK="libc kmod-tun ca-bundle"
 # tmp tailscale
@@ -48,7 +40,6 @@ TMP_NORMAL_TAILSCALED='#!/bin/sh
                 fi'
 
 NO_TINY="false"
-USE_CUSTOM_PROXY="false"
 
 tailscale_latest_version=""
 
@@ -67,7 +58,7 @@ tailscale_persistent_installable=""
 
 show_init_progress_bar="true"
 
-# Function: show script information
+# Function: Show script information
 script_info() {
     echo "#╔╦╗┌─┐ ┬ ┬  ┌─┐┌─┐┌─┐┬  ┌─┐  ┌─┐┌┐┌  ╔═╗┌─┐┌─┐┌┐┌ ╦ ╦ ┬─┐┌┬┐  ╦ ┌┐┌┌─┐┌┬┐┌─┐┬  ┬  ┌─┐┬─┐#"
     echo "# ║ ├─┤ │ │  └─┐│  ├─┤│  ├┤   │ ││││  ║ ║├─┘├┤ │││ ║║║ ├┬┘ │   ║ │││└─┐ │ ├─┤│  │  ├┤ ├┬┘#"
@@ -79,15 +70,6 @@ script_info() {
     echo "│ Update Date: "$SCRIPT_DATE"                                                                │"
     echo "│ Thanks for using! If helpful, please give us a star /<3                                │"
     echo "└────────────────────────────────────────────────────────────────────────────────────────┘"
-}
-
-# Function: Set DNS
-set_system_dns() {
-cat <<EOF > /etc/resolv.conf
-search lan
-nameserver 223.5.5.5
-nameserver 119.29.29.29
-EOF
 }
 
 # Function: Get system architecture
@@ -180,39 +162,16 @@ get_free_space() {
 
 # Function: Get Tailscale info
 get_tailscale_info() {
-    attempt_range="1 2 3"
-    attempt_timeout=10
     
     if [ "$NO_TINY" == "true" ]; then
         TAILSCALE_FILE="tailscaled-linux-${arch}-normal"
     else
         TAILSCALE_FILE="tailscaled-linux-${arch}"
     fi
+    attempt_url="$TAILSCALE_URL/download/build-info.txt"
+    tailscale_latest_version=$(wget -qO- "$attempt_url" | grep "Version: " | awk '{print $2}')
+    file_size=$(wget -qO- "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
 
-    if [ "$USE_CUSTOM_PROXY" == "true" ]; then
-        attempt_url="$available_proxy/$TAILSCALE_URL/download/build-info.txt"
-        tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-        file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
-
-        if [ -z "$tailscale_latest_version" ] && [ -z "$file_size" ]; then
-            echo ""
-            echo "Your custom proxy is unavailable. Exiting..."
-            exit 1
-        fi
-    else
-        for attempt_times in $attempt_range; do
-            for attempt_proxy in $URL_PROXYS; do
-                attempt_url="$attempt_proxy/$TAILSCALE_URL/download/build-info.txt"
-                tailscale_latest_version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "Version: " | awk '{print $2}')
-                file_size=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | grep "$TAILSCALE_FILE " | awk '{print $2}')
-
-                if [ -n "$tailscale_latest_version" ] && [ -n "$file_size" ]; then
-                    available_proxy="$attempt_proxy"
-                    break 2
-                fi
-            done
-        done
-    fi
     
     if [ -z "$file_size" ] || ! [[ "$file_size" =~ ^[0-9]+$ ]]; then
         echo "Error: Failed to get Tailscale size"
@@ -349,7 +308,7 @@ remove_unknown_file() {
             done
 
             ip link delete tailscale0
-            
+
             echo "All residual files removed, restarting script..."
             sleep 2
             exec "$0" "$@"
@@ -380,14 +339,14 @@ persistent_install() {
         fi
     fi
     echo ""
-    echo "Persistent installing..." 
+    echo "Persistent installing..."
     downloader
     mv -f /tmp/tailscaled /usr/bin
     ln -sv /usr/bin/tailscaled /usr/bin/tailscale
     echo "Persistent installation complete!"
     tailscale_starter
     echo "Reinitializing the script, please wait..."
-    init "" "false"
+    init
 }
 
 # Function: Switch Temp to Persistent
@@ -435,7 +394,7 @@ temp_install() {
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
             return
         fi
-    fi
+    fi 
     echo ""
     echo "Temporary installing..."
     downloader
@@ -450,7 +409,7 @@ temp_install() {
     echo "Temporary installation complete!"
     tailscale_starter
     echo "Reinitializing the script, please wait..."
-    init "" "false"
+    init
 }
 
 # Function: Switch Persistent to Temp
@@ -490,17 +449,17 @@ downloader() {
     SHA_FILE="$TMP_DIR/$TAILSCALE_FILE.sha256"
 
     for attempt_times in $attempt_range; do
-        wget -cO "$FILE_PATH" "$available_proxy/$TAILSCALE_URL/download/$TAILSCALE_FILE" || continue
+        wget -cO "$FILE_PATH" "$TAILSCALE_URL/download/$TAILSCALE_FILE" || continue
 
-        wget -cO "$TMP_DIR/checksums.txt" "$available_proxy/$TAILSCALE_URL/download/checksums.txt" || continue
+        wget -cO "$TMP_DIR/checksums.txt" "$TAILSCALE_URL/download/checksums.txt" || continue
 
         grep -E "  ${TAILSCALE_FILE}\$" "$TMP_DIR/checksums.txt" \
             | sed "s|  ${TAILSCALE_FILE}\$|  $FILE_PATH|" \
             > "$SHA_FILE"
 
         if ! sha256sum -c "$SHA_FILE"; then
-            if [ "$attempt_times" == "3" ]; then
-                echo "Tailscale file failed to verify three times. The script will restart soon. Please try again!"
+            if [ "$attempt_times" = "3" ]; then
+                echo "Tailscale file failed to verify three times. Restarting script..."
                 init
             else
                 echo "Verification failed, retrying download..."
@@ -513,7 +472,8 @@ downloader() {
         fi
     done
 
-    wget -cO /etc/init.d/tailscale "$available_proxy/$INIT_URL"
+
+    wget -cO /etc/init.d/tailscale "$INIT_URL"
 }
 
 # Function: Start Tailscale
@@ -577,7 +537,6 @@ tailscale_stoper() {
 # Function: Initialize
 init() {
     show_init_progress_bar=$1
-    change_dns=$2
 
     local functions="get_system_arch check_tailscale_install_status get_free_space get_tailscale_info"
     local function_count=4
@@ -585,19 +544,7 @@ init() {
     local progress=0
     
     if [ "$show_init_progress_bar" != "false" ]; then
-
-        if [ "$change_dns" != "false" ]; then
-            read -n 1 -p "Would you like to change the system DNS to (223.5.5.5,119.29.29.29) to improve resolution speed? (y/N): " dns_choice
-            if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
-                echo ""
-                set_system_dns
-                echo "System DNS changed"
-            fi
-        fi
-
-        echo ""
-
-        printf "\rInitializing: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
+        printf "\rInitializing: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$progress"))" "$((progress * 100 / function_count))"
         
         for function in $functions; do
             eval "$function"
@@ -607,7 +554,7 @@ init() {
             printf "\rInitializing: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
         done
     
-        printf "\r    Done    : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$bars"))" "$percent"
+        printf "\r    Done    : [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
     else
         for function in $functions; do
             eval "$function"
@@ -636,9 +583,9 @@ show_info() {
     if [ "$is_tailscale_installed" = "true" ]; then
         echo "   Tailscale Status: Installed"
         if [ "$tailscale_install_status" = "temp" ]; then
-        echo "   Install Mode: Temporary"
+            echo "   Install Mode: Temporary"
         elif [ "$tailscale_install_status" = "persistent" ]; then
-        echo "   Install Mode: Persistent"
+            echo "   Install Mode: Persistent"
         fi
         echo "   Tailscale Version: $tailscale_version"
     else 
@@ -666,12 +613,6 @@ show_info() {
         echo "   Device memory is too low, which may cause Tailscale to malfunction"
     elif [ "$free_mem" -lt 120 ]; then
         echo "   Device memory is relatively low, which may cause Tailscale to run slowly"
-    fi
-
-    if [ "$USE_CUSTOM_PROXY" = "true" ]; then
-        echo "   Using GitHub Custom Proxy: $available_proxy"
-    else
-        echo "   Using GitHub Proxy: $available_proxy"
     fi
 
     if [ "$is_tailscale_installed" = "true" ]; then
@@ -777,7 +718,6 @@ show_help() {
     echo "  Usage:   "
     echo "      --help: Show this help"
     echo "      --notiny: Use uncompressed version "
-    echo "      --custom-proxy: Custom github proxy"
 }
 
 # Handle arguments
@@ -790,32 +730,6 @@ for arg in "$@"; do
     --tempinstall)
         TMP_INSTALL="true"
         ;;
-    --custom-proxy)
-        while true; do
-            echo "╔═══════════════════════════════════════════════════════╗"
-            echo "║ WARNING!!! Please confirm:                            ║"
-            echo "║                                                       ║"
-            echo "║ You're setting a custom GitHub proxy. Ensure it's     ║"
-            echo "║ valid. Format should be:                              ║"
-            echo "║ https://example.com                                   ║"
-            echo "║                                                       ║"
-            echo "║ Submit working proxies via:                          ║"
-            echo "║ "$OPENWRT_TAILSCALE_REPO_URL"/issues  ║"
-            echo "╚═══════════════════════════════════════════════════════╝"
-            read -p "Enter your proxy: " custom_proxy
-            while true; do
-                echo "Your proxy: $custom_proxy"
-                read -n 1 -p "Confirm? (y/N): " choise
-                if [ "$choise" == "y" ] || [ "$choise" == "Y" ]; then
-                    USE_CUSTOM_PROXY="true"
-                    available_proxy="$custom_proxy/https://github.com/"
-                    break 2
-                else
-                    break
-                fi 
-            done
-        done
-        ;;
     --notiny)
         NO_TINY="true"
         ;;
@@ -827,6 +741,7 @@ for arg in "$@"; do
 done
 
 # Main Program
+
 main() {
     clear
     script_info
@@ -838,7 +753,6 @@ main() {
 }
 
 if [ "$TMP_INSTALL" = "true" ]; then
-    set_system_dns
     get_system_arch 
     get_tailscale_info
     update

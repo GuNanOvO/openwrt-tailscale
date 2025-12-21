@@ -21,386 +21,331 @@ env:
 
 jobs:
   build:
-    name: Build for ${{ matrix.platform.id }}
+    name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
-    outputs: 
-      upstream_commit: ${{ steps.read_commit.outputs.upstream_commit }}
-      version_tag: ${{ steps.read_commit.outputs.version_tag }}
+    outputs:
+      version: ${{ env.PKG_VERSION }}
     strategy:
       matrix:
-        platform: [
-          {
-            id: 'arm',
-            goarch: 'arm',
-            openwrt_targets: 
-              [
-              'arm_arm1176jzf-s_vfp',
-              'arm_arm926ej-s',
-              'arm_cortex-a15_neon-vfpv4',
-              'arm_cortex-a5_vfpv4',
-              'arm_cortex-a7',
-              'arm_cortex-a7_neon-vfpv4',
-              'arm_cortex-a7_vfpv4',
-              'arm_cortex-a8_vfpv3',
-              'arm_cortex-a9',
-              'arm_cortex-a9_neon',
-              'arm_cortex-a9_vfpv3-d16',
-              'arm_fa526',
-              'arm_xscale',
-              'arm_mpcore'
-            ]
-          },
-          {
-            id: 'arm64',
-            goarch: 'arm64',
-            openwrt_targets: [
-              'aarch64_cortex-a53',
-              'aarch64_cortex-a72',
-              'aarch64_cortex-a76',
-              'aarch64_generic'
-            ]
-          },
-          {
-            id: 'mips',
-            goarch: 'mips',
-            gomips: 'softfloat',
-            openwrt_targets: [
-              'mips_24kc',
-              'mips_4kec',
-              'mips_mips32'
-            ]
-          },
-          {
-            id: 'mipsle',
-            goarch: 'mipsle',
-            gomips: 'softfloat',
-            openwrt_targets: [
-              'mipsel_24kc',
-              'mipsel_24kc_24kf',
-              'mipsel_74kc',
-              'mipsel_mips32'
-            ]
-          },
-          {
-            id: 'mips64',
-            goarch: 'mips64',
-            gomips: 'softfloat',
-            openwrt_targets: [
-              'mips64_mips64r2',
-              'mips64_octeonplus'
-            ]
-          },
-          {
-            id: 'mips64le',
-            goarch: 'mips64le',
-            gomips: 'softfloat',
-            openwrt_targets: [
-              'mips64el_mips64r2'
-            ]
-          },
-          {
-            id: '386',
-            goarch: '386',
-            openwrt_targets: [
-              'i386_pentium-mmx',
-              'i386_pentium4'
-            ]
-          },
-          {
-            id: 'amd64',
-            goarch: 'amd64',
-            cgo_enabled: '1',
-            cc: 'musl-gcc',
-            setup: 'sudo apt-get update && sudo apt-get install -y musl-tools',
-            openwrt_targets: [
-              'x86_64'
-            ]
-          },
-          {
-            id: 'geode',
-            goarch: '386',
-            go386: 'softfloat',
-            openwrt_targets: [
-              'i386_pentium-mmx',
-              'i386_pentium4'
-            ]
-          }
-        ]
-
-      fail-fast: false
+        sdk:
+          - 24.10.4
+        platform:
+          - 'aarch64_cortex-a53'
+          - 'aarch64_cortex-a72'
+          - 'aarch64_cortex-a76'
+          - 'aarch64_generic'
+          - 'arm_arm1176jzf-s_vfp'
+          - 'arm_arm926ej-s'
+          - 'arm_cortex-a15_neon-vfpv4'
+          - 'arm_cortex-a5_vfpv4'
+          - 'arm_cortex-a7'
+          - 'arm_cortex-a7_neon-vfpv4'
+          - 'arm_cortex-a7_vfpv4'
+          - 'arm_cortex-a8_vfpv3'
+          - 'arm_cortex-a9'
+          - 'arm_cortex-a9_neon'
+          - 'arm_cortex-a9_vfpv3-d16'
+          - 'arm_fa526'
+          - 'arm_xscale'
+          - 'i386_pentium-mmx'
+          - 'i386_pentium4'
+          - 'loongarch64_generic'
+          - 'mips64_mips64r2'
+          - 'mips64_octeonplus'
+          - 'mips64el_mips64r2'
+          - 'mips_24kc'
+          - 'mips_4kec'
+          - 'mips_mips32'
+          - 'mipsel_24kc'
+          - 'mipsel_24kc_24kf'
+          - 'mipsel_74kc'
+          - 'mipsel_mips32'
+          - 'riscv64_riscv64'
+          - 'x86_64'
+      fail-fast: true
 
     steps:
-      - name: Checkout repository
+
+      - name: Set build timestamp
+        run: |
+          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
+
+      - name: Checkout repository (develop branch)
         uses: actions/checkout@v4
         with:
           ref: main
-          path: main
+          path: repo
 
-
-      - name: Read commit from version file
-        id: read_commit
-        working-directory: main
+      - name: Prepare package
         run: |
-          upstream_commit="$(grep '^UPSTREAM_COMMIT:' version | awk '{print $2}')"
-          version="$(grep '^VERSION:' version | awk '{print $2}')"
-          echo "upstream_commit=$upstream_commit" >> $GITHUB_OUTPUT
-          echo "version_tag=$version" >>$GITHUB_OUTPUT
-
-
-      - name: Checkout source at specific commit
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.REPO }} 
-          ref: ${{ steps.read_commit.outputs.upstream_commit }}
-          path: src
-
-      - name: Checkout packaging files
-        uses: actions/checkout@v4
-        with:
-          path: packaging
-
-      - name: Setup build environment
-        run: |
-          ${{ matrix.platform.setup || 'echo "No additional setup required"' }}
+          VERSION=$(sed -n 's/^PKG_VERSION:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
+          RELEASE=$(sed -n 's/^PKG_COMMIT:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
           
-      - name: Setup Go
-        uses: actions/setup-go@v5
+          echo "PKG_VERSION=$VERSION" >> $GITHUB_ENV
+          echo "PKG_COMMIT=$RELEASE" >> $GITHUB_ENV
+          
+          mkdir tailscale
+          cp -r repo/package/tailscale/. tailscale/
+          
+          echo "Parsed version: $VERSION"
+          echo "Parsed release: $RELEASE"
+
+      # UPX 
+
+      - name: Check UPX Latest Version
+        id: check_upx
+        run: |
+          UPX_TAG=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          UPX_VER="${UPX_TAG#v}"
+          echo "latest_tag=$UPX_TAG" >> $GITHUB_OUTPUT
+          echo "latest_ver=$UPX_VER" >> $GITHUB_OUTPUT
+          echo "Detected UPX Version: $UPX_TAG"
+
+      - name: Cache UPX
+        id: cache-upx
+        uses: actions/cache@v4
         with:
-          go-version: stable
-          cache: true
-          cache-dependency-path: src/go.sum
+          path: upx
+          key: upx-linux-amd64-${{ steps.check_upx.outputs.latest_tag }}
 
-      - name: Setup UPX
-        uses: crazy-max/ghaction-upx@v2
-        with:
-          version: latest
-
-      - name: Setup opkg-utils from Yocto
-        run: git clone --depth 1 git://git.yoctoproject.org/opkg-utils || echo "Clone failed"
-
-      - name: Build binary
-        working-directory: ./src
+      - name: Prepare UPX
+        if: steps.cache-upx.outputs.cache-hit != 'true'
         env:
-          GOOS: linux
-          GOARCH: ${{ matrix.platform.goarch }}
-          GOMIPS: ${{ matrix.platform.gomips || '' }}
-          GO386: ${{ matrix.platform.go386 || '' }}
-          CGO_ENABLED: ${{ matrix.platform.cgo_enabled || 0 }}
-          CC: ${{ matrix.platform.cc || '' }}
+          UPX_TAG: ${{ steps.check_upx.outputs.latest_tag }}
+          UPX_VER: ${{ steps.check_upx.outputs.latest_ver }}
         run: |
-          output_name="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
+          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_TAG}/upx-${UPX_VER}-amd64_linux.tar.xz"
+          mkdir -p upx
+          curl -L -o upx.tar.xz "$UPX_URL"
+          tar -xf upx.tar.xz -C upx --strip-components=1
+          chmod +x upx/upx
+
+      - name: Verify UPX
+        run: |
+          ./upx/upx --version
+          echo "UPX_BIN_PATH=$(pwd)/upx" >> $GITHUB_ENV
+      
+      # GO
+
+      - name: Check Go Latest Version
+        id: check_go
+        run: |
+          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+          echo "latest_version=$GO_VERSION" >> $GITHUB_OUTPUT
+          echo "Detected Go Version: $GO_VERSION"
+
+      - name: Cache Go
+        id: cache-go
+        uses: actions/cache@v4
+        with:
+          path: go
+          key: go-linux-amd64-${{ steps.check_go.outputs.latest_version }}
+
+      - name: Prepare Go
+        if: steps.cache-go.outputs.cache-hit != 'true'
+        env:
+          GO_VERSION: ${{ steps.check_go.outputs.latest_version }}
+          GO_ARCH: amd64
+          GO_OS: linux
+        run: |
+          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+          mkdir -p go
+          curl -L -o go.tar.gz "$GO_URL"
+          tar -C go -xzf go.tar.gz --strip-components=1
+          rm go.tar.gz
+
+      - name: Verify Go
+        run: |
+          ./go/bin/go version
+          echo "GO_BIN_PATH=$(pwd)/go" >> $GITHUB_ENV
+
+      - name: Pull OpenWRT SDK Docker image
+        run: |
+          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ matrix.sdk }}
+
+      # BUILD
+
+      - name: Prepare build
+        run: |
+          mkdir -p bin
+          mkdir -p "${{ env.ARTIFACT_DIR }}"
+          chmod -R 777 bin || true
+          ls -la
+
+      - name: Build with OpenWRT SDK Docker
+        run: |
+          cat > build_script.sh << 'BUILD_SCRIPT_END'
+          #!/bin/bash
+          set -e
+          cd /builder
           
-          go="go"
-          if [ -n "${TS_USE_TOOLCHAIN:-}" ]; then
-            go="./tool/go"
+          ./scripts/feeds update packages > /dev/null
+          ./scripts/feeds install golang > /dev/null
+          
+          mkdir -p /builder/package/lang
+          # ln -sf /builder/feeds/packages/lang/golang /builder/package/lang/golang
+          
+          rm -rf /builder/package/tailscale
+          mkdir -p /builder/package/tailscale
+          cp -r /builder/tailscale/. /builder/package/tailscale/
+          
+          make defconfig > /dev/null 2>&1
+
+          [ -f /builder/go/bin/go ] || { echo "Error: Go binary missing"; exit 1; }
+          
+          mkdir -p /builder/staging_dir/hostpkg/bin
+          ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/bin/go
+          ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/bin/gofmt
+          
+          if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
+            ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go
+          fi
+          
+          echo "Using $(/builder/go/bin/go version)"
+          
+          make package/tailscale/compile V=s
+          
+          IPKS=$(find bin/packages bin/targets -name "tailscale_*.ipk" -type f)
+          if [ -n "$IPKS" ]; then
+            echo "Build Success:"
+            ls -lh $IPKS
+          else
+            echo "Error: No IPK found" && exit 1
+          fi
+          BUILD_SCRIPT_END
+          
+          docker run --rm \
+            -v "$(pwd)/bin:/builder/bin:z" \
+            -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
+            -v "${{ env.UPX_BIN_PATH }}:/builder/upx:ro,z" \
+            -v "${{ env.GO_BIN_PATH }}:/builder/go:ro,z" \
+            -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
+            -e TERM=xterm \
+            -e FORCE=1 \
+            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ matrix.sdk }} \
+            bash /build_script.sh
+
+      # UPLOAD
+
+      - name: Collect build artifacts
+        shell: bash
+        run: |
+          mkdir -p "${{ env.ARTIFACT_DIR }}"
+
+          echo "Searching for IPK for platform: ${{ matrix.platform }}..."
+          
+          if [ -d "bin/packages/${{ matrix.platform }}" ]; then
+            mapfile -t ipk_files < <(find "bin/packages/${{ matrix.platform }}" -name "tailscale_*.ipk" -type f)
+          else
+            mapfile -t ipk_files < <(find bin -name "tailscale_*.ipk" -type f)
           fi
 
-          eval `CGO_ENABLED=0 GOOS=$($go env GOHOSTOS) GOARCH=$($go env GOHOSTARCH) $go run ./cmd/mkversion`
-
-          if [ "$#" -ge 1 ] && [ "$1" = "shellvars" ]; then
-            cat <<EOF
-          VERSION_MINOR="$VERSION_MINOR"
-          VERSION_SHORT="$VERSION_SHORT"
-          VERSION_LONG="$VERSION_LONG"
-          VERSION_GIT_HASH="$VERSION_GIT_HASH"
-          EOF
-            exit 0
-          fi
-
-          tags="ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_tap,ts_omit_kube,ts_omit_completion,ts_omit_ssh,ts_omit_wakeonlan,ts_omit_capture,ts_omit_relayserver,ts_omit_systray,ts_omit_taildrop,ts_omit_tpm,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient"
-          ldflags="-X tailscale.com/version.longStamp=${VERSION_LONG} -X tailscale.com/version.shortStamp=${VERSION_SHORT} -s -w"
-
-          mkdir -p ../build
-          exec $go build \
-            -tags "${tags}" \
-            -ldflags "${ldflags}" \
-            -trimpath \
-            -o "../build/${output_name}" \
-            ./cmd/${{ env.FILE_NAME }}
-          
-          # Verify the binary was created
-          if [ ! -f "../build/${output_name}" ]; then
-            echo "::error::Build failed for ${{ matrix.platform.id }}"
+          if [ ${#ipk_files[@]} -eq 0 ]; then
+            echo "::error::No IPK files found for ${{ matrix.platform }}!"
             exit 1
           fi
 
-      - name: Process binary
-        run: |
-          # Process binary
-          mkdir -p compressed "${{ env.ARTIFACT_DIR }}"
-          filename="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
-          file="build/${filename}"
-          chmod -v +x "${file}"
-          # Create uncompressed copy
-          cp -p "${file}" "compressed/${filename}-normal"
-          cp -p "${file}" "${{ env.ARTIFACT_DIR }}/${filename}-normal"
-          # Skip unsupported platforms
-          if [[ "${filename}" =~ (mips64|mips64le) ]]; then
-            echo "Skipping UPX for ${filename}"
-          else
-            # Compress with UPX
-            upx --lzma --best --no-progress "${file}" -o "compressed/${filename}"
-            cp -p "compressed/${filename}" "${{ env.ARTIFACT_DIR }}/${filename}"
+          source_ipk=$(ls -t "${ipk_files[@]}" | head -n 1)
+          
+          target_ipk="${{ env.ARTIFACT_DIR }}/tailscale_${{ env.PKG_VERSION }}_${{ matrix.platform }}.ipk"
+
+          echo "Found IPK: $source_ipk"
+          echo "Collecting to: $target_ipk"
+          
+          cp -v "$source_ipk" "$target_ipk"
+
+          if [ ! -s "$target_ipk" ]; then
+            echo "::error::Artifact collection failed: $target_ipk is missing or empty!"
+            exit 1
           fi
 
-      - name: Package IPK
-        run: |
-          EPOCH=$(date +%s)
-          mkdir -p ipk/usr/bin ipk/etc ipk/lib ipk/CONTROL
-          for bin in compressed/${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}*; do
-            basebin=$(basename "${bin}")
-
-            if [[ "${basebin}" =~ -normal$ ]]; then
-              normal_bin="${basebin}"
-            else
-              compressed_bin="${basebin}"
-            fi
-
-            install -m 0755 "${bin}" ipk/usr/bin/tailscaled
-            ln -svf tailscaled ipk/usr/bin/tailscale || true
-            SIZE=$(du -sb ipk/usr/bin | awk '{print $1}')
-
-            cp -a packaging/etc/* ipk/etc/
-            cp -a packaging/lib/* ipk/lib/
-            cp -a packaging/CONTROL/* ipk/CONTROL/
-
-            chmod +x ipk/etc/init.d/tailscale || true
-            echo '2.0' > debian-binary
-
-            targets_json='${{ toJson(matrix.platform.openwrt_targets) }}'
-            targets=$(echo "${targets_json}" | jq -r '.[]')
-
-            for target in ${targets}; do
-              ARCH=${target}
-              VERSION=$(echo "${{ steps.read_commit.outputs.version_tag }}" | sed 's/^v//')
-
-              if [[ -z "$compressed_bin" ]]; then
-                ipk_compressed="tailscale_${VERSION}_${ARCH}_normal.ipk"
-              else
-                ipk_compressed="tailscale_${VERSION}_${ARCH}.ipk"
-              fi
-              ipk_normal="tailscale_${VERSION}_${ARCH}_normal.ipk"
-
-              sed -e "s/__VERSION__/${VERSION}/" \
-                  -e "s/__ARCH__/${ARCH}/" \
-                  -e "s/__SIZE__/${SIZE}/" \
-                  -e "s/__EPOCH__/${EPOCH}/" \
-                  packaging/CONTROL/control > ipk/CONTROL/control
-
-              VERSION=${{ steps.read_commit.outputs.version_tag }}
-              tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf control.tar.gz -C ipk/CONTROL .
-              tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf data.tar.gz -C ipk ./usr ./etc ./lib
-              if [[ "${bin}" =~ (normal) ]]; then
-                tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf ${{ env.ARTIFACT_DIR }}/tailscale_${VERSION}_${ARCH}_normal.ipk ./control.tar.gz ./data.tar.gz ./debian-binary
-                echo "Created IPK: tailscale_${VERSION}_${ARCH}_normal.ipk"
-              else
-                tar --format=gnu --numeric-owner --group=0 --owner=0 -cvzf ${{ env.ARTIFACT_DIR }}/tailscale_${VERSION}_${ARCH}.ipk ./control.tar.gz ./data.tar.gz ./debian-binary
-                echo "Created IPK: tailscale_${VERSION}_${ARCH}.ipk"
-              fi
-
-              rm -f control.tar.gz data.tar.gz
-
-            done
-            rm -f ipk/usr/bin/*
-
-          done
-          
-          targets_json='${{ toJson(matrix.platform.openwrt_targets) }}'
-          targets=$(echo "${targets_json}" | jq -r '.[]')
-
-          : > ${{ env.ARTIFACT_DIR }}/artifacts.json.tmp
-
-          mkdir -p feed
-
-          for target in ${targets}; do
-            ARCH=${target}
-            VERSION=${{ steps.read_commit.outputs.version_tag }}
-
-            if [[ "${{ matrix.platform.id }}" =~ ^mips64 ]]; then
-              binary_compressed="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}-normal"
-              ipk_compressed="tailscale_${VERSION}_${ARCH}_normal.ipk"
-              elif [[ "${{ matrix.platform.id }}" =~ ^mips64le ]]; then
-              binary_compressed="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}-normal"
-              ipk_compressed="tailscale_${VERSION}_${ARCH}_normal.ipk"
-              else
-              binary_compressed="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}"
-              ipk_compressed="tailscale_${VERSION}_${ARCH}.ipk"
-            fi
-
-            binary_normal="${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}-normal"
-            ipk_normal="tailscale_${VERSION}_${ARCH}_normal.ipk"
-
-            [ -f "${{ env.ARTIFACT_DIR }}/${binary_compressed}" ] || binary_compressed=""
-            [ -f "${{ env.ARTIFACT_DIR }}/${binary_normal}" ] || binary_normal=""
-            [ -f "${{ env.ARTIFACT_DIR }}/${ipk_compressed}" ] || ipk_compressed=""
-            [ -f "${{ env.ARTIFACT_DIR }}/${ipk_normal}" ] || ipk_normal=""
-
-            echo "{\"target\":\"${ARCH}\",\"binary_compressed\":\"${binary_compressed}\",\"binary_normal\":\"${binary_normal}\",\"ipk_compressed\":\"${ipk_compressed}\",\"ipk_normal\":\"${ipk_normal}\"}," >> ${{ env.ARTIFACT_DIR }}/artifacts.json.tmp
-
-            cp -p "${{ env.ARTIFACT_DIR }}/${ipk_compressed}" feed/
-          done
-
-          {
-            echo "["
-            sed '$ s/,$//' ${{ env.ARTIFACT_DIR }}/artifacts.json.tmp
-            echo "]"
-          } > ${{ env.ARTIFACT_DIR }}/artifacts-${{ matrix.platform.id }}.json
-           
-          n=0
-          until opkg-utils/opkg-make-index -a -f -v --checksum sha256 feed > feed/Packages.tmp || [ $n -ge 3 ]; do
-            echo "Indexing failed, retrying... ($((++n)))"
-            sleep 2
-          done
-          cp -f feed/Packages.tmp ${{ env.ARTIFACT_DIR }}/Packages-${{ matrix.platform.id }}
+          echo "Success: Artifact ready in ${{ env.ARTIFACT_DIR }}"
+          ls -lh "${{ env.ARTIFACT_DIR }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.FILE_NAME }}-linux-${{ matrix.platform.id }}
-          path: ${{ env.ARTIFACT_DIR }}/*
+          name: tailscale_${{ env.PKG_VERSION }}_${{ matrix.platform }}
+          path: ${{ env.ARTIFACT_DIR }}/
+          if-no-files-found: error
+          retention-days: 30
 
   release:
     name: Create Release
     needs: [build]
     runs-on: ubuntu-latest
     env:
-      RELEASE_TAG: ${{ needs.build.outputs.version_tag }}
+      RELEASE_TAG: v${{ needs.build.outputs.version }}
+      VERSION: ${{ needs.build.outputs.version }}
+      ARTIFACT_DIR: "release_assets"
     steps:
       - name: Prepare workspace
-        run: |
-          mkdir -p ${{ env.ARTIFACT_DIR }}
+        run: mkdir -p ${{ env.ARTIFACT_DIR }}
 
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ${{ env.ARTIFACT_DIR }}
-          merge-multiple: true
+          path: temp_artifacts
 
-      - name: Generate release files
+      - name: Organize and Generate Files
         run: |
-          echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
-          jq -s 'add' ${{ env.ARTIFACT_DIR }}/artifacts-*.json > ${{ env.ARTIFACT_DIR }}/artifacts.json
-          rm -rf ${{ env.ARTIFACT_DIR }}/artifacts-*.json
-          rm -rf ${{ env.ARTIFACT_DIR }}/artifacts.json.tmp
-          cat ${{ env.ARTIFACT_DIR }}/Packages-* > ${{ env.ARTIFACT_DIR }}/Packages
-          rm -rf ${{ env.ARTIFACT_DIR }}/Packages-*
-          # Create checksums
-          cd ${{ env.ARTIFACT_DIR }}
-          sha256sum * > checksums.txt
+          JSON_FILE="${{ env.ARTIFACT_DIR }}/artifacts.json"
+          PACKAGES_FILE="${{ env.ARTIFACT_DIR }}/Packages"
           
-          # Create info file
-          {
-            echo "Version: ${{ env.RELEASE_TAG }}"
-            echo "Build date: ${{ env.BUILD_DATE }}"
-            echo ""
-            echo "File sizes:"
-            for file in ${{ env.FILE_NAME }}-*; do
-              size=$(stat -c %s "${file}")
-              echo "${file} ${size} bytes"
-            done
-          } > build-info.txt
-          cd ..
-      
+          echo "[" > "$JSON_FILE"
+          : > "$PACKAGES_FILE" # 使用 : > 清空文件更简洁
+          
+          first=true
+          # 遍历所有下载的 artifacts 目录
+          for dir in temp_artifacts/*/; do
+            [ -d "$dir" ] || continue
+            
+            ipk_path=$(find "$dir" -name "tailscale_*.ipk" -type f | head -n 1)
+            [ -z "$ipk_path" ] && continue
+            
+            ipk_name=$(basename "$ipk_path")
+            
+            # 改进后的架构提取逻辑：提取第3个下划线之后的部分
+            arch=$(echo "$ipk_name" | cut -d'_' -f3- | sed 's/\.ipk$//')
+            
+            # 复制 IPK 到发布目录
+            cp "$ipk_path" "${{ env.ARTIFACT_DIR }}/"
+            
+            echo "Processing $ipk_name for $arch..."
+            
+            # 提取 control 内容
+            CONTROL_CONTENT=$(tar -xOzf "$ipk_path" ./control.tar.gz | tar -xOzf - ./control 2>/dev/null || \
+                              tar -xOzf "$ipk_path" control.tar.gz | tar -xOzf - control)
+            # 计算文件大小和 SHA256
+            FILE_SIZE=$(stat -c%s "$ipk_path")
+            FILE_SHA256=$(sha256sum "$ipk_path" | awk '{print $1}')
+            
+            # 组合写入 Packages
+            # 使用 sed 确保每个 control 段落后都有换行符，避免字段粘连
+            {
+              echo "$CONTROL_CONTENT" | sed '$a\' 
+              echo "Filename: $ipk_name"
+              echo "Size: $FILE_SIZE"
+              echo "SHA256sum: $FILE_SHA256"
+              echo "" 
+            } >> "$PACKAGES_FILE"
+            
+            # 写入 JSON
+            if [ "$first" = true ]; then
+              first=false
+            else
+              echo "," >> "$JSON_FILE"
+            fi
+            echo "{\"target\":\"${arch}\",\"ipk\":\"${ipk_name}\",\"sha256\":\"${FILE_SHA256}\"}" >> "$JSON_FILE"
+          done
+          
+          echo "${{ env.VERSION }}" > version
+
+          echo "]" >> "$JSON_FILE"
+          
+          # 生成 Packages.gz
+          gzip -kf "$PACKAGES_FILE"
+
       - name: Checkout feed branch
         uses: actions/checkout@v4
         with:
@@ -409,49 +354,40 @@ jobs:
       
       - name: Setup Usign
         run: |
-          git clone https://git.openwrt.org/project/usign.git
-          cd usign
-          mkdir build
-          cd build
-          cmake ..
-          make
-          make install
+          git clone --depth 1 https://git.openwrt.org/project/usign.git
+          cd usign && mkdir build && cd build
+          cmake .. && make -j$(nproc) && sudo make install
           
-      - name: Restore usign private key
+      - name: Deploy to Feed Branch
         env:
           USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
-        shell: bash
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 检出完整的 feed 分支
+          git clone --single-branch --branch feed https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git feed_repo
+          cd feed_repo
+
+          # 清理旧的 tailscale 相关文件
+          git rm -rf tailscale_*.ipk Packages* 2>/dev/null || true
+          
+          # 拷贝新生成的文件
+          cp ../${{ env.ARTIFACT_DIR }}/tailscale_*.ipk .
+          cp ../${{ env.ARTIFACT_DIR }}/Packages .
+          cp ../${{ env.ARTIFACT_DIR }}/Packages.gz .
+
+          # 签名逻辑
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
-          chmod 600 key-build.sec
-          
-      - name: Prepare feed files
-        run: |
-          rm -rf feed/tailscale* feed/Packages* feed/version*
-                
-          jq -r '
-            .[] | select(.ipk_compressed != "") | .ipk_compressed
-          ' "${{ env.ARTIFACT_DIR }}/artifacts.json" | while read -r file; do
-            cp "${{ env.ARTIFACT_DIR }}/${file}" feed/
-          done
+          usign -S -m Packages -s key-build.sec -x Packages.sig
+          rm -f key-build.sec
 
-          [ -f ${{ env.ARTIFACT_DIR }}/Packages ] && mv ${{ env.ARTIFACT_DIR }}/Packages feed/Packages && gzip -kf feed/Packages
-              
-          ls -l feed/
-          file feed/Packages
-          file key-build.sec
-
-          usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
-
-          cat feed/Packages.sig
-          
+          # 生成 HTML 表格 (tbody)
           generate_tbody() {
             echo "          <tbody>"
-            for file in feed/Packages* feed/tailscale*; do
+            for file in Packages* tailscale_*; do
               [ -f "${file}" ] || continue
               fname=$(basename "${file}")
               fsize=$(du -h "${file}" | cut -f1)
-              fdate=$(date -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
+              fdate=$(date -u -r "${file}" +"%Y-%m-%d %a %H:%M:%S UTC")
               echo "                        <tr>"
               echo "                            <td><a href=\"$fname\">$fname</a></td>"
               echo "                            <td>$fsize</td>"
@@ -461,164 +397,100 @@ jobs:
             echo "          </tbody>"
           }
 
-          generate_tbody > feed/tbody.tmp
-          sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
-            /<!-- tbody-anchor -->/!{
-              /<!-- end-tbody-anchor -->/!d
-            }
-          }' feed/index.html
-          sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
-
-          current_date="${{ env.BUILD_DATE }}"
-          sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
-              /<span id="date">/ {
-                  s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
+          # 更新 index.html (保留原分支的其他 HTML 内容)
+          if [ -f "index.html" ]; then
+            generate_tbody > tbody.tmp
+            # 替换表格
+            sed -i '//,// {
+              //!{
+                //!d
               }
-          }' feed/index.html
+            }' index.html
+            sed -i '//r tbody.tmp' index.html
+            
+            # 替换日期和版本
+            current_date="${{ env.BUILD_DATE }}"
+            version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
+            sed -i "s|<span id=\"date\">.*</span>|<span id=\"date\">${current_date}</span>|g" index.html
+            sed -i "s|<span id=\"version\">.*</span>|<span id=\"version\">${version}</span>|g" index.html
+            rm -f tbody.tmp
+          fi
 
-          version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
-          sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
-              /<span id="version">/ {
-                  s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
-              }
-          }' feed/index.html
-          rm -f feed/tbody.tmp
-
-      - name: Commit and push to feed branch
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add -A
-          git diff --cached --quiet && echo "No changes" && exit 0
-          git commit -m "Update feed: ${{ env.BUILD_DATE }}"
-          git push origin HEAD:feed
-        working-directory: feed
+          # 提交并推送
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          
+          # 检查是否有变化
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update feed: ${{ env.BUILD_DATE }}"
+            git push origin feed --force
+          fi
 
       - name: Generate release markdown
         id: generate_release_markdown
         run: |
-          # Read artifacts.json and generate markdown table
+          # 读取 artifacts.json 并生成简单的 markdown 表格
           artifacts_file="${{ env.ARTIFACT_DIR }}/artifacts.json"
-          
           if [[ ! -f "${artifacts_file}" ]]; then
-            echo "No artifacts.json found, skipping table generation."
+            echo "Error: artifacts.json missing"
             exit 1
           fi
           
-          # Generate Markdown table
           owner="${{ env.REPO_SMALL_OWNER }}"
           repo="${{ env.REPO_SMALL_NAME }}"
           tag="${{ env.RELEASE_TAG }}"
-          table="| Target Platform 目标平台 | Compressed Binary 压缩二进制 | Compressed IPK 压缩IPK | Normal Binary 原始二进制 | Normal IPK 原始IPK |
-          |----------------------|-------------------------|------------------------|---------------------|----------------|
-          $(jq -r --arg owner "$owner" --arg repo "$repo" --arg tag "$tag" '
-          .[] | 
-          "| \(.target) | " +
-          (if .binary_compressed != "" then "[\(.binary_compressed)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.binary_compressed))" else "" end) + " | " +
-          (if .ipk_compressed != "" then "[\(.ipk_compressed)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk_compressed))" else "" end) + " | " +
-          (if .binary_normal != "" then "[\(.binary_normal)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.binary_normal))" else "" end) + " | " +
-          (if .ipk_normal != "" then "[\(.ipk_normal)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk_normal))" else "" end) + " |"
-          ' ${artifacts_file})"
-
-          # Print the table for debugging
-          echo "$table"
-
-          # Set release body with table included
-          release_body="## 🚀 Smaller Tailscale / 更小的Tailscale
-
-          **Version 版本** :&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; ${{ env.RELEASE_TAG }}   
-          **Build date 构建日期** : &nbsp;&nbsp;&nbsp;&nbsp;${{ env.BUILD_DATE }}   
-          **Changelog 更新日志** : &nbsp;&nbsp;&nbsp;https://github.com/${{ env.REPO }}/releases/tag/${{ env.RELEASE_TAG }}   
-
-          ---
-
-          ### 🌏 中文说明
-          <details>
-          <summary>点击展开</summary>
-          这是一个为 OpenWRT 构建的 Tailscale 的极简版本，旨在提供更小的二进制文件和更少的资源占用。包含基础二进制文件和 IPK 包，适用于多种 OpenWRT 目标平台。
-
-          ### 🛠️ 构建特性
-          - 将 \`tailscale\` 和 \`tailscaled\` 合并为单一二进制文件。  
-          - 结合精简的 TAGS 与 \`-s -w\` LDFLAGS，大幅减小了二进制文件的体积。  
-          - 使用 UPX 压缩技术对二进制文件进行压缩（mips64 架构除外），进一步降低存储占用。  
-
-          ### ⚠️ 系统需求
-          - **存储空间**: UPX版本小于 10MB  
-          - **运行内存**: 大约 60MB  
-          - **注意事项**: 可能无法在内存小于 256MB 的设备上正常运行，请谨慎使用。  
-
-          ### 📦 关于未压缩版本
-          - \`filename-normal\`: 原始未压缩的二进制文件，适合需要完整功能或不支持 UPX 压缩的场景。  
-          - \`filename\`: 使用 UPX 压缩后的二进制文件，体积更小，适合大多数场景。  
-
-          ### 📖 如何确定目标平台
-          在您的 OpenWRT 设备上运行以下命令以确定支持的目标平台：  
-          \`\`\`bash
-          opkg print-architecture
-          \`\`\`  
-          该命令将列出设备支持的架构类型（不包括 \`all\` 和 \`noarch\`）。根据输出结果选择对应的文件进行安装。
-
-          </details>
-
-          ### 🌎 English Description
-          <details>
-          <summary>Click to expand</summary>
-          This is a minimal build of Tailscale for OpenWRT, designed to provide smaller binaries and lower resource usage. It includes basic binaries and IPK packages for various OpenWRT target platforms.  
-
-          ### 🛠️ Build Features
-          - Combined \`tailscale\` and \`tailscaled\` into a single binary.  
-          - Used streamlined TAGS and \`-s -w\` LDFLAGS to significantly reduce the size of the binary.  
-          - UPX compression applied to binaries (except for mips64 architecture) to further reduce storage usage.  
-
-          ### ⚠️ System Requirements
-          - **Storage Space**: UPX version is less than 10MB.  
-          - **RAM**: Approximately 60MB.  
-          - **Note**: May not work on devices with less than 256MB of RAM. Use with caution.  
-
-          ### 📦 About the Uncompressed Version
-          - \`filename-normal\`: Original uncompressed binary, suitable for scenarios requiring full functionality or where UPX compression is unsupported.  
-          - \`filename\`: UPX-compressed binary, smaller in size, suitable for most scenarios.  
-
-          ### 📖 How to Determine the Target Platform
-          Run the following command on your OpenWRT device to determine the supported target platform:  
-          \`\`\`bash
-          opkg print-architecture
-          \`\`\`  
-          This command will list the supported architecture types (excluding \`all\` and \`noarch\`). Choose the corresponding file based on the output.
-
-          </details>
-
-          ---
-            
-          > [!WARNING]  
-          > 如果 \`opkg\` 安装显示安装失败，请先通过运行以下命令测试：  
-          > \`\`\`bash
-          > tailscale --version
-          > \`\`\`  
-          > 如果命令正确输出版本号，则安装成功。否则请提交反馈。
-          >  
-          > If the \`opkg\` installation shows failure, please test first by running:  
-          > \`\`\`bash
-          > tailscale --version
-          > \`\`\`  
-          > If the command correctly outputs the version number, the installation is successful. Otherwise, please submit feedback.
-
-          ---
-
-          ### 📥 Download Links List / 下载链接清单
-          > [!NOTE]
-          > 请确保选择正确的目标平台架构和tailscale版本。
-          > Make sure to select the correct target platform architecture and Tailscale version.
-          <details>
-          <summary>Click to expand  /  点击展开</summary>
-
-          ${table}
           
+          # 构建 Markdown 表格
+          table="| Target Platform / 目标平台 | IPK Package (Direct Link) |\n|:--- |:--- |"
+          rows=$(jq -r --arg owner "$owner" --arg repo "$repo" --arg tag "$tag" '
+          .[] | "| \(.target) | [\(.ipk)](https://github.com/\($owner)/\($repo)/releases/download/\($tag)/\(.ipk)) |"
+          ' ${artifacts_file})
+          full_table="${table}\n${rows}"
+
+          # 设置 Release Body
+          release_body="## Smaller Tailscale / 更小的Tailscale
+
+          **Version / 版本** : ${{ env.RELEASE_TAG }}
+          **Build Date / 构建日期** : ${{ env.BUILD_DATE }}
+          **Upstream Changelog / 上游更新日志** : [Release Notes](https://github.com/${{ env.REPO }}/releases/tag/${{ env.RELEASE_TAG }})
+          ---
+
+          #### 本项目是为 OpenWRT 构建的 Tailscale 精简版本，使用官方 SDK 编译，旨在降低存储空间占用。    
+          - 使用 OpenWRT 官方 SDK 编译。  
+          - 采用 UPX 压缩技术大幅缩小二进制体积。  
+          - 标准 IPK 格式，支持 opkg 直接安装。  
+
+          #### Minimalistic Tailscale build for OpenWRT using the official SDK.  
+          - Compiled with official OpenWRT SDK.  
+          - Significant size reduction via UPX compression.  
+          - Standard IPK format for direct opkg installation.  
+
+          #### Architecture Check / 架构查询  
+          Run the following command on your device to confirm target platform:  
+          \`\`\`bash
+          opkg print-architecture
+          \`\`\`
+
+          ---
+        
+          #### Download Links / 下载清单
+          > [!IMPORTANT]
+          > 请根据设备架构选择对应的安装包。
+          > Please select the correct package for your device architecture.
+
+          <details open>
+          <summary>Package List / 文件列表</summary>
+
+          ${full_table}
+
           </details>
           "
 
           echo "release_body<<EOF" >> $GITHUB_OUTPUT
-          echo "${release_body}" >> $GITHUB_OUTPUT
+          echo -e "${release_body}" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
@@ -628,10 +500,11 @@ jobs:
           name: "Smaller ${{ env.SOFTWARE_NAME }} ${{ env.RELEASE_TAG }}"
           body: ${{ steps.generate_release_markdown.outputs.release_body }}
           files: |
-            ${{ env.ARTIFACT_DIR }}/*
-        # env:
-        #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+            ${{ env.ARTIFACT_DIR }}/*.ipk
+            ${{ env.ARTIFACT_DIR }}/Packages
+            ${{ env.ARTIFACT_DIR }}/Packages.gz
+            ${{ env.ARTIFACT_DIR }}/artifacts.json
+            ${{ env.ARTIFACT_DIR }}/version
 
       - name: Sync to small repo
         uses: actions/github-script@v6
@@ -639,7 +512,7 @@ jobs:
           script: |
             await github.rest.git.createTag({
               owner: '${{ env.REPO_SMALL_OWNER }}',
-              repo: 'openwrt-tailscale',
+              repo: '${{ env.REPO_SMALL_NAME }}',
               tag: '${{ env.RELEASE_TAG }}',
               message: 'Release ${{ env.RELEASE_TAG }}',
               object: '${{ github.sha }}',
