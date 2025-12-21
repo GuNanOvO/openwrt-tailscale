@@ -52,7 +52,7 @@ jobs:
           # - 'loongarch64_generic'
           # - 'mips64_mips64r2'
           # - 'mips64_octeonplus'
-          # - 'mips64el_mips64r2'
+          - 'mips64el_mips64r2'
           # - 'mips_24kc'
           # - 'mips_4kec'
           # - 'mips_mips32'
@@ -227,45 +227,39 @@ jobs:
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}"
 
-          mapfile -t ipk_files < <(find bin -name "tailscale_*.ipk" -type f)
-
-          if [ ${#ipk_files[@]} -eq 0 ]; then
-            echo "::error::No IPK files found!"
-            exit 1
-          elif [ ${#ipk_files[@]} -gt 1 ]; then
-            echo "::warning::Found multiple IPK files, picking the best match..."
+          echo "Searching for IPK for platform: ${{ matrix.platform }}..."
+          
+          if [ -d "bin/packages/${{ matrix.platform }}" ]; then
+            mapfile -t ipk_files < <(find "bin/packages/${{ matrix.platform }}" -name "tailscale_*.ipk" -type f)
+          else
+            mapfile -t ipk_files < <(find bin -name "tailscale_*.ipk" -type f)
           fi
 
-          source_ipk="${ipk_files[0]}"
-          ipk_dir=$(dirname "$source_ipk")
+          if [ ${#ipk_files[@]} -eq 0 ]; then
+            echo "::error::No IPK files found for ${{ matrix.platform }}!"
+            exit 1
+          fi
+
+          source_ipk=$(ls -t "${ipk_files[@]}" | head -n 1)
           
           target_ipk="${{ env.ARTIFACT_DIR }}/tailscale_${{ env.PKG_VERSION }}_${{ matrix.platform }}.ipk"
-          target_packages="${{ env.ARTIFACT_DIR }}/Packages_${{ matrix.platform }}"
 
-          echo "Moving and organizing artifacts..."
+          echo "Found IPK: $source_ipk"
+          echo "Collecting to: $target_ipk"
           
           cp -v "$source_ipk" "$target_ipk"
 
-          if [ -f "$ipk_dir/Packages" ]; then
-            echo "Found Packages file in $ipk_dir"
-            cp -v "$ipk_dir/Packages" "$target_packages"
-            
-          else
-            echo "::warning::Packages index file not found in $ipk_dir"
-            find bin/packages -name "Packages" -exec cp {} "$target_packages" \; -quit
-          fi
-
           if [ ! -s "$target_ipk" ]; then
-            echo "::error::Artifact collection failed or IPK file is empty!"
+            echo "::error::Artifact collection failed: $target_ipk is missing or empty!"
             exit 1
           fi
 
-          echo "Success: Artifacts ready in ${{ env.ARTIFACT_DIR }}"
+          echo "Success: Artifact ready in ${{ env.ARTIFACT_DIR }}"
           ls -lh "${{ env.ARTIFACT_DIR }}"
 
       - name: Debug via tmate
         uses: mxschmitt/action-tmate@v3
-        
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
