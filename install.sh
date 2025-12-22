@@ -246,6 +246,7 @@ get_tailscale_info() {
     local version
     local file
     local file_size
+    local tmp_packages="/tmp/Packages"
     # 尝试3次
     local attempt_range="1 2 3"
     # 超时时间（秒）
@@ -255,17 +256,14 @@ get_tailscale_info() {
         version=$(wget -qO- --timeout=$attempt_timeout "$AVAILABLE_PROXY/$TAILSCALE_URL/download/version" | tr -d ' \n\r')
         file="tailscale_${version}_${DEVICE_TARGET}"
 
-        file_size=$(wget -qO- --timeout=$attempt_timeout "$AVAILABLE_PROXY/$TAILSCALE_URL/download/Packages" | \
-            awk -v ipk="${file}.ipk" '
-            BEGIN { RS=""; FS="\n" }
-            $0 ~ ipk {
-                for(i=1; i<=NF; i++) {
-                    if($i ~ /^Installed-Size:/) {
-                        print $i
-                        exit
-                    }
-                }
-            }' | awk '{print $2}')
+        wget -q --timeout=$attempt_timeout "$AVAILABLE_PROXY/$TAILSCALE_URL/download/Packages" -O "$tmp_packages"
+        file_size=$(awk -v ipk="${file}.ipk" '
+        BEGIN { RS=""; FS="\n" }
+        $0 ~ ipk {
+            for(i=1;i<=NF;i++) if($i ~ /^Installed-Size:/) {
+                print $i; exit
+            }
+        }' "$tmp_packages" | awk '{print $2}')
 
         if [ -n "$version" ] && [ -n "$file_size" ]; then
             break
@@ -612,6 +610,7 @@ downloader() {
 
     local tmp="/tmp"
     local file_path="$tmp/$TAILSCALE_FILE.ipk"
+    local tmp_packages="$tmp/Packages"
     local sha_file="$tmp/$TAILSCALE_FILE.sha256"
     local target_ipk="${TAILSCALE_FILE}.ipk"
     local download_url="${AVAILABLE_PROXY}/${TAILSCALE_URL}/download"
@@ -621,18 +620,19 @@ downloader() {
             continue
         fi
 
-        wget -qO- --timeout=$attempt_timeout "$download_url/Packages" | \
-            awk -v ipk="$target_ipk" -v path="$file_path" '
-            BEGIN { RS=""; FS="\n" }
-            $0 ~ "Filename: " ipk {
-                for(i=1; i<=NF; i++) {
-                    if($i ~ /^SHA256sum:/) {
-                        split($i, a, ": ");
-                        print a[2] "  " path;
-                        exit;
-                    }
+        wget -q --timeout="$attempt_timeout" "$download_url/Packages" -O "$tmp_packages"
+        awk -v ipk="$target_ipk" -v path="$file_path" '
+        BEGIN { RS=""; FS="\n" }
+        $0 ~ "Filename: " ipk {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^SHA256sum:/) {
+                    split($i, a, ": ");
+                    print a[2] "  " path;
+                    exit;
                 }
-            }' > "$sha_file"
+            }
+        }' "$tmp_packages" > "$sha_file"
+
 
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
@@ -765,9 +765,9 @@ show_info() {
     echo "     - 文件大小: $TAILSCALE_FILE_SIZE M" 
     if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
         if [ "$TAILSCALE_LATEST_VERSION" != "$TAILSCALE_LOCAL_VERSION" ]; then
-            echo "   更新：有新版本可用, 您可以选择更新"
+            echo "     - 有新版本可用, 您可以选择更新"
         else
-            echo "   更新：已是最新版本"
+            echo "     - 已是最新版本"
         fi
     fi
     
