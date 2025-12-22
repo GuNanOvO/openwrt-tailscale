@@ -92,11 +92,8 @@ The following architectures are **not supported**:
 SSH into your OpenWrt device and run:
 
 ```bash
-wget -O /usr/sbin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/sbin/install.sh && /usr/sbin/install.sh
+wget -O /usr/sbin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/sbin/install.sh && /usr/sbin/install.sh
 ```
-
-For Mainland China users only.
-For other regions, please refer to the [English README](README_en.md)
 
 #### **Add OPKG Feed**
 
