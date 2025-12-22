@@ -13,12 +13,6 @@
 - 一键安装脚本，支持 持久化安装、临时安装 Tailscale
 - OPKG 软件源，更简单、更加方便持续更新 ➡️ [ [Smaller Tailscale Repo](https://gunanovo.github.io/openwrt-tailscale/) ]
 
-> [!NOTE]
-> 一个专为 OpenWrt 小存储空间设备设计的 Tailscale 安装工具  
-> 支持持久化安装、临时安装、opkg安装  
-> 缩小tailscale体积至 **6MB**！（使用编译优化+UPX压缩技术）  
-> 可以帮助您升级您的旧版本OpenWrt设备上的旧版本Tailscale
-
 ---
 
 <details>
