@@ -370,22 +370,32 @@ jobs:
           USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # 清理旧的 tailscale 相关文件
-          git rm -rf feed/tailscale_*.ipk feed/Packages* 2>/dev/null || true
+          # 创建 orphan 分支（彻底重置历史）
+          git checkout --orphan feed
+          git rm -rf . || true
+
+          # 从 main 分支拷贝 feed_template 下的所有文件
+          mkdir -p feed_template
+          git --work-tree=. checkout origin/main -- feed_template/
+          cp -r feed_template/* ./
+          rm -rf feed_template
+
+          # 创建 .nojekyll
+          touch .nojekyll
           
           # 拷贝新生成的文件
-          cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk feed/
-          cp ${{ env.ARTIFACT_DIR }}/Packages feed/
-          cp ${{ env.ARTIFACT_DIR }}/Packages.gz feed/
+          cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk ./
+          cp ${{ env.ARTIFACT_DIR }}/Packages ./
+          cp ${{ env.ARTIFACT_DIR }}/Packages.gz ./
 
           # 签名逻辑
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
-          usign -S -m feed/Packages -s key-build.sec -x feed/Packages.sig
+          usign -S -m Packages -s key-build.sec -x Packages.sig
           rm -f key-build.sec
 
           generate_tbody() {
             echo "          <tbody>"
-            for file in feed/Packages* feed/tailscale*; do
+            for file in Packages* tailscale*; do
               [ -f "${file}" ] || continue
               fname=$(basename "${file}")
               fsize=$(du -h "${file}" | cut -f1)
@@ -400,36 +410,33 @@ jobs:
           }
 
           
-          generate_tbody > feed/tbody.tmp
+          generate_tbody > tbody.tmp
           sed -i '/<!-- tbody-anchor -->/,/<!-- end-tbody-anchor -->/ {
             /<!-- tbody-anchor -->/!{
               /<!-- end-tbody-anchor -->/!d
             }
-          }' feed/index.html
-          sed -i '/<!-- tbody-anchor -->/r feed/tbody.tmp' feed/index.html
+          }' index.html
+          sed -i '/<!-- tbody-anchor -->/r tbody.tmp' index.html
             
           current_date="${{ env.BUILD_DATE }}"
           sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
               /<span id="date">/ {
                   s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
               }
-          }' feed/index.html
+          }' index.html
 
           version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
           sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
               /<span id="version">/ {
                   s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
               }
-          }' feed/index.html
+          }' index.html
 
-          rm -f feed/tbody.tmp
+          rm -f tbody.tmp
 
-      - name: Commit and push to feed branch
-        run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
-          git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Update feed: ${{ env.BUILD_DATE }}"
           git push origin feed --force
         working-directory: feed
