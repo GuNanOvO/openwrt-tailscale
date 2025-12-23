@@ -29,10 +29,8 @@ jobs:
     name: Prepare UPX and Go
     runs-on: ubuntu-latest
     outputs:
-      upx_path: ${{ steps.set_upx_path.outputs.upx_path }}
       upx_tag: ${{ steps.set_upx_path.outputs.upx_tag }}
       upx_ver: ${{ steps.set_upx_path.outputs.upx_ver }}
-      go_path: ${{ steps.set_go_path.outputs.go_path }}
       go_version: ${{ steps.set_go_path.outputs.go_version }}
     steps:
       # ----------------- UPX -----------------
@@ -62,7 +60,7 @@ jobs:
       - name: Prepare UPX
         if: steps.cache_upx.outputs.cache-hit != true
         run: |
-          UPX_URL="https://github.com/upx/upx/releases/download/${{ env.UPX_TAG }}/upx-${{ env.UPX_VER }}-amd64_linux.tar.xz"
+          UPX_URL="https://github.com/upx/upx/releases/download/${{ steps.check_upx.outputs.upx_tag }}/upx-${{ steps.check_upx.outputs.upx_ver }}-amd64_linux.tar.xz"
           echo "Downloading UPX from: $UPX_URL"
           mkdir -p upx
           curl -L -o upx.tar.xz "$UPX_URL"
@@ -103,7 +101,7 @@ jobs:
         run: |
           GO_OS=linux
           GO_ARCH=amd64
-          GO_URL="https://go.dev/dl/${{ env.GO_VERSION }}.$GO_OS-$GO_ARCH.tar.gz"
+          GO_URL="https://go.dev/dl/${{ steps.check_go.outputs.go_version }}.$GO_OS-$GO_ARCH.tar.gz"
           echo "Downloading Go from: $GO_URL"
           mkdir -p go
           curl -L -o go.tar.gz "$GO_URL"
@@ -126,10 +124,7 @@ jobs:
       date: ${{ env.BUILD_DATE }}
     needs: prepare-tools
     env:
-      UPX_BIN_PATH: ${{ needs.prepare-tools.outputs.upx_path }}
       UPX_TAG: ${{ needs.prepare-tools.outputs.upx_tag }}
-      UPX_VER: ${{ needs.prepare-tools.outputs.upx_ver }}
-      GO_BIN_PATH: ${{ needs.prepare-tools.outputs.go_path }}
       GO_VERSION: ${{ needs.prepare-tools.outputs.go_version }}
     strategy:
       matrix:
@@ -267,8 +262,8 @@ jobs:
           docker run --rm \
             -v "$(pwd)/bin:/builder/bin:z" \
             -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
-            -v "${{ env.UPX_BIN_PATH }}:/builder/upx:ro,z" \
-            -v "${{ env.GO_BIN_PATH }}:/builder/go:ro,z" \
+            -v "$(pwd)/upx:/builder/upx:ro,z" \
+            -v "$(pwd)/go:/builder/go:ro,z" \
             -v "$(pwd)/build_script.sh:/build_script.sh:ro,z" \
             -e TERM=xterm \
             -e FORCE=1 \
