@@ -101,9 +101,6 @@ jobs:
           echo "go_path=$(pwd)/go" >> $GITHUB_OUTPUT
           echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
 
-      - name: Debug via tmate
-        uses: mxschmitt/action-tmate@v3
-
   build:
     name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
@@ -180,16 +177,20 @@ jobs:
           
           echo "Parsed version: $VERSION"
           echo "Parsed release: $RELEASE"
-      
-      - name: Debug via tmate
-        uses: mxschmitt/action-tmate@v3
 
-      - name: Verify UPX
-        run: ${{ env.UPX_BIN_PATH }}/upx --version
+      - name: Restore UPX from cache
+        uses: actions/cache@v4
+        id: cache-upx
+        with:
+          path: upx
+          key: upx-linux-amd64-${{ env.UPX_TAG }}
 
-      - name: Verify Go
-        run: ${{ env.GO_BIN_PATH }}/bin/go version
-
+      - name: Restore Go from cache
+        uses: actions/cache@v4
+        id: cache-go
+        with:
+          path: go
+          key: go-linux-amd64-${{ env.GO_VERSION }}
 
       # BUILD
 
