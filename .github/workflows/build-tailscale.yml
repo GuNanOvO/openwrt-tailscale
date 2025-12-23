@@ -393,34 +393,34 @@ jobs:
           
           # 生成 Packages.gz
           gzip -kf "$PACKAGES_FILE"
-
-      - name: Checkout feed branch
-        uses: actions/checkout@v4
-        with:
-          ref: feed
-          path: feed
       
       - name: Setup Usign
         run: |
           git clone --depth 1 https://git.openwrt.org/project/usign.git
           cd usign && mkdir build && cd build
           cmake .. && make -j$(nproc) && sudo make install
-          
+
       - name: Deploy to Feed Branch
         env:
           USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 1. 配置 Git 用户信息
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
           # 删除本地 feed 分支
-          git branch -D feed 2>/dev/null || true
+          mkdir deploy_workspace
+          cd deploy_workspace
+          git init
+
+          git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
+          git checkout --orphan feed
 
           # 创建 orphan 分支
-          git checkout --orphan feed
-          git rm -rf . || true
+          git fetch origin main --depth=1
+          git checkout origin/main -- feed_template/
 
-          # 从 main 分支拷贝 feed_template 下的所有文件
-          mkdir -p feed_template
-          git --work-tree=. checkout origin/main -- feed_template/
           cp -r feed_template/* ./
           rm -rf feed_template
 
@@ -428,9 +428,9 @@ jobs:
           touch .nojekyll
           
           # 拷贝新生成的文件
-          cp ${{ env.ARTIFACT_DIR }}/tailscale_*.ipk ./
-          cp ${{ env.ARTIFACT_DIR }}/Packages ./
-          cp ${{ env.ARTIFACT_DIR }}/Packages.gz ./
+          cp ../${{ env.ARTIFACT_DIR }}/tailscale_*.ipk ./
+          cp ../${{ env.ARTIFACT_DIR }}/Packages ./
+          cp ../${{ env.ARTIFACT_DIR }}/Packages.gz ./
 
           # 签名逻辑
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > key-build.sec
@@ -478,12 +478,9 @@ jobs:
 
           rm -f tbody.tmp
 
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add -A
           git commit -m "Update feed: ${{ env.BUILD_DATE }}"
           git push origin feed --force
-        working-directory: feed
 
       - name: Generate release markdown
         id: generate_release_markdown
