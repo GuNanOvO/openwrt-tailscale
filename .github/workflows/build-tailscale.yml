@@ -60,7 +60,7 @@ jobs:
           key: upx-linux-amd64-${{ steps.check_upx.outputs.upx_tag }}
 
       - name: Prepare UPX
-        if: steps.cache_upx.outputs.cache-hit != 'true'
+        if: steps.cache_upx.outputs.cache-hit != true
         run: |
           UPX_URL="https://github.com/upx/upx/releases/download/${{ env.UPX_TAG }}/upx-${{ env.UPX_VER }}-amd64_linux.tar.xz"
           echo "Downloading UPX from: $UPX_URL"
@@ -70,12 +70,13 @@ jobs:
           chmod +x upx/upx
           rm -f upx.tar.xz
 
-      - name: Set UPX path output
-        id: set_upx_path
-        run: |
-          echo "upx_path=$(pwd)/upx" >> "$GITHUB_OUTPUT"
-          echo "upx_tag=${{ env.UPX_TAG }}" >> "$GITHUB_OUTPUT"
-          echo "upx_ver=${{ env.UPX_VER }}" >> "$GITHUB_OUTPUT"
+      - name: Save UPX
+        if: steps.cache_upx.outputs.cache-hit != true
+        id: cache_upx_save
+        uses: actions/cache/save@v4
+        with:
+          path: upx
+          key: upx-linux-amd64-${{ steps.check_upx.outputs.upx_tag }}
 
       # ----------------- Go -----------------
       - name: Check Go Latest Version
@@ -98,7 +99,7 @@ jobs:
           key: go-linux-amd64-${{ steps.check_go.outputs.go_version }}
 
       - name: Prepare Go
-        if: steps.cache_go.outputs.cache-hit != 'true'
+        if: steps.cache_go.outputs.cache-hit != true
         run: |
           GO_OS=linux
           GO_ARCH=amd64
@@ -108,12 +109,14 @@ jobs:
           curl -L -o go.tar.gz "$GO_URL"
           tar -C go -xzf go.tar.gz --strip-components=1
           rm -f go.tar.gz
-
-      - name: Set Go path output
-        id: set_go_path
-        run: |
-          echo "go_path=$(pwd)/go" >> "$GITHUB_OUTPUT"
-          echo "go_version=${{ env.GO_VERSION }}" >> "$GITHUB_OUTPUT"
+      
+      - name: Save Go
+        if: steps.check_go.outputs.cache-hit != true
+        id: cache_go_save
+        uses: actions/cache/save@v4
+        with:
+          path: go
+          key: go-linux-amd64-${{ steps.check_go.outputs.go_version }}
 
   build:
     name: Build for ${{ matrix.platform }}
