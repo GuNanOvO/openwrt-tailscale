@@ -21,14 +21,99 @@ env:
   REPO_SMALL_OWNER: "GuNanOvO"
   ARTIFACT_DIR: "artifacts"
   BUILD_DATE: ""
+  UPX_TAG: "v5.0.2"
+  UPX_VER: "5.0.2"
 
 jobs:
+  prepare-tools:
+    name: Prepare UPX and Go
+    runs-on: ubuntu-latest
+    outputs:
+      upx_path: ${{ steps.set_upx_path.outputs.upx_path }}
+      upx_tag: ${{ steps.set_upx_path.outputs.upx_tag }}
+      upx_ver: ${{ steps.set_upx_path.outputs.upx_ver }}
+      go_path: ${{ steps.set_go_path.outputs.go_path }}
+      go_version: ${{ steps.set_go_path.outputs.go_version }}
+    steps:
+      # ----------------- UPX -----------------
+      - name: Check UPX Latest Version
+        id: check_upx
+        run: |
+          UPX_TAG=$(curl -s https://api.github.com/repos/upx/upx/releases/latest \
+            | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+          UPX_VER="${UPX_TAG#v}"
+          echo "Detected UPX Version: $UPX_TAG"
+          echo "UPX_TAG=$UPX_TAG" >> $GITHUB_ENV
+          echo "UPX_VER=$UPX_VER" >> $GITHUB_ENV
+
+      - name: Cache UPX
+        id: cache_upx
+        uses: actions/cache@v4
+        with:
+          path: upx
+          key: upx-linux-amd64-${{ env.UPX_TAG }}
+
+      - name: Prepare UPX
+        if: steps.cache_upx.outputs.cache-hit != 'true'
+        run: |
+          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_TAG}/upx-${UPX_VER}-amd64_linux.tar.xz"
+          mkdir -p upx
+          curl -L -o upx.tar.xz "$UPX_URL"
+          tar -xf upx.tar.xz -C upx --strip-components=1
+          chmod +x upx/upx
+
+      - name: Set UPX path output
+        id: set_upx_path
+        run: |
+          echo "upx_path=$(pwd)/upx" >> $GITHUB_OUTPUT
+          echo "upx_tag=$UPX_TAG" >> $GITHUB_OUTPUT
+          echo "upx_ver=$UPX_VER" >> $GITHUB_OUTPUT
+
+      # ----------------- Go -----------------
+      - name: Check Go Latest Version
+        id: check_go
+        run: |
+          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
+          echo "Detected Go Version: $GO_VERSION"
+          echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
+
+      - name: Cache Go
+        id: cache_go
+        uses: actions/cache@v4
+        with:
+          path: go
+          key: go-linux-amd64-${{ env.GO_VERSION }}
+
+      - name: Prepare Go
+        if: steps.cache_go.outputs.cache-hit != 'true'
+        run: |
+          GO_OS=linux
+          GO_ARCH=amd64
+          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+          mkdir -p go
+          curl -L -o go.tar.gz "$GO_URL"
+          tar -C go -xzf go.tar.gz --strip-components=1
+          rm go.tar.gz
+
+      - name: Set Go path output
+        id: set_go_path
+        run: |
+          echo "go_path=$(pwd)/go" >> $GITHUB_OUTPUT
+          echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
+
   build:
     name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
     outputs:
       version: ${{ env.PKG_VERSION }}
       date: ${{ env.BUILD_DATE }}
+    needs: prepare-tools
+    env:
+      UPX_BIN_PATH: ${{ needs.prepare-tools.outputs.upx_path }}
+      UPX_TAG: ${{ needs.prepare-tools.outputs.upx_tag }}
+      UPX_VER: ${{ needs.prepare-tools.outputs.upx_ver }}
+      GO_BIN_PATH: ${{ needs.prepare-tools.outputs.go_path }}
+      GO_VERSION: ${{ needs.prepare-tools.outputs.go_version }}
     strategy:
       matrix:
         sdk:
@@ -69,7 +154,6 @@ jobs:
       fail-fast: true
 
     steps:
-
       - name: Set build timestamp
         run: |
           echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
@@ -94,80 +178,18 @@ jobs:
           echo "Parsed version: $VERSION"
           echo "Parsed release: $RELEASE"
 
-      # UPX 
-
-      - name: Check UPX Latest Version
-        id: check_upx
-        run: |
-          UPX_TAG=$(curl -s https://api.github.com/repos/upx/upx/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-          UPX_VER="${UPX_TAG#v}"
-          echo "latest_tag=$UPX_TAG" >> $GITHUB_OUTPUT
-          echo "latest_ver=$UPX_VER" >> $GITHUB_OUTPUT
-          echo "Detected UPX Version: $UPX_TAG"
-
-      - name: Cache UPX
-        id: cache-upx
-        uses: actions/cache@v4
-        with:
-          path: upx
-          key: upx-linux-amd64-${{ steps.check_upx.outputs.latest_tag }}
-
-      - name: Prepare UPX
-        if: steps.cache-upx.outputs.cache-hit != 'true'
-        env:
-          UPX_TAG: ${{ steps.check_upx.outputs.latest_tag }}
-          UPX_VER: ${{ steps.check_upx.outputs.latest_ver }}
-        run: |
-          UPX_URL="https://github.com/upx/upx/releases/download/${UPX_TAG}/upx-${UPX_VER}-amd64_linux.tar.xz"
-          mkdir -p upx
-          curl -L -o upx.tar.xz "$UPX_URL"
-          tar -xf upx.tar.xz -C upx --strip-components=1
-          chmod +x upx/upx
-
       - name: Verify UPX
-        run: |
-          ./upx/upx --version
-          echo "UPX_BIN_PATH=$(pwd)/upx" >> $GITHUB_ENV
-      
-      # GO
-
-      - name: Check Go Latest Version
-        id: check_go
-        run: |
-          GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
-          echo "latest_version=$GO_VERSION" >> $GITHUB_OUTPUT
-          echo "Detected Go Version: $GO_VERSION"
-
-      - name: Cache Go
-        id: cache-go
-        uses: actions/cache@v4
-        with:
-          path: go
-          key: go-linux-amd64-${{ steps.check_go.outputs.latest_version }}
-
-      - name: Prepare Go
-        if: steps.cache-go.outputs.cache-hit != 'true'
-        env:
-          GO_VERSION: ${{ steps.check_go.outputs.latest_version }}
-          GO_ARCH: amd64
-          GO_OS: linux
-        run: |
-          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
-          mkdir -p go
-          curl -L -o go.tar.gz "$GO_URL"
-          tar -C go -xzf go.tar.gz --strip-components=1
-          rm go.tar.gz
+        run: ${{ env.UPX_BIN_PATH }}/upx --version
 
       - name: Verify Go
-        run: |
-          ./go/bin/go version
-          echo "GO_BIN_PATH=$(pwd)/go" >> $GITHUB_ENV
+        run: ${{ env.GO_BIN_PATH }}/bin/go version
+
+
+      # BUILD
 
       - name: Pull OpenWRT SDK Docker image
         run: |
           docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ matrix.sdk }}
-
-      # BUILD
 
       - name: Prepare build
         run: |
