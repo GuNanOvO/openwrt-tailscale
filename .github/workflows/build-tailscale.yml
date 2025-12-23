@@ -101,6 +101,9 @@ jobs:
           echo "go_path=$(pwd)/go" >> $GITHUB_OUTPUT
           echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
 
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
+
   build:
     name: Build for ${{ matrix.platform }}
     runs-on: ubuntu-latest
@@ -177,6 +180,9 @@ jobs:
           
           echo "Parsed version: $VERSION"
           echo "Parsed release: $RELEASE"
+      
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
 
       - name: Verify UPX
         run: ${{ env.UPX_BIN_PATH }}/upx --version
