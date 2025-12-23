@@ -1,0 +1,704 @@
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: aarch64_cortex-a53
+Installed-Size: 5877760
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_aarch64_cortex-a53.ipk
+Size: 5861742
+SHA256sum: fba6d87f772df441de5c7bdd77628302e314b8673a7e59f681b97f154e309e5d
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: aarch64_cortex-a72
+Installed-Size: 5877760
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_aarch64_cortex-a72.ipk
+Size: 5860827
+SHA256sum: 5cfc55fd564f7b4ea776c6af10e131b5ef1565e8dfdf9c526b41230b305b694d
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: aarch64_cortex-a76
+Installed-Size: 5877760
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_aarch64_cortex-a76.ipk
+Size: 5860830
+SHA256sum: e8aea4a7b2b208106161287cc0dc4f219f5d6a057b72846c1732800f091fc602
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: aarch64_generic
+Installed-Size: 5867520
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_aarch64_generic.ipk
+Size: 5860643
+SHA256sum: d959eabf492960a21807232b3b82ac27e4e9f0c0b093e79994b5537682314c83
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_arm1176jzf-s_vfp
+Installed-Size: 5836800
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_arm1176jzf-s_vfp.ipk
+Size: 5821683
+SHA256sum: 46672f5e46d6cd7643745f93fc4b0dfffe96bbbc16050679a6f3c3be9311a8a9
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_arm926ej-s
+Installed-Size: 5836800
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_arm926ej-s.ipk
+Size: 5828533
+SHA256sum: 9aa0d6d700b25e11616cf24395535a0df9235aff2d6b9a82e34df365bee70699
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a15_neon-vfpv4
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a15_neon-vfpv4.ipk
+Size: 5812630
+SHA256sum: 40ec630edb05b1a4f34b305a8cb879130b99043b77a4e5ced82f4a39273cb457
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a5_vfpv4
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a5_vfpv4.ipk
+Size: 5812746
+SHA256sum: 42a5b582eeb9118992547bde1da7d521d45d1465f511e2811efb7463b6a836ad
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a7
+Installed-Size: 5836800
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a7.ipk
+Size: 5828236
+SHA256sum: 8383454375d19a37a90fa50af1e8b62838dec5b545c5d7fb5f4225f8443c8ae7
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a7_neon-vfpv4
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a7_neon-vfpv4.ipk
+Size: 5811949
+SHA256sum: e58f467648cba3bd4c07f2e0bffe33b50a7520bcf574c44b4ad4eacecd80a634
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a7_vfpv4
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a7_vfpv4.ipk
+Size: 5814238
+SHA256sum: 6d67571c821872526313b40098516ab6ecefeb4f16bee80c632a033b1ac21235
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a8_vfpv3
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a8_vfpv3.ipk
+Size: 5814921
+SHA256sum: f8ec9d9bc23bc0365274d0167d8ec7e5f8a3c9b4ab89bc5f767150afcaac95e0
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a9
+Installed-Size: 5836800
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a9.ipk
+Size: 5827941
+SHA256sum: fe99ada14b3b4d1c5969173b1135fb4d7133655f8138d1c1585b0812ec2f8fc1
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a9_neon
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a9_neon.ipk
+Size: 5812006
+SHA256sum: 562b6881e7f69d98d8022a2e3f128f4c0cd8bae1830e4d889ccf44e02a0f5034
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_cortex-a9_vfpv3-d16
+Installed-Size: 5826560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_cortex-a9_vfpv3-d16.ipk
+Size: 5815804
+SHA256sum: d622768357d25b62714bcd47512c1e5337b4a098941e219787b5af69b1e1864d
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_fa526
+Installed-Size: 5847040
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_fa526.ipk
+Size: 5830111
+SHA256sum: e7245da04e9362d1f23760326cb31effb36f843e41acdbde52d2006abfaa9da9
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: arm_xscale
+Installed-Size: 5836800
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_arm_xscale.ipk
+Size: 5825668
+SHA256sum: f32767235df061aa130167827df00c602318562caec2ea590f2ec45bbc37a78e
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: i386_pentium-mmx
+Installed-Size: 6666240
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_i386_pentium-mmx.ipk
+Size: 6651110
+SHA256sum: 6b9e2b1bf0ae16644de540dea45d585f47db1c1fc6d2deb0619fa7b66d3d67c2
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: i386_pentium4
+Installed-Size: 6656000
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_i386_pentium4.ipk
+Size: 6640645
+SHA256sum: e2dc6d5eac495e2a4724cc8f166584fdc88bde2da2f2ec315d85f415d16ac4f9
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: loongarch64_generic
+Installed-Size: 23429120
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_loongarch64_generic.ipk
+Size: 8933323
+SHA256sum: 0c0fa1eca6eb61e4675fc291986984efa7a85350fa878bc11a52f178a585348b
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips64_mips64r2
+Installed-Size: 26818560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips64_mips64r2.ipk
+Size: 8527283
+SHA256sum: 4cb6ae34e5594cf5868fda29409f999c1b17341255e01c4261ec807e44e42c6c
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips64_octeonplus
+Installed-Size: 26818560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips64_octeonplus.ipk
+Size: 8526693
+SHA256sum: 0c30955e52736cbd95fb26ecaab80fbe6bcd19b471b4a3bf7b19e3c7d2260aee
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips64el_mips64r2
+Installed-Size: 26818560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips64el_mips64r2.ipk
+Size: 8351773
+SHA256sum: cc89692a07514874916d2c13da6a3bef2a0e32fae78f5724acd0224f5c844d11
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips_24kc
+Installed-Size: 5570560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips_24kc.ipk
+Size: 5553614
+SHA256sum: 1d6ad6851eb32cf3ce595a4f98aa367889dc4f367782d76cfee9c1088d7929a0
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips_4kec
+Installed-Size: 5570560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips_4kec.ipk
+Size: 5555638
+SHA256sum: 8193db11a77b6f9ae042ed14da443eb5b50ffe0fa490a44e12d627544843f067
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mips_mips32
+Installed-Size: 5570560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mips_mips32.ipk
+Size: 5555953
+SHA256sum: c7f67b13665c0f62535de268966038946e0a098f89d45158e2538cac1c368c61
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mipsel_24kc
+Installed-Size: 5672960
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mipsel_24kc.ipk
+Size: 5664988
+SHA256sum: 9dd2f5ee8dbfc337c60b1c95cd8068706dd78f0a5fcefe6574eff040ac2228ae
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mipsel_24kc_24kf
+Installed-Size: 5672960
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mipsel_24kc_24kf.ipk
+Size: 5662651
+SHA256sum: d445857b357a936944268f0d4bdc2421f9dd860ad414a5559d43d8ba0e685459
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mipsel_74kc
+Installed-Size: 5672960
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mipsel_74kc.ipk
+Size: 5664865
+SHA256sum: 071e31836918d740e3f6e3b04ef6f76d081450e24db28570a7029212a2ef9f39
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: mipsel_mips32
+Installed-Size: 5672960
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_mipsel_mips32.ipk
+Size: 5664725
+SHA256sum: 77d615e377503aafe6589ce0f1a90193bc19bbc1cb5aecdf2e145c0efe30dffa
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: riscv64_riscv64
+Installed-Size: 23336960
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_riscv64_riscv64.ipk
+Size: 8990707
+SHA256sum: 402503e7944d893ac9490c94ef54e18b0455cb379ba607b04d01ed9194b2a51a
+
+Package: tailscale
+Version: 1.92.4-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+Source: feeds/base/tailscale
+SourceName: tailscale
+License: BSD-3-Clause
+LicenseFiles: LICENSE
+Section: net
+SourceDateEpoch: 1760891865
+URL: Original(https://tailscale.com);Smaller(https://github.com/GuNanOvO/openwrt-tailscale)
+CPE-ID: cpe:/a:tailscale:tailscale
+Maintainer: GuNan <gunanovo@gmail.com>
+Architecture: x86_64
+Installed-Size: 7106560
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+Filename: tailscale_1.92.4_x86_64.ipk
+Size: 7094265
+SHA256sum: bc4ea12af9c82d86ec05c217f8355383dfe24ac749b817ba9c75c892a4fb245e
+

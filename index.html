@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Smaller Tailscale for OpenWrt</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="A smaller Tailscale repository for OpenWrt, designed to reduce storage usage while maintaining essential functionality.">
+    <meta name="keywords"
+        content="OpenWrt, Tailscale, smaller packages, tailscale openwrt, openwrt tailscale, tailscale for openwrt, install tailscale on openwrt, tailscale on openwrt, openwrt 安装 tailscale, tailscale ipk, repository, repo, ipk, installation, usage, packages, smaller ipk, optimized tailscale, upx compression">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <button id="toggle-theme" onclick="toggleTheme()">🌙</button>
+            <div class="tab-buttons">
+                <button id="btn-usage" onclick="showSection('usage')">Usage</button>
+                <!-- <div class="divider"></div> -->
+                <button id="btn-usage-chinese" onclick="showSection('usage-chinese')">用法</button>
+                <!-- <div class="divider"></div> -->
+                <button id="btn-packages" onclick="showSection('packages')">Packages</button>
+                <!-- <div class="divider"></div> -->
+                <button id="btn-security-statement" onclick="showSection('security-statement')">Security Statement
+                    安全声明</button>
+            </div>
+            <h1><a href="https://github.com/GuNanOvO/openwrt-tailscale" target="_blank">Smaller Tailscale Repository For
+                    OpenWrt</a></h1>
+            <hr>
+        </header>
+
+        <main>
+            <section id="usage">
+                <div class="notice">
+                    <p>
+                    <h3>Note:</h3> These are smaller Tailscale packages for OpenWrt, specifically designed to
+                    reduce storage usage while maintaining essential functionality. </p>
+                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;optimized:</p>
+                    <ul>
+                        <li>Combined <code>tailscale</code> and <code>tailscaled</code> into a single binary.</li>
+                        <li>Built with the <code>--extra-small</code> flag to significantly reduce binary size.</li>
+                        <li>UPX compression applied to binaries (except for mips64 architecture) to further reduce
+                            storage usage.</li>
+                    </ul>
+                </div>
+
+                <h2>Repository Setup</h2>
+                <section class="part">
+                    <p>Import the public key used to verify package signatures:</p>
+
+                    <div class="code-block">
+                        <p>Run this command on your OpenWrt device:</p>
+                        <pre>wget -O /tmp/key-build.pub https://gunanovo.github.io/openwrt-tailscale/key-build.pub && opkg-key add /tmp/key-build.pub</pre>
+                    </div>
+
+                    <p>Add the package feed to your OpenWrt configuration:</p>
+
+                    <div class="code-block">
+                        <p>Edit <code>/etc/opkg/customfeeds.conf</code>:</p>
+                        <pre>echo "src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale" >> /etc/opkg/customfeeds.conf</pre>
+
+                        <p>Or manually add this line:</p>
+                        <pre>src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale</pre>
+                    </div>
+                </section>
+
+                <h2>Installation Methods</h2>
+                <section class="part">
+                    <p>Choose your preferred method to install Tailscale on OpenWrt:</p>
+                    <div class="method">
+                        <h4>Web UI:</h4>
+                        <ol>
+                            <li>Navigate to <strong>System → Software ;</strong></li>
+                            <li>Click <em>Update lists</em> to refresh packages ;</li>
+                            <li>Search for "tailscale" ;</li>
+                            <li>Install the main package and any desired utilities ;</li>
+                        </ol>
+                    </div>
+                    <div class="method">
+                        <h4>Command Line:</h4>
+                        <pre>opkg update
+opkg install tailscale</pre>
+                        <p class="note">Note: The "failed log upload" message during installation is expected and can be
+                            safely ignored.</p>
+                    </div>
+                </section>
+
+                <h2>Web UI (LuCI)</h2>
+                <section class="part">
+                    <p>For a graphical interface to manage Tailscale, we recommend installing the LuCI app which build by <a href="https://github.com/Tokisaki-Galaxy" target="_blank">@Tokisaki-Galaxy</a> and open source on GitHub: <a href="https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community" target="_blank">luci-app-tailscale-community</a></p>
+                    <p>This provides an easy-to-use web interface to configure and manage Tailscale directly from OpenWrt's LuCI dashboard.</p>
+                </section>
+
+                <h2>Post-Installation Steps</h2>
+                <section class="part">
+                    <p>After installation, you need to configure Tailscale to connect your device to the Tailscale
+                        network.</p>
+                    <p>Run the following command to start Tailscale and configure it:</p>
+                    <pre>tailscale up \
+    --accept-dns=false \
+    --advertise-routes=10.0.0.0/24 \
+    --advertise-exit-node</pre>
+                    <p>If you're using OpenWrt == 22.03 you will also need to specify <code>--netfilter-mode=off</code>.
+                        For versions 23+ do NOT include netfilter-mode. </p>
+
+                    <div class="tips">
+                        <h3>Tips:</h3>
+                        <ul>
+                            <li>Consider adding <code>--hostname=your-router-name</code> for easier identification.</li>
+                        </ul>
+                    </div>
+                    <div class="notice">
+                        <p>
+                        <h3>Note:</h3> If you encounter any of the following situations: </p>
+                        <ul>
+                            <li>Your device has limited RAM, and during usage, Tailscale consumes an excessive amount of
+                                memory;</li>
+                            <li>Or Tailscale is killed and restarted by the OOM Killer;</li>
+                            <li>Or you’re not sure why Tailscale keeps restarting unexpectedly;</li>
+                        </ul>
+                        <p>Then you may try trading higher CPU usage for lower memory usage. Here's how:</p>
+                        <ol>
+                            <li>Edit the <code>/etc/init.d/tailscale</code> file:</li>
+                            <pre>vi /etc/init.d/tailscale</pre>
+                            <li>Locate the following line:</li>
+                            <pre>procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode"</pre>
+                            <li>Append <code>GOGC=10</code> to the end of that line so it becomes:</li>
+                            <pre>procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode" GOGC=10</pre>
+                            <p>This will make Tailscale more aggressive in memory garbage collection.</p>
+                        </ol>
+                    </div>
+                </section>
+            </section>
+
+            <section id="usage-chinese">
+                <div class="notice">
+                    <p>
+                    <h3>Note:</h3> 这是为 OpenWrt 精简定制的 Tailscale 软件包，旨在在保持核心功能的同时，尽可能降低存储占用。 </p>
+                    <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;优化内容：</p>
+                    <ul>
+                        <li>将 <code>tailscale</code> 和 <code>tailscaled</code> 合并为一个单一的可执行文件。</li>
+                        <li>使用 <code>--extra-small</code> 编译标志以显著减小二进制文件体积。</li>
+                        <li>使用 UPX 对二进制文件进行压缩（mips64 架构除外），进一步降低存储占用。</li>
+                    </ul>
+                </div>
+
+
+                <h2>软件源设置</h2>
+                <section class="part">
+                    <p>导入用于验证软件包签名的公钥：</p>
+
+                    <div class="code-block">
+                        <p>在你的 OpenWrt 设备上执行以下命令：</p>
+                        <pre>wget -O /tmp/key-build.pub https://gunanovo.github.io/openwrt-tailscale/key-build.pub && opkg-key add /tmp/key-build.pub</pre>
+                    </div>
+
+                    <p>将软件源添加到你的 OpenWrt 配置中：</p>
+
+                    <div class="code-block">
+                        <p>编辑 <code>/etc/opkg/customfeeds.conf</code> 文件：</p>
+                        <pre>echo "src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale" >> /etc/opkg/customfeeds.conf</pre>
+
+                        <p>或者手动添加以下内容：</p>
+                        <pre>src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale</pre>
+                    </div>
+                </section>
+
+                <h2>安装方式</h2>
+                <section class="part">
+                    <p>请选择你喜欢的方式安装 Tailscale：</p>
+                    <div class="method">
+                        <h4>Web 界面方式：</h4>
+                        <ol>
+                            <li>打开 <strong>系统 → 软件包（System → Software）;</strong></li>
+                            <li>点击 <em>更新列表（Update lists）</em> 以刷新软件包;</li>
+                            <li>搜索 "tailscale" ;</li>
+                            <li>安装主软件包及其他你需要的工具组件 ;</li>
+                        </ol>
+                    </div>
+                    <div class="method">
+                        <h4>命令行方式：</h4>
+                        <pre>opkg update
+opkg install tailscale</pre>
+                        <p class="note">Note: 安装过程中出现 "failed log upload" 报错属于预期现象，可放心忽略。</p>
+                    </div>
+                </section>
+
+                <h2>Web UI (LuCI)</h2>
+                <section class="part">
+                    <p>为了获得图形界面来管理 Tailscale，我们建议安装由 <a href="https://github.com/Tokisaki-Galaxy" target="_blank">@Tokisaki-Galaxy</a> 开发并在 GitHub 上开源的 LuCI 应用：<a href="https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community" target="_blank">luci-app-tailscale-community</a></p>
+                    <p>这提供了一个易于使用的 Web 界面，可以直接从 OpenWrt 的 LuCI 仪表板配置和管理 Tailscale。</p>
+                </section>
+                <h2>安装后步骤</h2>
+                <section class="part">
+                    <p>安装完成后，需要配置 Tailscale 以将设备接入 Tailscale 网络。</p>
+                    <p>执行以下命令：</p>
+                    <pre>tailscale up \
+    --accept-dns=false \
+    --advertise-routes=10.0.0.0/24 \
+    --advertise-exit-node</pre>
+                    <p>如果你的OpenWrt版本为22.03，你还需要添加 <code>--netfilter-mode=off</code> 参数， 对于 OpenWrt 23+ 则不应该包含该参数 </p>
+
+                    <div class="tips">
+                        <h3>Tips:</h3>
+                        <ul>
+                            <li>建议添加 <code>--hostname=your-router-name</code> 参数，以便在 Tailscale 网络中更容易识别该设备。</li>
+                        </ul>
+                    </div>
+
+                    <div class="notice">
+                        <p>
+                        <h3>NOTE:</h3> 如果你遇到以下情况： </p>
+                        <ul>
+                            <li>设备运行内存有限，在使用过程中出现tailscale占用极高运行内存;</li>
+                            <li>或直接致使tailscale被OOM KILLER杀死并重启;</li>
+                            <li>或你不清楚什么原因导致tailscale异常重启;</li>
+                        </ul>
+                        <p>则，你可以尝试以更高的CPU占用换取较低的内存占用，操作如下：</p>
+                        <ol>
+                            <li>修改 <code>/etc/init.d/tailscale</code> 文件</li>
+                            <pre>vi /etc/init.d/tailscale</pre>
+                            <li>找到以下一行：</li>
+                            <pre>procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode"</pre>
+                            <li>在该行后方加上参数 <code>GOGC=10</code>，使其变为：</li>
+                            <pre>procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode" GOGC=10</pre>
+                            <p>该参数将使 Tailscale 更积极地回收内存。</p>
+                        </ol>
+                    </div>
+                </section>
+            </section>
+            <section id="security-statement">
+                <h1 style="text-align: center;">Feed Security Statement 软件源安全声明</h1>
+                <section class="part">
+
+                    <p>All <code>.ipk</code> packages provided by this OpenWrt software feed are built automatically via
+                        <a href="https://docs.github.com/en/actions" target="_blank">GitHub Actions</a>,
+                        with a fully open-source, transparent, and auditable process.
+                    </p>
+
+                    <p>You can review the build workflows, scripts, logs, and release history at:
+                        <a href="https://github.com/GuNanOvO/openwrt-tailscale"
+                            target="_blank">https://github.com/GuNanOvO/openwrt-tailscale</a>
+                    </p>
+
+                    <h3>Build Integrity & Transparency</h3>
+                    <ul>
+                        <li>
+                            <strong>Built from Official Source:</strong> All binaries are compiled from
+                            <a href="https://github.com/tailscale/tailscale" target="_blank">official Tailscale release
+                                source code</a>,
+                            without any functional modifications.
+                            <a href="https://upx.github.io/" target="_blank">UPX</a> is optionally used for binary
+                            compression.
+                        </li>
+                        <li>
+                            <strong>Fully Public Workflow:</strong> All
+                            <a href="https://github.com/GuNanOvO/openwrt-tailscale/tree/main/.github/workflows"
+                                target="_blank">build scripts</a>,
+                            packaging steps, compiler flags, and release assets are open for community audit.
+                        </li>
+                        <li>
+                            <strong>Automated & Reproducible:</strong> Builds are performed in
+                            <a href="https://docs.github.com/en/actions/using-workflows/about-workflows"
+                                target="_blank">GitHub's CI environment</a>,
+                            eliminating the risk of manual tampering.
+                        </li>
+                    </ul>
+
+                    <h3>Security Best Practices</h3>
+                    <ul>
+                        <li>
+                            <strong>Minimal Attack Surface:</strong> The feed is served statically via
+                            <a href="https://pages.github.com/" target="_blank">GitHub Pages</a>, with no dynamic code
+                            or
+                            backend logic.
+                        </li>
+                        <li>
+                            <strong>No Manual Uploads:</strong> All artifacts are generated directly from source during
+                            <a href="https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions"
+                                target="_blank">automated CI runs</a> —
+                            never uploaded manually or by third parties.
+                        </li>
+                    </ul>
+
+                    <h3>User Recommendations</h3>
+                    <p>To further validate the feed's trustworthiness, users are encouraged to:</p>
+                    <ul>
+                        <li><a href="https://github.com/GuNanOvO/openwrt-tailscale/actions" target="_blank">Review the
+                                GitHub Actions workflows and build history</a></li>
+                        <li><a href="https://github.com/GuNanOvO/openwrt-tailscale#build" target="_blank">Reproduce
+                                builds
+                                locally or via GitHub</a> to verify reproducibility</li>
+                        <li>Verify checksums or cryptographic signatures (e.g., SHA256 or <code>usign</code>) of
+                            downloaded
+                            packages</li>
+                    </ul>
+
+                    <h3>Disclaimer</h3>
+                    <p>While every effort has been made to ensure the security, transparency, and integrity of this
+                        feed, it
+                        is provided
+                        <a href="https://en.wikipedia.org/wiki/As_is" target="_blank">as-is</a>, with no warranties.
+                        Users
+                        should always evaluate the source code, build process, and decide independently whether to trust
+                        and
+                        use these packages.
+                    </p>
+                    <p>For a safer OpenWrt experience, it is recommended to use packages only from this feed or other
+                        trusted sources, and stay up to date with the repository.</p>
+                </section>
+                <hr>
+
+                <section class="part">
+                    <p>所有本软件源中的 <code>.ipk</code> 软件包均通过
+                        <a href="https://docs.github.com/zh/actions" target="_blank">GitHub Actions</a>
+                        自动化构建，构建流程开源、透明、可审计。
+                    </p>
+
+                    <p>详细的构建脚本、日志和发布历史可在以下仓库查看：
+                        <a href="https://github.com/GuNanOvO/openwrt-tailscale"
+                            target="_blank">https://github.com/GuNanOvO/openwrt-tailscale</a>
+                    </p>
+
+                    <h3>构建透明性与可信性</h3>
+                    <ul>
+                        <li>
+                            <strong>构建基于 <a href="https://github.com/tailscale/tailscale" target="_blank">Tailscale
+                                    官方源代码</a>：</strong> 不做任何功能性更改，仅使用
+                            <a href="https://upx.github.io/" target="_blank">UPX</a> 等开源工具进行二进制压缩以减小体积。
+                        </li>
+                        <li>
+                            <strong>完全公开的工作流程：</strong>
+                            <a href="https://github.com/GuNanOvO/openwrt-tailscale/tree/main/.github/workflows"
+                                target="_blank">构建脚本</a>、打包流程、编译参数等均完全公开，供任何人审查验证。
+                        </li>
+                        <li>
+                            <strong>自动化与可复现性：</strong> 构建过程由
+                            <a href="https://docs.github.com/zh/actions" target="_blank">CI 自动执行</a>，避免人为干预，构建结果具备可复现性。
+                        </li>
+                    </ul>
+
+                    <h3>安全保障原则</h3>
+                    <ul>
+                        <li>
+                            <strong>最小攻击面原则：</strong> Feed 页面托管在
+                            <a href="https://pages.github.com/" target="_blank">GitHub Pages</a>，无需动态服务或后端执行，攻击面极小。
+                        </li>
+                        <li>
+                            <strong>零人工上传：</strong> 构建产物完全由
+                            <a href="https://docs.github.com/zh/actions" target="_blank">CI 自动生成</a>，无任何第三方上传或手动干预。
+                        </li>
+                    </ul>
+
+                    <h3>用户使用建议</h3>
+                    <p>为了进一步验证本软件源的安全性，建议用户：</p>
+                    <ul>
+                        <li><a href="https://github.com/GuNanOvO/openwrt-tailscale/actions" target="_blank">审查 GitHub
+                                Actions 构建脚本和构建日志</a></li>
+                        <li><a href="https://github.com/GuNanOvO/openwrt-tailscale#build" target="_blank">使用本仓库脚本在本地或
+                                GitHub
+                                上自行构建</a> 以验证可复现性</li>
+                        <li>校验 .ipk 软件包的哈希值或签名（如 SHA256 或 <code>usign</code>）</li>
+                    </ul>
+
+                    <h3>风险提示</h3>
+                    <p>尽管本项目已尽最大努力确保 Feed 的安全性、透明度与可信性，本软件源仍然是
+                        <a href="https://zh.wikipedia.org/wiki/%E6%8C%89%E5%8E%9F%E6%A0%B7%E6%8F%90%E4%BE%9B"
+                            target="_blank">“按原样”</a>提供，不附带任何形式的担保。请用户自行评估源代码与构建过程，并据此判断是否使用。
+                    </p>
+                    <p>为确保系统安全，请尽量从本源或 其他可信来源 获取软件包，并关注仓库更新动态。</p>
+                </section>
+            </section>
+
+
+            <section id="packages" style="display: none;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>File</th>
+                            <th>Size</th>
+                            <th>Date</th>
+                        </tr>
+                    </thead>
+                    <!-- tbody-anchor -->
+          <tbody>
+                        <tr>
+                            <td><a href="Packages">Packages</a></td>
+                            <td>28K</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="Packages.gz">Packages.gz</a></td>
+                            <td>4.0K</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="Packages.sig">Packages.sig</a></td>
+                            <td>4.0K</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_aarch64_cortex-a53.ipk">tailscale_1.92.4_aarch64_cortex-a53.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_aarch64_cortex-a72.ipk">tailscale_1.92.4_aarch64_cortex-a72.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_aarch64_cortex-a76.ipk">tailscale_1.92.4_aarch64_cortex-a76.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_aarch64_generic.ipk">tailscale_1.92.4_aarch64_generic.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_arm1176jzf-s_vfp.ipk">tailscale_1.92.4_arm_arm1176jzf-s_vfp.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_arm926ej-s.ipk">tailscale_1.92.4_arm_arm926ej-s.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a15_neon-vfpv4.ipk">tailscale_1.92.4_arm_cortex-a15_neon-vfpv4.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a5_vfpv4.ipk">tailscale_1.92.4_arm_cortex-a5_vfpv4.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a7.ipk">tailscale_1.92.4_arm_cortex-a7.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a7_neon-vfpv4.ipk">tailscale_1.92.4_arm_cortex-a7_neon-vfpv4.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a7_vfpv4.ipk">tailscale_1.92.4_arm_cortex-a7_vfpv4.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a8_vfpv3.ipk">tailscale_1.92.4_arm_cortex-a8_vfpv3.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a9.ipk">tailscale_1.92.4_arm_cortex-a9.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a9_neon.ipk">tailscale_1.92.4_arm_cortex-a9_neon.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_cortex-a9_vfpv3-d16.ipk">tailscale_1.92.4_arm_cortex-a9_vfpv3-d16.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_fa526.ipk">tailscale_1.92.4_arm_fa526.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_arm_xscale.ipk">tailscale_1.92.4_arm_xscale.ipk</a></td>
+                            <td>5.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_i386_pentium-mmx.ipk">tailscale_1.92.4_i386_pentium-mmx.ipk</a></td>
+                            <td>6.4M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_i386_pentium4.ipk">tailscale_1.92.4_i386_pentium4.ipk</a></td>
+                            <td>6.4M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_loongarch64_generic.ipk">tailscale_1.92.4_loongarch64_generic.ipk</a></td>
+                            <td>8.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips64_mips64r2.ipk">tailscale_1.92.4_mips64_mips64r2.ipk</a></td>
+                            <td>8.2M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips64_octeonplus.ipk">tailscale_1.92.4_mips64_octeonplus.ipk</a></td>
+                            <td>8.2M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips64el_mips64r2.ipk">tailscale_1.92.4_mips64el_mips64r2.ipk</a></td>
+                            <td>8.0M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips_24kc.ipk">tailscale_1.92.4_mips_24kc.ipk</a></td>
+                            <td>5.3M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips_4kec.ipk">tailscale_1.92.4_mips_4kec.ipk</a></td>
+                            <td>5.4M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mips_mips32.ipk">tailscale_1.92.4_mips_mips32.ipk</a></td>
+                            <td>5.4M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mipsel_24kc.ipk">tailscale_1.92.4_mipsel_24kc.ipk</a></td>
+                            <td>5.5M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mipsel_24kc_24kf.ipk">tailscale_1.92.4_mipsel_24kc_24kf.ipk</a></td>
+                            <td>5.5M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mipsel_74kc.ipk">tailscale_1.92.4_mipsel_74kc.ipk</a></td>
+                            <td>5.5M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_mipsel_mips32.ipk">tailscale_1.92.4_mipsel_mips32.ipk</a></td>
+                            <td>5.5M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_riscv64_riscv64.ipk">tailscale_1.92.4_riscv64_riscv64.ipk</a></td>
+                            <td>8.6M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+                        <tr>
+                            <td><a href="tailscale_1.92.4_x86_64.ipk">tailscale_1.92.4_x86_64.ipk</a></td>
+                            <td>6.8M</td>
+                            <td>2025-12-23 Tue 17:09:50 UTC</td>
+                        </tr>
+          </tbody>
+                    <!-- end-tbody-anchor -->
+                </table>
+            </section>
+        </main>
+
+        </script>
+
+        <footer class="footer">
+            <hr>
+
+            <p>
+                <span>Built with ❤️ and shared with the community. </span>
+                <span>Open source on <a href="https://github.com/GuNanOvO/openwrt-tailscale">GitHub</a>.</span>
+                <span><a href="https://github.com/GuNanOvO/openwrt-tailscale">⭐Star it!</a></span>
+                <span><a href="https://github.com/GuNanOvO/openwrt-tailscale/blob/main/LICENSE">MIT License</a>.</span>
+                <span>Generated by GitHub Action on:
+                    <!-- date-anchor -->
+                    <span id="date">2025-12-23 17:02:33 UTC</span>
+                    <!-- end-date-anchor -->
+                </span>
+                <span>Version:
+                    <!-- version-anchor -->
+                    <span id="version">1.92.4</span>
+                    <!-- end-version-anchor -->
+                </span>
+            </p>
+        </footer>
+    </div>
+
+    <script>
+        function showSection(id) {
+            document.querySelectorAll('main > section').forEach(s => s.style.display = 'none');
+            document.getElementById(id).style.display = 'block';
+
+            const buttons = [
+                { id: 'btn-usage', section: 'usage', label: 'Usage' },
+                { id: 'btn-usage-chinese', section: 'usage-chinese', label: '用法' },
+                { id: 'btn-security-statement', section: 'security-statement', label: 'Security Statement 安全声明' },
+                { id: 'btn-packages', section: 'packages', label: 'Packages' }
+            ];
+
+            buttons.forEach(btn => {
+                const isActive = (id === btn.section);
+                const el = document.getElementById(btn.id);
+                el.classList.toggle('active', isActive);
+                el.classList.toggle('inactive', !isActive);
+                el.disabled = isActive;
+            });
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+            document.querySelectorAll("pre").forEach((pre) => {
+                const wrapper = document.createElement("div");
+                wrapper.classList.add("pre-wrapper");
+
+                pre.parentNode.insertBefore(wrapper, pre);
+                wrapper.appendChild(pre);
+
+                const btn = document.createElement("button");
+                btn.className = "copy-btn";
+                btn.textContent = "Copy";
+
+                btn.addEventListener("click", () => {
+                    navigator.clipboard.writeText(pre.textContent).then(() => {
+                        btn.textContent = "Copied!";
+                        btn.classList.add("copied");
+                        setTimeout(() => {
+                            btn.textContent = "Copy";
+                            btn.classList.remove("copied");
+                        }, 2000);
+                    });
+                });
+
+                wrapper.appendChild(btn);
+            });
+        });
+
+        function toggleTheme() {
+            const isDark = document.body.classList.toggle('dark');
+            localStorage.setItem('theme', isDark ? 'dark' : 'light');
+            document.getElementById('toggle-theme').textContent = isDark ? '☀️' : '🌙';
+        }
+
+        function initTheme() {
+            const hour = new Date().getHours();
+            const saved = localStorage.getItem('theme');
+            const isDark = saved === 'dark' || (!saved && (hour < 6 || hour >= 18));
+            if (isDark) {
+                document.body.classList.add('dark');
+                document.getElementById('toggle-theme').textContent = '☀️';
+            } else {
+                document.getElementById('toggle-theme').textContent = '🌙';
+            }
+        }
+
+        document.getElementById('btn-usage').click();
+        initTheme();
+
+    </script>
+</body>
+
+</html>

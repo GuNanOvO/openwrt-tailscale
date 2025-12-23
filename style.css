@@ -1,0 +1,393 @@
+:root {
+    --color-bg-body: #f4f4f4;
+    --color-text-primary: #333;
+    --color-bg-container: #fff;
+    --color-bg-part: #fdfdfd;
+    --color-border-primary: #e2e2e2;
+    --color-shadow-base: rgba(0, 0, 0, 0.1);
+    --color-shadow-hover: rgba(0, 0, 0, 0.2);
+    --color-divider: #000000;
+    --color-text-secondary: #666;
+
+
+    --color-brand-primary: #0066cc;
+    --color-brand-light: #d6ebff;
+    --color-brand-lighter: #7aade0;
+    --color-brand-active-hover: #589adc;
+    --color-brand-link-hover: #0066cc;
+
+
+    --color-notice-bg: #eef8ff;
+    --color-notice-border: #91d1ff;
+    --color-tips-bg: #e8fff5;
+    --color-tips-border: #42b983;
+
+
+    --color-code-block: #f4f4f4;
+    --color-code-bg: #e2e2e2;
+    --color-pre-bg: #e2e2e2;
+    --color-table-header-bg: #eeeeee;
+    --color-table-row-hover-bg: #d1f1f7;
+}
+
+
+body.dark {
+    --color-bg-body: #1e1e1e;
+    --color-text-primary: #ccc;
+    --color-bg-container: #2a2a2a;
+    --color-bg-part: #212121;
+    --color-border-primary: #555;
+    --color-shadow-base: rgba(255, 255, 255, 0.1);
+    --color-shadow-hover: rgba(255, 255, 255, 0.2);
+    --color-divider: #999;
+    --color-text-secondary: #999;
+
+
+    --color-brand-primary: #9ecbff;
+    --color-brand-light: #3a3a3a;
+    --color-brand-lighter: #555;
+    --color-brand-active-hover: none;
+    --color-brand-link-hover: #9ecbff;
+
+
+    --color-notice-bg: #303030;
+    --color-notice-border: #91d1ff;
+    --color-tips-bg: #303030;
+    --color-tips-border: #42b983;
+
+
+    --color-code-block: #292929;
+    --color-code-bg: #3a3a3a;
+    --color-pre-bg: #3a3a3a;
+    --color-table-header-bg: #444;
+    --color-table-row-hover-bg: #444;
+}
+
+
+body {
+    font-family: Arial, sans-serif;
+    padding: 2rem;
+    background-color: var(--color-bg-body);
+    color: var(--color-text-primary);
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.container {
+    max-width: 90vw;
+    margin: auto;
+    background: var(--color-bg-container);
+    padding: 2rem;
+    border-radius: 10px;
+    box-shadow: 0 2px 10px var(--color-shadow-base);
+    transition: box-shadow 0.3s, background-color 0.3s;
+}
+
+.container:hover {
+    box-shadow: 0 4px 16px var(--color-shadow-hover);
+}
+
+#toggle-theme {
+    float: right;
+    font-size: 1.2rem;
+    width: 2.5rem;
+    height: 2.5rem;
+    cursor: pointer;
+    background-color: var(--color-brand-light);
+    transition: color 0.3s;
+    padding: 0;
+}
+
+#toggle-theme:hover {
+    background-color: var(--color-brand-lighter);
+    transition: color 0.3s;
+}
+
+h1 {
+    color: var(--color-brand-primary);
+    transition: color 0.3s;
+}
+
+hr {
+    border: 1px solid var(--color-border-primary);
+    transition: border-color 0.3s;
+}
+
+main {
+    margin: 2rem 0;
+}
+
+section.part {
+
+    padding: 1.5rem;
+    background-color: var(--color-bg-part);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 8px;
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+.method {
+    margin: 1.5rem 0;
+}
+
+.method ol li {
+    margin: 0.5rem 0;
+}
+
+.note {
+    color: var(--color-text-secondary);
+    font-style: italic;
+    transition: color 0.3s;
+}
+
+.footer {
+    margin-top: 2rem;
+    font-size: 0.9rem;
+    color: var(--color-text-secondary);
+    transition: color 0.3s;
+}
+
+a {
+    color: var(--color-brand-primary);
+    text-decoration: none;
+    transition: color 0.3s;
+}
+
+a:hover {
+    text-decoration: underline;
+    color: var(--color-brand-link-hover);
+}
+
+
+.tab-buttons {
+    height: 2.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.tab-buttons .divider {
+    height: 2rem;
+    width: 2px;
+    background-color: var(--color-divider);
+    transition: background-color 0.3s;
+}
+
+.tab-buttons button {
+    height: 2.5rem;
+}
+
+button {
+    font-size: 1rem;
+    text-align: center;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    background: transparent;
+    color: var(--color-brand-primary);
+}
+
+button.active {
+    font-size: 1rem;
+    color: var(--color-text-primary);
+    background-color: var(--color-brand-lighter);
+    font-weight: bolder;
+    cursor: default;
+}
+
+button.active:hover {
+    background-color: var(--color-brand-active-hover);
+}
+
+button.inactive {
+    color: var(--color-brand-primary);
+    background-color: var(--color-brand-light);
+    opacity: 0.8;
+    font-size: 1rem;
+    font-weight: bold;
+}
+
+button.inactive:hover {
+    opacity: 1;
+    background-color: var(--color-brand-lighter);
+    color: var(--color-text-primary);
+}
+
+
+.notice {
+    background: var(--color-notice-bg);
+    border-left: 4px solid var(--color-notice-border);
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 8px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.notice ul li {
+    margin: 0.5rem 0;
+}
+
+.tips {
+    background: var(--color-tips-bg);
+    border-left: 4px solid var(--color-tips-border);
+    padding: 1rem;
+    border-radius: 8px;
+    margin: 1rem 0;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+
+code {
+    background: var(--color-code-bg);
+    padding: 0.2rem 0.5rem;
+    border-radius: 3px;
+    font-family: monospace;
+    font-size: 0.95rem;
+    transition: background-color 0.3s, color 0.3s;
+    white-space: nowrap;
+}
+
+.code-block {
+    background: var(--color-code-block);
+    padding: 1rem;
+    border-radius: 10px;
+    margin: 1rem 0;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+pre {
+    overflow-x: auto;
+    background: var(--color-pre-bg);
+
+    border-radius: 6px;
+    font-family: monospace;
+    font-size: 1rem;
+    transition: background-color 0.3s, color 0.3s;
+    scrollbar-color: var(--color-text-secondary) var(--color-pre-bg);
+    scrollbar-width: thin;
+    padding: 2rem 1rem 1rem 1rem;
+}
+
+
+pre::-webkit-scrollbar {
+    height: 8px;
+}
+
+pre::-webkit-scrollbar-track {
+    background: var(--color-pre-bg);
+    border-radius: 4px;
+}
+
+pre::-webkit-scrollbar-thumb {
+    background-color: var(--color-text-secondary);
+    border-radius: 4px;
+    border: 2px solid var(--color-pre-bg);
+}
+
+pre::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-text-primary);
+}
+
+.pre-wrapper {
+    position: relative;
+}
+
+
+.copy-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    padding: 4px 8px;
+    font-size: 0.8rem;
+    border-radius: 4px;
+    cursor: pointer;
+    opacity: 1;
+    border: 1px solid var(--color-border-primary);
+    background: var(--color-code-block);
+    color: var(--color-text-primary);
+    transition: opacity 0.2s ease, background-color 0.3s, color 0.3s;
+}
+
+.copy-btn:hover {
+    background-color: var(--color-table-header-bg);
+}
+
+.copy-btn.copied {
+    background-color: #10b981;
+    color: white;
+    border-color: #10b981;
+}
+
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    border: 1px solid var(--color-border-primary);
+    margin: 1rem 0;
+    background: var(--color-bg-container);
+    transition: background-color 0.3s, border-color 0.3s;
+}
+
+th,
+td {
+    padding: 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid var(--color-border-primary);
+}
+
+th {
+    background-color: var(--color-table-header-bg);
+    transition: background-color 0.3s;
+}
+
+tr:hover {
+    background-color: var(--color-table-row-hover-bg);
+}
+
+span {
+    font-size: 1rem;
+    display: inline-block;
+    margin-right: 1rem;
+}
+
+#security-statement {
+    font-size: large;
+}
+
+
+@media (max-width: 768px) {
+    body {
+        padding: 1rem;
+    }
+
+    .container {
+        padding: 1rem;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .container:hover {
+        box-shadow: none;
+    }
+
+    .tab-buttons {
+        flex-wrap: wrap;
+        height: auto;
+        gap: 0.5rem 0.3rem;
+    }
+
+    .tab-buttons .divider {
+        display: none;
+    }
+
+    button {
+        font-size: 0.9rem;
+        padding: 0.4rem 0.8rem;
+    }
+
+    button.active {
+        font-size: 1.1rem;
+    }
+}
