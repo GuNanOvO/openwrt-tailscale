@@ -43,8 +43,14 @@ jobs:
             | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
           UPX_VER="${UPX_TAG#v}"
           echo "Detected UPX Version: $UPX_TAG"
-          echo "UPX_TAG=$UPX_TAG" >> $GITHUB_ENV
-          echo "UPX_VER=$UPX_VER" >> $GITHUB_ENV
+          
+          # 设置为步骤输出
+          echo "upx_tag=$UPX_TAG" >> "$GITHUB_OUTPUT"
+          echo "upx_ver=$UPX_VER" >> "$GITHUB_OUTPUT"
+          
+          # 同时也设置为环境变量供后续步骤使用
+          echo "UPX_TAG=$UPX_TAG" >> "$GITHUB_ENV"
+          echo "UPX_VER=$UPX_VER" >> "$GITHUB_ENV"
 
       - name: Cache UPX
         id: cache_upx
@@ -56,18 +62,20 @@ jobs:
       - name: Prepare UPX
         if: steps.cache_upx.outputs.cache-hit != 'true'
         run: |
-          UPX_URL="https://github.com/upx/upx/releases/download/${{ steps.check_upx.outputs.upx_tag }}/upx-${{ steps.check_upx.outputs.upx_ver }}-amd64_linux.tar.xz"
+          UPX_URL="https://github.com/upx/upx/releases/download/${{ env.UPX_TAG }}/upx-${{ env.UPX_VER }}-amd64_linux.tar.xz"
+          echo "Downloading UPX from: $UPX_URL"
           mkdir -p upx
           curl -L -o upx.tar.xz "$UPX_URL"
           tar -xf upx.tar.xz -C upx --strip-components=1
           chmod +x upx/upx
+          rm -f upx.tar.xz
 
       - name: Set UPX path output
         id: set_upx_path
         run: |
-          echo "upx_path=$(pwd)/upx" >> $GITHUB_OUTPUT
-          echo "upx_tag=$UPX_TAG" >> $GITHUB_OUTPUT
-          echo "upx_ver=$UPX_VER" >> $GITHUB_OUTPUT
+          echo "upx_path=$(pwd)/upx" >> "$GITHUB_OUTPUT"
+          echo "upx_tag=${{ env.UPX_TAG }}" >> "$GITHUB_OUTPUT"
+          echo "upx_ver=${{ env.UPX_VER }}" >> "$GITHUB_OUTPUT"
 
       # ----------------- Go -----------------
       - name: Check Go Latest Version
@@ -75,31 +83,37 @@ jobs:
         run: |
           GO_VERSION=$(curl -s https://go.dev/VERSION?m=text | head -1)
           echo "Detected Go Version: $GO_VERSION"
-          echo "GO_VERSION=$GO_VERSION" >> $GITHUB_ENV
+          
+          # 设置为步骤输出
+          echo "go_version=$GO_VERSION" >> "$GITHUB_OUTPUT"
+          
+          # 同时也设置为环境变量
+          echo "GO_VERSION=$GO_VERSION" >> "$GITHUB_ENV"
 
       - name: Cache Go
         id: cache_go
         uses: actions/cache@v4
         with:
           path: go
-          key: go-linux-amd64-${{ env.GO_VERSION }}
+          key: go-linux-amd64-${{ steps.check_go.outputs.go_version }}
 
       - name: Prepare Go
         if: steps.cache_go.outputs.cache-hit != 'true'
         run: |
           GO_OS=linux
           GO_ARCH=amd64
-          GO_URL="https://go.dev/dl/${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
+          GO_URL="https://go.dev/dl/${{ env.GO_VERSION }}.$GO_OS-$GO_ARCH.tar.gz"
+          echo "Downloading Go from: $GO_URL"
           mkdir -p go
           curl -L -o go.tar.gz "$GO_URL"
           tar -C go -xzf go.tar.gz --strip-components=1
-          rm go.tar.gz
+          rm -f go.tar.gz
 
       - name: Set Go path output
         id: set_go_path
         run: |
-          echo "go_path=$(pwd)/go" >> $GITHUB_OUTPUT
-          echo "go_version=$GO_VERSION" >> $GITHUB_OUTPUT
+          echo "go_path=$(pwd)/go" >> "$GITHUB_OUTPUT"
+          echo "go_version=${{ env.GO_VERSION }}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build for ${{ matrix.platform }}
