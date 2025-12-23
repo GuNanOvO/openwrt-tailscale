@@ -399,6 +399,9 @@ jobs:
           USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # 删除本地 feed 分支（如果存在）
+          git branch -D feed 2>/dev/null || true
+
           # 创建 orphan 分支（彻底重置历史）
           git checkout --orphan feed
           git rm -rf . || true
