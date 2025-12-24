@@ -86,13 +86,17 @@ EOF
 
 # 函数：获取设备架构
 check_device_target() {
-    local exclude_target="powerpc_64_e5500|powerpc_464fp|powerpc_8548|armeb_xscale"
-    local raw_target=""
+    local exclude_target='powerpc_64_e5500|powerpc_464fp|powerpc_8548|armeb_xscale'
+    local raw_target
 
-    raw_target=$(opkg print-architecture 2>/dev/null | awk '{print $2}' | grep -vE "all|noarch" | head -n 1)
+    raw_target="$(opkg print-architecture 2>/dev/null \
+        | awk '{print $2}' \
+        | grep -vE '^(all|noarch)$' \
+        | head -n 1)"
 
     if [ -z "$raw_target" ]; then
-        raw_target=$(grep "DISTRIB_ARCH" /etc/openwrt_release 2>/dev/null | awk -F"'" '{print $2}')
+        raw_target="$(grep -E "^DISTRIB_ARCH=" /etc/openwrt_release 2>/dev/null \
+            | awk -F"'" '{print $2}')"
     fi
 
     if [ -z "$raw_target" ]; then
@@ -100,12 +104,15 @@ check_device_target() {
         exit 1
     fi
 
-    if echo "$raw_target" | grep -iqE "$exclude_target"; then
+    raw_target="$(printf '%s' "$raw_target" \
+        | tr -d '\r\n\t\\ ' )"
+
+    if printf '%s' "$raw_target" | grep -qiE "$exclude_target"; then
         echo "[ERROR]: 当前架构 [$raw_target] 在排除名单中，脚本退出。"
         exit 1
     fi
 
-    DEVICE_TARGET=$(echo "$raw_target" | tr -d '[:space:]')
+    DEVICE_TARGET="$raw_target"
 }
 
 # 函数：检测tailscale安装状态
