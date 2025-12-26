@@ -431,25 +431,27 @@ persistent_install() {
     echo ""
     echo "[INFO]: Persistent installation in progress..."
     downloader
+    opkg remove tailscale
     opkg install /tmp/$TAILSCALE_FILE.ipk
 
     rm -rf "$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
 
-    echo ""
-    echo "╔═══════════════════════════════════════════════════════╗"
-    echo "║ Tailscale installation & service startup complete!!!  ║"
-    echo "║                                                       ║"
-    echo "║ You can now start using it as you wish!               ║"
-    echo "║ Direct startup: tailscale up                          ║"
-    echo "║ If any problems occur after installation, you can     ║"
-    echo "║ report at: $REPO_URL/issues  ║"
-    echo "║ Provide feedback. Thank you for using! /<3            ║"
-    echo "║                                                       ║"
-    echo "╚═══════════════════════════════════════════════════════╝"
-    echo ""
-
-    echo "[INFO]: Re-initializing script, please wait..."
-    init "" "false"
+    if [ "$silent_install" != "true" ]; then
+        echo ""
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ Tailscale installation & service startup complete!!!  ║"
+        echo "║                                                       ║"
+        echo "║ You can now start using it as you wish!               ║"
+        echo "║ Direct startup: tailscale up                          ║"
+        echo "║ If any problems occur after installation, you can     ║"
+        echo "║ report at: $REPO_URL/issues  ║"
+        echo "║ Provide feedback. Thank you for using! /<3            ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+        echo ""
+        echo "[INFO]: Re-initializing script, please wait..."
+        init "" "false"
+    fi
 }
 
 # Function: Switch from Temporary to Persistent Installation
@@ -570,7 +572,7 @@ downloader() {
     local tmp_packages="$tmp/Packages"
     local sha_file="$tmp/$TAILSCALE_FILE.sha256"
     local target_ipk="${TAILSCALE_FILE}.ipk"
-    local download_url="${TAILSCALE_URL}/releases/latest/download"
+    local download_url="${TAILSCALE_URL}/download"
 
     for attempt_times in $attempt_range; do
         if ! wget -cO "$file_path" "$download_url/$target_ipk"; then

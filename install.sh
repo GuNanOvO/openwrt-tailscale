@@ -334,6 +334,8 @@ update() {
             break
         fi
     done
+
+    init "" "false"
 }
 
 # 函数：卸载
@@ -484,25 +486,27 @@ persistent_install() {
     echo ""
     echo "[INFO]: 正在持久安装..."
     downloader
+    opkg remove tailscale
     opkg install /tmp/$TAILSCALE_FILE.ipk
 
     rm -rf "$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
-
-    echo ""
-    echo "╔═══════════════════════════════════════════════════════╗"
-    echo "║ Tailscale安装&服务启动完成!!!                         ║"
-    echo "║                                                       ║"
-    echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
-    echo "║ 直接启动: tailscale up                                ║"
-    echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
-    echo "║ "$REPO_URL"/issues  ║"
-    echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-    echo "║                                                       ║"
-    echo "╚═══════════════════════════════════════════════════════╝"
-    echo ""
-
-    echo "[INFO]: 正在重新初始化脚本, 请稍候..."
-    init "" "false"
+    
+    if [ "$silent_install" != "true" ]; then
+        echo ""
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ Tailscale安装&服务启动完成!!!                         ║"
+        echo "║                                                       ║"
+        echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
+        echo "║ 直接启动: tailscale up                                ║"
+        echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
+        echo "║ "$REPO_URL"/issues  ║"
+        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+        echo ""
+        echo "[INFO]: 正在重新初始化脚本, 请稍候..."
+        init "" "false"
+    fi
 }
 
 # 函数：临时安装切换到持久安装
@@ -588,21 +592,23 @@ temp_install() {
     if [ "$TMP_INSTALL" == "true" ]; then
         tailscale up
     fi
-    echo "[INFO]: tailscale服务启动完成"
-    echo ""
-    echo "╔═══════════════════════════════════════════════════════╗"
-    echo "║ Tailscale安装&服务启动完成!!!                         ║"
-    echo "║                                                       ║"
-    echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
-    echo "║ 直接启动: tailscale up                                ║"
-    echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
-    echo "║ "$REPO_URL"/issues  ║"
-    echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-    echo "║                                                       ║"
-    echo "╚═══════════════════════════════════════════════════════╝"
-    echo ""
-    echo "[INFO]: 正在重新初始化脚本, 请稍候..."
-    init "" "false"
+    if [ "$silent_install" != "true" ]; then
+        echo "[INFO]: tailscale服务启动完成"
+        echo ""
+        echo "╔═══════════════════════════════════════════════════════╗"
+        echo "║ Tailscale安装&服务启动完成!!!                         ║"
+        echo "║                                                       ║"
+        echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
+        echo "║ 直接启动: tailscale up                                ║"
+        echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
+        echo "║ "$REPO_URL"/issues  ║"
+        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
+        echo "║                                                       ║"
+        echo "╚═══════════════════════════════════════════════════════╝"
+        echo ""
+        echo "[INFO]: 正在重新初始化脚本, 请稍候..."
+        init "" "false"
+    fi
 }
 
 # 函数：持久安装切换到临时安装
