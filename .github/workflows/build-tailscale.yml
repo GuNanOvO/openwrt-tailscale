@@ -2,10 +2,6 @@ name: Smaller Tailscale Build Pipeline
 
 on:
   workflow_dispatch: 
-  push:
-    branches: [ main ]
-    paths:
-      - version
   repository_dispatch:
     types: [ build-tailscale ]
 
@@ -21,8 +17,6 @@ env:
   REPO_SMALL_OWNER: "GuNanOvO"
   ARTIFACT_DIR: "artifacts"
   BUILD_DATE: ""
-  UPX_TAG: "v5.0.2"
-  UPX_VER: "5.0.2"
 
 jobs:
   prepare-tools:
@@ -170,7 +164,7 @@ jobs:
         run: |
           echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
-      - name: Checkout repository (develop branch)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
           ref: main
