@@ -1,11 +1,6 @@
 name: Smaller Tailscale Build Pipeline
 
 on:
-  workflow_dispatch: 
-  push:
-    branches: [ main ]
-    paths:
-      - version
   repository_dispatch:
     types: [ build-tailscale ]
 
@@ -168,10 +163,10 @@ jobs:
         run: |
           echo "BUILD_DATE=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_ENV
 
-      - name: Checkout repository (develop branch)
+      - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: develop
           path: repo
 
       - name: Prepare package
