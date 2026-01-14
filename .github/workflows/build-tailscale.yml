@@ -167,7 +167,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: develop
+          ref: main
           path: repo
 
       - name: Prepare package
