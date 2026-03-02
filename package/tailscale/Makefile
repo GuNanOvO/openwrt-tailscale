@@ -74,7 +74,7 @@ else
 endif
 
 	mkdir -p /builder/bin/packages/$(ARCH)/base
-	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(ARCH)/base/tailscaled
+	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(BOARD)/base/tailscaled
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
