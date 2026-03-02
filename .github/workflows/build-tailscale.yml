@@ -18,7 +18,7 @@ env:
   OPENWRT_IPK_SDK: "24.10.4"
   OPENWRT_APK_SDK: "25.12.0-rc5"
   SKIP_TARGETS_24: "riscv64_generic" # 25.12 renamed, skip for 24.10
-  SKIP_TARGETS_25: "mips_4kec" # 25.12 removed, skip for 25.12
+  SKIP_TARGETS_25: "mips_4kec riscv64_riscv64" # skip for 25.12, removed: mips_4kec; renamed: riscv64_riscv64 -> riscv64_generic
 
 jobs:
   prepare:
