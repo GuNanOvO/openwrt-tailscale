@@ -17,6 +17,8 @@ env:
   ARTIFACT_DIR: "artifacts"
   OPENWRT_IPK_SDK: "24.10.4"
   OPENWRT_APK_SDK: "25.12.0-rc5"
+  SKIP_TARGETS_24: "riscv64_generic" # 25.12 renamed, skip for 24.10
+  SKIP_TARGETS_25: "mips_4kec" # 25.12 removed, skip for 25.12
 
 jobs:
   prepare:
@@ -138,7 +140,7 @@ jobs:
           - 'mips64_octeonplus'
           - 'mips64el_mips64r2'
           - 'mips_24kc'
-          - 'mips_4kec'
+          - 'mips_4kec' # 25.12 removed
           - 'mips_mips32'
           - 'mipsel_24kc'
           - 'mipsel_24kc_24kf'
@@ -146,6 +148,7 @@ jobs:
           - 'mipsel_mips32'
           - 'riscv64_riscv64'
           - 'x86_64'
+          - 'riscv64_generic' # 25.12 renamed
       fail-fast: true
 
     steps:
@@ -207,11 +210,19 @@ jobs:
 
       - name: Pull OpenWRT 24.10 SDK Docker Image
         run: |
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }}
+          if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
+            echo "Skipping pull of OpenWRT 24.10 SDK for ${{ matrix.platform }} due to renaming."
+          else
+            docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }}
+          fi
 
       - name: Pull OpenWRT 25.12 SDK Docker Image
         run: |
-          docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }}
+          if echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "${{ matrix.platform }}"; then
+            echo "Skipping pull of OpenWRT 25.12 SDK for ${{ matrix.platform }} due to removal."
+          else
+            docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }}
+          fi
 
       # BUILD PACKAGES
 
@@ -225,31 +236,39 @@ jobs:
 
       - name: Build with OpenWRT 24.10 SDK Docker
         run: |
-          docker run --rm \
-            -v "$(pwd)/bin:/builder/bin:z" \
-            -v "$(pwd)/build_scripts:/builder/build_scripts:ro,z" \
-            -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
-            -v "$(pwd)/keys:/builder/keys:ro,z" \
-            -v "$(pwd)/upx:/builder/upx:ro,z" \
-            -v "$(pwd)/go:/builder/go:ro,z" \
-            -e TERM=xterm \
-            -e FORCE=1 \
-            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }} \
-            bash /builder/build_scripts/build_ipk.sh "${{ steps.get_build_version.outputs.version }}" "${{ matrix.platform }}"
+          if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
+            echo "Skipping build with OpenWRT 24.10 SDK for ${{ matrix.platform }} due to renaming."
+          else
+            docker run --rm \
+              -v "$(pwd)/bin:/builder/bin:z" \
+              -v "$(pwd)/build_scripts:/builder/build_scripts:ro,z" \
+              -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
+              -v "$(pwd)/keys:/builder/keys:ro,z" \
+              -v "$(pwd)/upx:/builder/upx:ro,z" \
+              -v "$(pwd)/go:/builder/go:ro,z" \
+              -e TERM=xterm \
+              -e FORCE=1 \
+              ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }} \
+              bash /builder/build_scripts/build_ipk.sh "${{ steps.get_build_version.outputs.version }}" "${{ matrix.platform }}"
+          fi
 
       - name: Build with OpenWRT 25.12 SDK Docker
         run: |
-          docker run --rm \
-            -v "$(pwd)/bin:/builder/bin:z" \
-            -v "$(pwd)/build_scripts:/builder/build_scripts:ro,z" \
-            -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
-            -v "$(pwd)/keys:/builder/keys:ro,z" \
-            -v "$(pwd)/upx:/builder/upx:ro,z" \
-            -v "$(pwd)/go:/builder/go:ro,z" \
-            -e TERM=xterm \
-            -e FORCE=1 \
-            ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }} \
-            bash /builder/build_scripts/build_apk.sh "${{ steps.get_build_version.outputs.version }}" "${{ matrix.platform }}"
+          if echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "${{ matrix.platform }}"; then
+            echo "Skipping build with OpenWRT 25.12 SDK for ${{ matrix.platform }} due to removal."
+          else
+            docker run --rm \
+              -v "$(pwd)/bin:/builder/bin:z" \
+              -v "$(pwd)/build_scripts:/builder/build_scripts:ro,z" \
+              -v "$(pwd)/tailscale:/builder/tailscale:ro,z" \
+              -v "$(pwd)/keys:/builder/keys:ro,z" \
+              -v "$(pwd)/upx:/builder/upx:ro,z" \
+              -v "$(pwd)/go:/builder/go:ro,z" \
+              -e TERM=xterm \
+              -e FORCE=1 \
+              ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }} \
+              bash /builder/build_scripts/build_apk.sh "${{ steps.get_build_version.outputs.version }}" "${{ matrix.platform }}"
+          fi
         
       - name: Clean Up Build Scripts and Keys
         run: |
@@ -270,8 +289,13 @@ jobs:
               echo "Collecting artifact: $pattern"
               cp -v bin/packages/${{ matrix.platform }}/base/$pattern "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/" 2>/dev/null || true
             else
-              echo "Collecting failed: Artifact not found $pattern"
-              exit 0
+              if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
+                echo "Collecting failed: Artifact not found $pattern (platform skipped)"
+              elif echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "${{ matrix.platform }}"; then
+                echo "Collecting failed: Artifact not found $pattern (platform skipped)"
+              else
+                echo "Collecting failed: Artifact not found $pattern"
+              fi
             fi
           done
           
@@ -323,14 +347,30 @@ jobs:
             dir=${dir%/}
             arch=${dir##*/}
 
-            ipk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk"
-            apk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk"
-
-            if [ -f "$ipk_path" ] && [ -f "$apk_path" ]; then
+            if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "$arch"; then
+              ipk_path="none"
+              apk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk"
+              ipk_name="none"
+              ipk_sha="none"
+              apk_name=$(basename "$apk_path")
+              apk_sha=$(sha256sum "$apk_path" | awk '{print $1}')
+            elif echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "$arch"; then
+              ipk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk"
+              apk_path="none"
+              ipk_name=$(basename "$ipk_path")
+              ipk_sha=$(sha256sum "$ipk_path" | awk '{print $1}')
+              apk_name="none"
+              apk_sha="none"
+            else
+              ipk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk"
+              apk_path="${{ env.ARTIFACT_DIR }}/${arch}/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk"
               ipk_name=$(basename "$ipk_path")
               ipk_sha=$(sha256sum "$ipk_path" | awk '{print $1}')
               apk_name=$(basename "$apk_path")
               apk_sha=$(sha256sum "$apk_path" | awk '{print $1}')
+            fi
+
+            if [ -f "$ipk_path" ] || [ -f "$apk_path" ]; then
               bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/base/bin.size" 2>/dev/null || echo "unknown")
 
               # Append metadata to artifacts.json
