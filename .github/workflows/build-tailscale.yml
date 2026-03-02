@@ -594,8 +594,8 @@ jobs:
           name: "Smaller ${{ env.SOFTWARE_NAME }} ${{ env.RELEASE_TAG }}"
           body: ${{ steps.generate_release_markdown.outputs.release_body }}
           files: |
-            ${{ env.ARTIFACT_DIR }}/*.ipk
-            ${{ env.ARTIFACT_DIR }}/*.apk
+            ${{ env.ARTIFACT_DIR }}/**/*.ipk
+            ${{ env.ARTIFACT_DIR }}/**/*.apk
             ${{ env.ARTIFACT_DIR }}/artifacts.json
             ${{ env.ARTIFACT_DIR }}/version
 
