@@ -67,28 +67,6 @@ echo "Renaming generated IPK package to standard format..."
 mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
 ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
 
-# # fix for sha256 command not found in some environments, which is required for package signing
-# echo "Solving potential sha256 command not found issue for package signing..."
-# mkdir -p /tmp/bin
-# export PATH=/tmp/bin:$PATH
-# ln -sf $(which sha256sum) /tmp/bin/sha256
-
-# # check if sha256 command is available
-# if ! command -v sha256 &> /dev/null; then
-#     echo "Error: sha256 command not found, which is required for package signing"
-#     exit 1
-# fi
-
-# # change to package directory for index generation and signing
-# echo "Making index and signing package..."
-# cd /builder/bin/packages/${TARGET_ARCH}/base
-
-# # generate Packages and Packages.gz for opkg repository
-# /builder/scripts/ipkg-make-index.sh . > Packages
-
-# # compress the Packages file to Packages.gz
-# gzip -9c Packages > Packages.gz
-
 cp /builder/keys/key-build.sec ./key-build
 make package/index -j$(nproc)
 

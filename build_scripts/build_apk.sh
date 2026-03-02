@@ -45,9 +45,6 @@ if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
     ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go
 fi
 
-# 不要注释掉缓存！只需要修正软链接到正确的“深度路径”：
-# 25.12 SDK 期望的路径是 lib/go-x.xx/bin
-
 echo "Using $(/builder/go/bin/go version)"
 
 # build tailscale package

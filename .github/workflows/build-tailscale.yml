@@ -306,7 +306,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.platform }}
-          path: ${{ env.ARTIFACT_DIR }}/
+          path: ${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/
           if-no-files-found: error
           retention-days: 30
 
