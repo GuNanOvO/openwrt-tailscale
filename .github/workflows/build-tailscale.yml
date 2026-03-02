@@ -280,7 +280,7 @@ jobs:
 
       - name: Collect Build Artifacts
         env:
-          artifacts: "Packages Packages.gz Packages.sig packages.adb bin.size tailscale_${{  steps.get_build_version.outputs.version }}_${{ matrix.platform }}.ipk tailscale_${{ steps.get_build_version.outputs.version }}_${{ matrix.platform }}.apk"
+          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale_${{  steps.get_build_version.outputs.version }}_${{ matrix.platform }}.ipk tailscale_${{ steps.get_build_version.outputs.version }}_${{ matrix.platform }}.apk"
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"
 
@@ -299,6 +299,8 @@ jobs:
             fi
           done
           
+          du -b "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"/tailscaled | cut -f1 > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.size"
+
           echo "Artifact collection attempted for platform: ${{ matrix.platform }}. Contents of artifact directory:"
           ls -la "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/"
 
@@ -371,7 +373,7 @@ jobs:
             fi
 
             if [ -f "$ipk_path" ] || [ -f "$apk_path" ]; then
-              bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/base/bin.size" 2>/dev/null || echo "unknown")
+              bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/bin.size" 2>/dev/null || echo "unknown")
 
               # Append metadata to artifacts.json
               jq --arg target "$arch" \
