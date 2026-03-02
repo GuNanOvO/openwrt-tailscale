@@ -73,7 +73,7 @@ else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
 	# Record the size of the binary for reference
-  mkdir -p /builder/bin/packages/$(ARCH)/base
+	mkdir -p /builder/bin/packages/$(ARCH)/base
 	du -b $(GO_PKG_BUILD_BIN_DIR)/tailscaled | cut -f1 > /builder/bin/packages/$(ARCH)/base/bin.size
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
