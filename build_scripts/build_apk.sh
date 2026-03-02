@@ -48,7 +48,7 @@ fi
 echo "Using $(/builder/go/bin/go version)"
 
 # build tailscale package
-make package/tailscale/compile -j$(nproc)
+make package/tailscale/compile -j$(nproc) V=s
 
 # check package build result
 if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk ]; then
