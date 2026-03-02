@@ -66,14 +66,15 @@ ifneq ($(DISABLE_UPX),1)
 	if ! $(TOPDIR)/upx/upx -t $(GO_PKG_BUILD_BIN_DIR)/tailscaled >/dev/null 2>&1; then \
 		echo "==> UPX enabling on ARCH $(ARCH)"; \
 		$(TOPDIR)/upx/upx --best --lzma $(GO_PKG_BUILD_BIN_DIR)/tailscaled; \
-		mkdir -p /builder/bin/packages/$(ARCH)/base; \
-		du -b $(GO_PKG_BUILD_BIN_DIR)/tailscaled | cut -f1 > /builder/bin/packages/$(ARCH)/base/bin.size; \
 	else \
 		echo "==> UPX already compressed on ARCH $(ARCH)"; \
 	fi
 else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
+
+	mkdir -p /builder/bin/packages/$(ARCH)/base
+	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(ARCH)/base/tailscaled
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
