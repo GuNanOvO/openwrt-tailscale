@@ -111,7 +111,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_build_version.outputs.version }}
-      date: ${{ steps.get_build_version.outputs.date }}
+      date: ${{ steps.get_build_date.outputs.date }}
     needs: prepare
     strategy:
       matrix:

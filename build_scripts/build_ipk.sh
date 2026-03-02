@@ -50,7 +50,7 @@ echo "Using $(/builder/go/bin/go version)"
 
 # build tailscale package
 echo "Building Tailscale IPK package..."
-make package/tailscale/compile -j$(nproc)
+make package/tailscale/compile -j$(nproc) V=s
 
 # check package build result
 if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk ]; then
@@ -68,7 +68,7 @@ mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}-r1_${TARGE
 ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
 
 cp /builder/keys/key-build.sec ./key-build
-make package/index -j$(nproc)
+make package/index -j$(nproc) V=s
 
 cd /builder/bin/packages/${TARGET_ARCH}/base
 # Sign the Packages file using usign with the provided private key
