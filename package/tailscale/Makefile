@@ -73,7 +73,7 @@ else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
 
-	mkdir -p /builder/bin/packages/$(ARCH)/base
+	mkdir -p /builder/bin/packages/$(ARCH_PACKAGES)/base
 	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
