@@ -211,7 +211,7 @@ jobs:
       - name: Pull OpenWRT 24.10 SDK Docker Image
         run: |
           if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
-            echo "Skipping pull of OpenWRT 24.10 SDK for ${{ matrix.platform }} due to renaming."
+            echo "Skipping pull of OpenWRT 24.10 SDK for ${{ matrix.platform }} due to unspported target."
           else
             docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }}
           fi
@@ -219,7 +219,7 @@ jobs:
       - name: Pull OpenWRT 25.12 SDK Docker Image
         run: |
           if echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "${{ matrix.platform }}"; then
-            echo "Skipping pull of OpenWRT 25.12 SDK for ${{ matrix.platform }} due to removal."
+            echo "Skipping pull of OpenWRT 25.12 SDK for ${{ matrix.platform }} due to unsupported target."
           else
             docker pull ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }}
           fi
@@ -237,7 +237,7 @@ jobs:
       - name: Build with OpenWRT 24.10 SDK Docker
         run: |
           if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
-            echo "Skipping build with OpenWRT 24.10 SDK for ${{ matrix.platform }} due to renaming."
+            echo "Skipping build with OpenWRT 24.10 SDK for ${{ matrix.platform }} due to unspported target."
           else
             docker run --rm \
               -v "$(pwd)/bin:/builder/bin:z" \
@@ -255,7 +255,7 @@ jobs:
       - name: Build with OpenWRT 25.12 SDK Docker
         run: |
           if echo "${{ env.SKIP_TARGETS_25 }}" | grep -qw "${{ matrix.platform }}"; then
-            echo "Skipping build with OpenWRT 25.12 SDK for ${{ matrix.platform }} due to removal."
+            echo "Skipping build with OpenWRT 25.12 SDK for ${{ matrix.platform }} due to unsupported target."
           else
             docker run --rm \
               -v "$(pwd)/bin:/builder/bin:z" \
