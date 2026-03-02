@@ -433,7 +433,7 @@ jobs:
           # Create .nojekyll to prevent GitHub Pages from ignoring files with underscores
           touch .nojekyll
           
-          cp ../${{ env.ARTIFACT_DIR }}/* ./
+          cp -r ../${{ env.ARTIFACT_DIR }}/* ./
 
           # Generate HTML sections for each architecture and insert into index.html
           generate_arch_sections() {
