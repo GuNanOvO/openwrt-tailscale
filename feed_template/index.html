@@ -365,7 +365,6 @@ opkg install tailscale</pre>
                     <p>Repository: <a href="https://github.com/GuNanOvO/openwrt-tailscale"
                             target="_blank">https://github.com/GuNanOvO/openwrt-tailscale</a></p>
 
-                    <h3>Key Facts</h3>
                     <h3>Trustworthiness</h3>
                     <ul>
                         <li>Source code is taken directly from the <a href="https://github.com/tailscale/tailscale"
@@ -438,6 +437,14 @@ opkg install tailscale</pre>
             </section>
 
             <section id="packages" style="display: none;">
+                <section class="important">
+                    <p>Please select the correct package for your device architecture.</p>
+                    <p>To check your device architecture on your openwrt 24.10 or earlier device, run</p>
+                    <pre>opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1</pre>
+                    <p>To check your device architecture on your openwrt 25.12 or later device, run</p>
+                    <pre>apk --print-arch</pre>
+                    <p>Use <code>.ipk</code> for OpenWrt 24.10 or earlier, and <code>.apk</code> for OpenWrt 25.12 or later.</p>
+                </section>
                 <!-- arch-section-anchor -->
                 <section></section>
                 <!-- end-arch-section-anchor -->

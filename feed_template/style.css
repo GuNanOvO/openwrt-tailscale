@@ -21,6 +21,8 @@
     --color-notice-border: #91d1ff;
     --color-tips-bg: #e8fff5;
     --color-tips-border: #42b983;
+    --color-important-bg: #fff7fa;
+    --color-important-border: #c2185b;
 
 
     --color-code-block: #f4f4f4;
@@ -54,6 +56,8 @@ body.dark {
     --color-notice-border: #91d1ff;
     --color-tips-bg: #303030;
     --color-tips-border: #42b983;
+    --color-important-bg: #303030;
+    --color-important-border: #c2185b;
 
 
     --color-code-block: #292929;
@@ -217,7 +221,6 @@ button.inactive:hover {
     border-radius: 8px;
 }
 
-
 .notice {
     background: var(--color-notice-bg);
     border-left: 4px solid var(--color-notice-border);
@@ -229,6 +232,19 @@ button.inactive:hover {
 
 .notice ul li {
     margin: 0.5rem 0;
+}
+
+.important {
+    background: var(--color-important-bg);
+    border-left: 4px solid var(--color-important-border);
+    padding: 1rem;
+    margin: 1rem 0;
+    border-radius: 8px;
+    transition: background-color 0.3s, color 0.3s;
+}
+
+.important p {
+    line-height: normal;
 }
 
 .tips {
@@ -323,88 +339,74 @@ pre::-webkit-scrollbar-thumb:hover {
     border-color: #10b981;
 }
 
-.arch-section {
-    margin-bottom: 10px;
-    border: 1px solid #e1e4e8;
-    border-radius: 6px;
-    overflow: hidden;
-}
+/* 修改后的样式部分 */
 
 summary {
     padding: 12px 16px;
-    background-color: #f6f8fa;
+    background-color: var(--color-bg-part); /* 已适配变量 */
+    color: var(--color-text-primary);        /* 添加文字颜色适配 */
     cursor: pointer;
     font-weight: 600;
     outline: none;
     list-style: none;
     display: flex;
     align-items: center;
-}
-
-summary::-webkit-details-marker {
-    display: none;
-}
-
-summary::before {
-    content: '▶';
-    display: inline-block;
-    width: 20px;
-    font-size: 12px;
-    transition: transform 0.2s;
-}
-
-details[open] summary::before {
-    transform: rotate(90deg);
+    transition: background-color 0.3s, color 0.3s;
 }
 
 summary:hover {
-    background-color: #f3f4f6;
+    background-color: var(--color-brand-lighter); /* 已适配变量 */
+}
+
+.arch-section {
+    margin-bottom: 10px;
+    border: 1px solid var(--color-border-primary); /* 适配边框变量 */
+    border-radius: 6px;
+    overflow: hidden;
 }
 
 table {
     width: 100%;
     border-collapse: collapse;
-    background: white;
+    background: var(--color-bg-part); /* 已适配变量 */
     font-size: 14px;
+    transition: background-color 0.3s;
 }
 
 th {
     text-align: left;
-    background: #fafafa;
+    background: var(--color-table-header-bg); /* 适配表头背景变量 */
     padding: 10px 16px;
-    border-bottom: 1px solid #eee;
-    color: #666;
+    border-bottom: 1px solid var(--color-border-primary); /* 适配边框变量 */
+    color: var(--color-text-secondary);       /* 适配次级文字颜色 */
 }
 
 td {
     padding: 10px 16px;
-    border-bottom: 1px solid #f6f6f6;
-}
-
-tr:last-child td {
-    border-bottom: none;
+    border-bottom: 1px solid var(--color-border-primary); /* 适配边框变量 */
+    color: var(--color-text-primary);        /* 适配文字颜色 */
 }
 
 tr:hover td {
-    background-color: #fcfcfc;
+    background-color: var(--color-table-row-hover-bg); /* 适配行高亮变量 */
 }
 
 a {
-    color: #0366d6;
+    color: var(--color-brand-primary); /* 适配品牌主色变量 */
     text-decoration: none;
+    transition: color 0.3s;
 }
 
 a:hover {
     text-decoration: underline;
+    color: var(--color-brand-link-hover); /* 适配链接悬停变量 */
 }
 
 .size-cell {
-    color: #6a737d;
     width: 100px;
 }
 
-.date-cell {
-    color: #6a737d;
+.sha256-cell {
     width: 250px;
 }
 
