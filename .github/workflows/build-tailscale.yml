@@ -372,6 +372,13 @@ jobs:
               apk_sha=$(sha256sum "$apk_path" | awk '{print $1}')
             fi
 
+            if [ "$ipk_sha" != "none"]; then
+                echo "$ipk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/ipk.sha256"
+            fi
+            if [ "$apk_sha" != "none" ]; then
+                echo "$apk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/apk.sha256"
+            fi
+
             if [ -f "$ipk_path" ] || [ -f "$apk_path" ]; then
               bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/bin.size" 2>/dev/null || echo "unknown")
 
