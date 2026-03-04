@@ -335,6 +335,12 @@ jobs:
           echo "Downloaded artifacts:"
           ls -R ${{ env.ARTIFACT_DIR }}
 
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: repo
+
       # ORGANIZE ARTIFACTS
       
       - name: Organize Artifacts
@@ -378,6 +384,9 @@ jobs:
             if [ "$apk_sha" != "none" ]; then
                 echo "$apk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/apk.sha256"
             fi
+
+            cp "repo/package/tailscale/files/tailscale.conf" "${{ env.ARTIFACT_DIR }}/${arch}/tailscale.conf"
+            cp "repo/package/tailscale/files/tailscale.init" "${{ env.ARTIFACT_DIR }}/${arch}/tailscale.init"
 
             echo "${{ env.RELEASE_VERSION }}" > "${{ env.ARTIFACT_DIR }}/${arch}/version"
 
@@ -458,18 +467,17 @@ jobs:
               echo "            <tr><th>File</th><th>Size</th><th>Sha256Sum</th></tr>"
               echo "        </thead>"
               echo "        <tbody>"
-              
+
               if [ -d "$arch" ]; then
-                for file in "$arch"/*; do
-                  [ -f "$file" ] || continue
-                  fname=$(basename "$file")
-                  [ "$fname" == "index.html" ] && continue
+                files="tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk tailscaled Packages Packages.gz Packages.sig packages.adb"
+                for file in $files; do
+                  [ -f "$arch/$file" ] || continue
                   
-                  fsize=$(du -h "$file" | cut -f1)
-                  fsha256=$(sha256sum "$file" | cut -d' ' -f1)
+                  fsize=$(du -h "$arch/$file" | cut -f1)
+                  fsha256=$(sha256sum "$arch/$file" | cut -d' ' -f1)
                   
                   echo "            <tr>"
-                  echo "                <td><a href=\"$arch/$fname\">$fname</a></td>"
+                  echo "                <td><a href=\"$arch/$file\">$file</a></td>"
                   echo "                <td class=\"size-cell\">$fsize</td>"
                   echo "                <td class=\"sha256-cell\">$fsha256</td>"
                   echo "            </tr>"
