@@ -2,22 +2,22 @@
 
 ![Tailscale & OpenWrt](./banner.png)  
 
-# 由于正在更新对OpenWrt 25.12的支持，安装脚本暂时不可用
-# 但可自行安装release当中的apk、ipk包
-# 或使用软件源安装（推荐）
+# 适用于 OpenWrt 设备的 最新的、更小的 Tailscale  
 
-# 适用于 OpenWrt 设备的 最新的、更小的 Tailscale 
-
-![GitHub release](https://img.shields.io/github/v/release/GuNanOvO/openwrt-tailscale?style=flat)
-![Views](https://api.visitorbadge.io/api/combined?path=https%3A%2F%2Fgithub.com%2FGuNanOvO%2Fopenwrt-tailscale&label=Views&countColor=%23b7d079&style=flat)
-![Downloads](https://img.shields.io/github/downloads/GuNanOvO/openwrt-tailscale/total?style=flat)
-![GitHub Stars](https://img.shields.io/github/stars/GuNanOvO/openwrt-tailscale?label=Stars&color=yellow)
+![GitHub release](https://img.shields.io/github/v/release/GuNanOvO/openwrt-tailscale?style=flat-square&color=2196f3)
+![Views](https://api.visitorbadge.io/api/combined?path=https%3A%2F%2Fgithub.com%2FGuNanOvO%2Fopenwrt-tailscale&label=Views&countColor=%23a8d08d&style=flat-square)
+![Downloads](https://img.shields.io/github/downloads/GuNanOvO/openwrt-tailscale/total?style=flat-square&color=4caf50)
+![GitHub Stars](https://img.shields.io/github/stars/GuNanOvO/openwrt-tailscale?label=Stars&color=f1c40f&style=flat-square)
+![OpenWrt 24.10](https://img.shields.io/badge/OpenWrt-24.10-2196f3?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1565c0)
+![OpenWrt 25.12](https://img.shields.io/badge/OpenWrt-25.12-2196f3?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1565c0)
+![IPK Package](https://img.shields.io/badge/IPK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)
+![APK Package](https://img.shields.io/badge/APK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)  
 
 ### 本仓库提供以下内容：
 
-* 适用于多种架构的、最新的、更小的 **Tailscale.ipk** 软件包
+* 适用于多种架构的、最新的、更小的 **Tailscale.ipk** 和 **Tailscale.apk** 软件包
 * 一键安装脚本，支持 **持久化安装**、**临时安装** Tailscale
-* **OPKG 软件源**，更简单、更加方便持续更新 ➡️ [ [Smaller Tailscale Repo](https://gunanovo.github.io/openwrt-tailscale/) ]
+* **OPKG 和 APK 软件源**，更简单、更加方便持续更新 ➡️ [ [Smaller Tailscale Repo](https://gunanovo.github.io/openwrt-tailscale/) ]
 
 ---
 
@@ -104,14 +104,14 @@ For other regions, please refer to [English README](README_en.md)
 wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --custom-proxy
 ```
 
-#### **添加opkg软件源：**
+#### **添加软件源：**
 
-详见本项目分支 [软件源分支](https://github.com/GuNanOvO/openwrt-tailscale/tree/feed) 或本项目opkg软件源页面 [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale/)
+详见本项目分支 [软件源分支](https://github.com/GuNanOvO/openwrt-tailscale/tree/feed) 或本项目软件源页面 [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale/)
 
-仅包含受支持的架构的ipk包
+仅包含受支持的架构的包
 
-#### **自行安装ipk软件包：**
-1. 于本仓库[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的ipk软件包；
+#### **自行安装ipk或apk软件包：**
+1. 于本仓库[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的ipk或apk软件包；
 2. 可以于OpenWrt设备后台网页界面 -> 系统 -> 软件包
    -> 上传软件包，选择您下载的软件包进行上传并安装；
 
@@ -152,7 +152,6 @@ wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com
 > 该参数将使tailscale更积极地回收内存  
 > 更多信息，可查看issues：[关于内存占用](https://github.com/GuNanOvO/openwrt-tailscale/issues/17)
 
-
 ---
 
 ### 编译优化：
@@ -188,19 +187,17 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 
 ---
 
-### 特别致谢 🙏   
+### 特别致谢 🙏
 
 **[[UPX](https://upx.github.io/)]**：UPX技术，为本仓库编译如此小巧的tailscale包创造了可能；
 
 **[[Github Actions](https://github.com/features/actions)]**：用于自动化构建与发布；
 
-**[[glinet-tailscale-updater](https://github.com/Admonstrator/glinet-tailscale-updater)]**: 本仓库最初技术参考之一，如果你的glinet设备需要使用tailscale，这是你的不二之选；
+**[[Github加速代理-ghfast](https://ghfast.top/)]**: 本仓库安装脚本中使用的加速代理服务其一；
 
-**[[tailscale-openwrt](https://github.com/CH3NGYZ/tailscale-openwrt)]**: 本仓库最初技术参考之一，同样提供tailscale在openwrt上的安装脚本，您可自行选用；
+**[[Github加速代理-gh-proxy](https://gh-proxy.com/)]**: 本仓库安装脚本中使用的加速代理服务其二；
 
-**[[openwrt-tailscale-repo](https://github.com/lanrat/openwrt-tailscale-repo)]**: 本仓库feed源技术参考；
-
-**[[Github加速代理](../install.sh)]**: 本仓库安装脚本中使用的加速代理服务，详查于[install.sh](../install.sh)；
+**[[Github加速代理-jsdelivr](https://www.jsdelivr.com/?docs=gh)]**: 本仓库安装脚本中使用的加速代理服务其三；
 
 ---
 
@@ -232,6 +229,9 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 * `secrets.USIGN_SECRET_KEY_B64`：
 
   * 使用usign生成的私钥，用于签名ipk包，使用base64对私钥进行编码后，设置于仓库的setting > security > secrets and variables > actions > Repository secrets
+* `secrets.RSA_SECRET_KEY_B64`：
+
+  * 使用rsa生成的私钥，用于签名apk索引，使用base64对私钥进行编码后，设置于仓库的setting > security > secrets and variables > actions > Repository secrets
 * `secrets.PAT_TOKEN`：
 
   * github账户`repo`权限token，用于供`.github/workflows/check-version.yml`触发
