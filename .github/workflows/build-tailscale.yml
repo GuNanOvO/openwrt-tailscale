@@ -372,6 +372,13 @@ jobs:
               apk_sha=$(sha256sum "$apk_path" | awk '{print $1}')
             fi
 
+            if [ "$ipk_sha" != "none"]; then
+                echo "$ipk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/ipk.sha256"
+            fi
+            if [ "$apk_sha" != "none" ]; then
+                echo "$apk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/apk.sha256"
+            fi
+
             if [ -f "$ipk_path" ] || [ -f "$apk_path" ]; then
               bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/bin.size" 2>/dev/null || echo "unknown")
 
@@ -556,7 +563,7 @@ jobs:
           #### Architecture Check / 架构查询  
           Openwrt 24.10 or earlier / 或更早版本：:  
           \`\`\`bash
-          opkg print-architecture
+          opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1
           \`\`\`
 
           Openwrt 25.12 or later / 或更高版本：:
@@ -569,6 +576,7 @@ jobs:
           > [!IMPORTANT]
           > 请根据设备架构与openwrt版本选择对应的安装包。
           > OpenWrt 24.10或更早版本请使用 .ipk 包，OpenWrt 25.12或更高版本请使用 .apk 包。
+          >  
           > Please select the correct package for your device architecture.
           > Use .ipk for OpenWrt 24.10 or earlier, and .apk for OpenWrt 25.12 or later.
 
