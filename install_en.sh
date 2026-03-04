@@ -1,13 +1,13 @@
 #!/bin/sh
 
 # Script Information
-SCRIPT_VERSION="v1.08"
-SCRIPT_DATE="2025/12/15"
+SCRIPT_VERSION="v1.1.0"
+SCRIPT_DATE="2025/03/04"
 
 # Basic Configuration
-REPO_URL="https://github.com/GuNanOvO/openwrt-tailscale"
 REPO="gunanovo/openwrt-tailscale"
-TAILSCALE_URL="${REPO_URL}/releases/latest"
+REPO_URL="https://github.com/${REPO}"
+TAILSCALE_URL="https://raw.githubusercontent.com/${REPO}/refs/heads/feed"
 TAILSCALE_FILE="" # Set by get_tailscale_info
 PACKAGES_TO_CHECK="libc kmod-tun ca-bundle"
 
@@ -34,6 +34,7 @@ IS_TAILSCALE_INSTALLED="false"
 TAILSCALE_INSTALL_STATUS="none"
 FOUND_TAILSCALE_FILE="false"
 
+PACKAGE_MANAGER=""
 DEVICE_TARGET=""
 DEVICE_MEM_TOTAL=""
 DEVICE_MEM_FREE=""
@@ -61,19 +62,30 @@ script_info() {
     echo "└────────────────────────────────────────────────────────────────────────────────────────┘"
 }
 
+# Function: Check Package Manager
+check_package_manager() {
+    if command -v opkg >/dev/null 2>&1; then
+        PACKAGE_MANAGER="opkg"
+    elif command -v apk >/dev/null 2>&1; then
+        PACKAGE_MANAGER="apk"
+    else
+        echo "[ERROR]: Unable to identify package manager (opkg or apk), script exiting."
+        exit 1
+    fi
+}
+
 # Function: Get Device Architecture
 check_device_target() {
     local exclude_target='powerpc_64_e5500|powerpc_464fp|powerpc_8548|armeb_xscale'
     local raw_target
 
-    raw_target="$(opkg print-architecture 2>/dev/null \
-        | awk '{print $2}' \
-        | grep -vE '^(all|noarch)$' \
-        | head -n 1)"
-        
-    if [ -z "$raw_target" ]; then
-        raw_target="$(grep -E "^DISTRIB_ARCH=" /etc/openwrt_release 2>/dev/null \
-            | awk -F"'" '{print $2}')"
+    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        raw_target="$(opkg print-architecture 2>/dev/null \
+            | awk '{print $2}' \
+            | grep -vE '^(all|noarch)$' \
+            | head -n 1)"
+    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+        raw_target="$(apk --print-arch 2>/dev/null)"
     fi
 
     if [ -z "$raw_target" ]; then
@@ -85,7 +97,7 @@ check_device_target() {
         | tr -d '\r\n\t\\ ' )"
 
     if printf '%s' "$raw_target" | grep -qiE "$exclude_target"; then
-        echo "[ERROR]: Current architecture [$raw_target] is in the exclusion list, script exiting."
+        echo "[ERROR]: Current architecture [$raw_target] is not supported, script exiting."
         exit 1
     fi
 
@@ -194,27 +206,16 @@ check_device_storage() {
 # Function: Get Tailscale Information
 get_tailscale_info() {
     local version
-    local file
     local file_size
-    local tmp_packages="/tmp/Packages"
     # Try 3 times
     local attempt_range="1 2 3"
     # Timeout (seconds)
     local attempt_timeout=10
 
     for attempt_times in $attempt_range; do
-        version=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/download/version" | tr -d ' \n\r')
-        file="tailscale_${version}_${DEVICE_TARGET}"
-
-        wget -q --timeout=$attempt_timeout "${TAILSCALE_URL}/download/Packages" -O "$tmp_packages"
-        file_size=$(awk -v ipk="${file}.ipk" '
-        BEGIN { RS=""; FS="\n" }
-        $0 ~ ipk {
-            for(i=1;i<=NF;i++) if($i ~ /^Installed-Size:/) {
-                print $i; exit
-            }
-        }' "$tmp_packages" | awk '{print $2}')
-            
+        version=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/${DEVICE_TARGET}/version" | tr -d ' \n\r')
+        file_size=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.size" | tr -d ' \n\r')
+  
         if [ -n "$version" ] && [ -n "$file_size" ]; then
             break
         else
@@ -232,7 +233,7 @@ get_tailscale_info() {
     fi
 
     TAILSCALE_LATEST_VERSION="$version"
-    TAILSCALE_FILE="$file"
+    TAILSCALE_FILE="tailscale_${TAILSCALE_LATEST_VERSION}_${DEVICE_TARGET}"
     TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
@@ -300,7 +301,11 @@ remove() {
             tailscale_stoper
 
             if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
-                opkg remove tailscale
+                if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                    opkg remove tailscale
+                elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                    apk del tailscale
+                fi
             fi
 
             # Remove tailscale or tailscaled files in specified directories
@@ -431,8 +436,15 @@ persistent_install() {
     echo ""
     echo "[INFO]: Persistent installation in progress..."
     downloader
-    opkg remove tailscale
-    opkg install /tmp/$TAILSCALE_FILE.ipk
+    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg remove tailscale
+        opkg install /tmp/$TAILSCALE_FILE.ipk
+        rm -rf "$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
+    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk del tailscale
+        apk add --allow-untrusted /tmp/$TAILSCALE_FILE.apk
+        rm -rf "$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+    fi
 
     rm -rf "$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
 
@@ -499,31 +511,62 @@ temp_install() {
 
     echo ""
     echo "[INFO]: Temporary installation in progress..." 
-    downloader
 
-    local ipk_file="/tmp/$TAILSCALE_FILE.ipk"
-    local extract_dir="/tmp/ts_extract"
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
 
-    mkdir -p "$extract_dir"
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="/tmp/tailscaled"
 
-    echo "[INFO]: Extracting and deploying files..."
-    tar -xOzf "$ipk_file" ./data.tar.gz 2>/dev/null | tar -xzC "$extract_dir" 2>/dev/null
+    for attempt_times in $attempt_range; do
+        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            if [ "$attempt_times" == "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times, restarting script!"
+                sleep 3
+                init
+            fi
+            continue
+        fi
 
-    [ -d "$extract_dir/etc" ] && cp -r "$extract_dir/etc/"* /etc/
-    [ -d "$extract_dir/lib" ] && cp -r "$extract_dir/lib/"* /lib/
-    [ -f "$extract_dir/usr/sbin/tailscale" ] && mv "$extract_dir/usr/sbin/tailscale" /tmp/tailscale
-    [ -f "$extract_dir/usr/sbin/tailscaled" ] && mv "$extract_dir/usr/sbin/tailscaled" /tmp/tailscaled
+        wget -cO "$sha_file" --timeout="$attempt_timeout"  "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256" 
+        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+
+        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf "  $file_path\n" >> "$sha_file"
+
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            if [ "$attempt_times" == "3" ]; then
+                echo "[ERROR]: Tailscale file failed to download three times, restarting script, please retry!"
+                rm -f "$file_path" "$sha_file"
+                sleep 3
+                init
+            else
+                echo "[INFO]: Tailscale file verification failed, trying to re-download!"
+                rm -f "$file_path" "$sha_file"
+                sleep 3
+            fi
+        else
+            echo "[INFO]: Tailscale file verification passed!"
+            rm -f "$sha_file"
+            break
+        fi
+    done
 
     echo "$TMP_TAILSCALE" > /usr/sbin/tailscale
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
-
-    rm -rf "$extract_dir" "$ipk_file" "/tmp/$TAILSCALE_FILE.sha256"
+    ln -sf /tmp/tailscaled /tmp/tailscale
 
     echo "[INFO]: Temporary installation complete!"
     echo "[INFO]: Starting tailscale service..."
 
-    opkg update
-    opkg install $PACKAGES_TO_CHECK
+    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg update
+        opkg install $PACKAGES_TO_CHECK
+    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk update
+        apk add --no-cache $PACKAGES_TO_CHECK
+    fi
 
     chmod +x /etc/init.d/tailscale
     chmod +x /usr/sbin/tailscale
@@ -567,15 +610,20 @@ downloader() {
     local attempt_range="1 2 3"
     local attempt_timeout=20
 
-    local tmp="/tmp"
-    local file_path="$tmp/$TAILSCALE_FILE.ipk"
-    local tmp_packages="$tmp/Packages"
-    local sha_file="$tmp/$TAILSCALE_FILE.sha256"
-    local target_ipk="${TAILSCALE_FILE}.ipk"
-    local download_url="${TAILSCALE_URL}/download"
+    local sha_file="/tmp/$TAILSCALE_FILE.sha256"
+    local target_file=""
+    local file_path=""
+    
+    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        target_file="$TAILSCALE_FILE.ipk"
+        file_path="/tmp/$TAILSCALE_FILE.ipk"
+    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+        target_file="$TAILSCALE_FILE.apk"
+        file_path="/tmp/$TAILSCALE_FILE.apk"
+    fi
 
     for attempt_times in $attempt_range; do
-        if ! wget -cO "$file_path" "$download_url/$target_ipk"; then
+        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscale file failed to download three times, restarting script!"
                 sleep 3
@@ -584,18 +632,16 @@ downloader() {
             continue
         fi
 
-        wget -q --timeout=$attempt_timeout "$download_url/Packages" -O "$tmp_packages"
-        awk -v ipk="$target_ipk" -v path="$file_path" '
-        BEGIN { RS=""; FS="\n" }
-        $0 ~ "Filename: " ipk {
-            for(i=1; i<=NF; i++) {
-                if($i ~ /^SHA256sum:/) {
-                    split($i, a, ": ");
-                    print a[2] "  " path;
-                    exit;
-                }
-            }
-        }' "$tmp_packages" > "$sha_file"
+       if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+            wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/ipk.sha256"
+        elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+            wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/apk.sha256"
+        fi
+
+        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+
+        printf "  $file_path\n" >> "$sha_file"
+
 
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
@@ -637,8 +683,8 @@ tailscale_stoper() {
 init() {
     local show_init_progress_bar=$1
 
-    local functions="check_device_target check_tailscale_install_status check_device_memory check_device_storage get_tailscale_info"
-    local function_count=5
+    local functions="check_package_manager check_device_target check_tailscale_install_status check_device_memory check_device_storage get_tailscale_info"
+    local function_count=6
     local total=$function_count
     local progress=0
     

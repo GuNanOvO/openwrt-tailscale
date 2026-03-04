@@ -2,26 +2,22 @@
 
 ![Tailscale & OpenWrt](./banner.png)
 
-# 由于正在更新对OpenWrt 25.12的支持，安装脚本暂时不可用
-# 但可自行安装release当中的apk、ipk包
-# 或使用软件源安装（推荐）
-
-# Due to ongoing updates for OpenWrt 25.12 support, the installation script is temporarily unavailable.
-# However, you can manually install the apk and ipk packages from the releases,
-# or use the OPKG feed for easier installation (recommended).
-
 # The Latest, Smaller Tailscale for OpenWrt Devices
 
-![GitHub release](https://img.shields.io/github/v/release/GuNanOvO/openwrt-tailscale?style=flat)
-![Views](https://api.visitorbadge.io/api/combined?path=https%3A%2F%2Fgithub.com%2FGuNanOvO%2Fopenwrt-tailscale\&label=Views\&countColor=%23b7d079\&style=flat)
-![Downloads](https://img.shields.io/github/downloads/GuNanOvO/openwrt-tailscale/total?style=flat)
-![GitHub Stars](https://img.shields.io/github/stars/GuNanOvO/openwrt-tailscale?label=Stars\&color=yellow)
+![GitHub release](https://img.shields.io/github/v/release/GuNanOvO/openwrt-tailscale?style=flat-square&color=2196f3)
+![Views](https://api.visitorbadge.io/api/combined?path=https%3A%2F%2Fgithub.com%2FGuNanOvO%2Fopenwrt-tailscale&label=Views&countColor=%23a8d08d&style=flat-square)
+![Downloads](https://img.shields.io/github/downloads/GuNanOvO/openwrt-tailscale/total?style=flat-square&color=4caf50)
+![GitHub Stars](https://img.shields.io/github/stars/GuNanOvO/openwrt-tailscale?label=Stars&color=f1c40f&style=flat-square)
+![OpenWrt 24.10](https://img.shields.io/badge/OpenWrt-24.10-2196f3?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1565c0)
+![OpenWrt 25.12](https://img.shields.io/badge/OpenWrt-25.12-2196f3?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1565c0)
+![IPK Package](https://img.shields.io/badge/IPK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)
+![APK Package](https://img.shields.io/badge/APK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)  
 
 ### This repository provides:
 
-* The latest and smaller **Tailscale ipk packages** for multiple architectures
+* The latest and smaller **Tailscale ipk packages** and **Tailscale apk packages** for multiple architectures
 * One-click installation scripts supporting **persistent installation** and **temporary installation**
-* An **OPKG feed** for easier and continuous updates
+* An **OPKG and APK feed** for easier and continuous updates
   ➡️ [ [Smaller Tailscale Repo](https://gunanovo.github.io/openwrt-tailscale/) ]
 
 ---
@@ -109,11 +105,11 @@ See the [feed branch README](https://github.com/GuNanOvO/openwrt-tailscale/tree/
 or the repository page:
 [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale/)
 
-Only ipk packages for supported architectures are included.
+Only ipk and apk packages for supported architectures are included.
 
-#### **Manual ipk Installation**
+#### **Manual ipk and apk Installation**
 
-1. Download the ipk package matching your device architecture from
+1. Download the ipk and apk packages matching your device architecture from
    [Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)
 2. Open OpenWrt Web UI → System → Software → Upload Package
    Upload and install the downloaded ipk
@@ -206,15 +202,6 @@ Binary compression technology that makes ultra-small Tailscale builds possible
 **[[GitHub Actions](https://github.com/features/actions)]**
 Used for automated build and release
 
-**[[glinet-tailscale-updater](https://github.com/Admonstrator/glinet-tailscale-updater)]**
-One of the original technical references — highly recommended for GL.iNet devices
-
-**[[tailscale-openwrt](https://github.com/CH3NGYZ/tailscale-openwrt)]**
-Another early reference providing Tailscale install scripts for OpenWrt
-
-**[[openwrt-tailscale-repo](https://github.com/lanrat/openwrt-tailscale-repo)]**
-Feed repository reference
-
 ---
 
 ### Issue Reporting
@@ -250,6 +237,9 @@ If you plan to fork this project, note the following:
 * `secrets.USIGN_SECRET_KEY_B64`
 
   * Base64-encoded usign private key for signing ipk packages
+* `secrets.RSA_SECRET_KEY_B64`
+
+  * Base64-encoded rsa private key for signing apk indices
 * `secrets.PAT_TOKEN`
 
   * GitHub token with `repo` permission, used to trigger build workflow
