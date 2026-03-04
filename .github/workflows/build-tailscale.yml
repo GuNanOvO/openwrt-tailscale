@@ -379,6 +379,8 @@ jobs:
                 echo "$apk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/apk.sha256"
             fi
 
+            echo "${{ env.RELEASE_VERSION }}" > "${{ env.ARTIFACT_DIR }}/${arch}/version"
+
             if [ -f "$ipk_path" ] || [ -f "$apk_path" ]; then
               bin_size=$(cat "${{ env.ARTIFACT_DIR }}/${arch}/bin.size" 2>/dev/null || echo "unknown")
 
