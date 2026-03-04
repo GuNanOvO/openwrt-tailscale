@@ -385,6 +385,8 @@ jobs:
                 echo "$apk_sha" > "${{ env.ARTIFACT_DIR }}/${arch}/apk.sha256"
             fi
 
+            sha256sum "${{ env.ARTIFACT_DIR }}/${arch}/tailscaled" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${arch}/bin.sha256"
+
             cp "repo/package/tailscale/files/tailscale.conf" "${{ env.ARTIFACT_DIR }}/${arch}/tailscale.conf"
             cp "repo/package/tailscale/files/tailscale.init" "${{ env.ARTIFACT_DIR }}/${arch}/tailscale.init"
 
