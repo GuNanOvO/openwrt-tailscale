@@ -354,6 +354,22 @@ summary {
     transition: background-color 0.3s, color 0.3s;
 }
 
+summary::-webkit-details-marker {
+    display: none;
+}
+
+summary::before {
+    content: '▶';
+    display: inline-block;
+    width: 20px;
+    font-size: 12px;
+    transition: transform 0.2s;
+}
+
+details[open] summary::before {
+    transform: rotate(90deg);
+}
+
 summary:hover {
     background-color: var(--color-brand-lighter); /* 已适配变量 */
 }
