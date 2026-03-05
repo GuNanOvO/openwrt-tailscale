@@ -1,68 +1,80 @@
-[简体中文](README.md) | **English**  
-![Tailscale & OpenWrt](./banner.png)  
-# [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale)
+[简体中文文档](./README.md) | **English Docs**
 
-> [!NOTE]
-> These are smaller Tailscale packages for OpenWrt, specifically designed to reduce storage usage while maintaining essential functionality.
-> **Optimized:**
-> - Combined `tailscale` and `tailscaled` into a single binary.
-> - Built with the `--extra-small` flag to significantly reduce binary size.
-> - UPX compression applied to binaries (except for mips64 architecture) to further reduce storage usage.
+![Tailscale & OpenWrt](./banner.png)
 
----
+# [Tailscale Repository for OpenWrt](https://gunanovo.github.io/openwrt-tailscale)
 
 ## Repository Setup
 
-Import the public GPG key used to verify package signatures:
+Choose the setup method according to your OpenWrt version.
 
-**Run this command on your OpenWrt device:**
+### OpenWrt 24.10 or earlier (OPKG)
+
+**1. Add the public key**
 
 ```sh
 wget -O /tmp/key-build.pub https://gunanovo.github.io/openwrt-tailscale/key-build.pub && opkg-key add /tmp/key-build.pub
 ```
 
-Add the package feed to your OpenWrt configuration:
-
-**Edit `/etc/opkg/customfeeds.conf`:**
+**2. Add the repository**
 
 ```sh
-echo "src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale" >> /etc/opkg/customfeeds.conf
-````
+echo "src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale/$(opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1)" >> /etc/opkg/customfeeds.conf
+```
 
-**Or manually add this line:**
+Or manually edit `/etc/opkg/customfeeds.conf` and add the following line (replace `{your device architecture}` with your actual architecture):
+
+```
+src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale/{your device architecture}
+```
+
+### OpenWrt 25.10 or later (APK)
+
+**1. Add the public key**
 
 ```sh
-src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale
+wget -O /etc/apk/keys/gunanovo@github.io.pub https://gunanovo.github.io/openwrt-tailscale/key-build.rsa.pub
+```
+
+**2. Add the repository**
+
+```sh
+echo "https://gunanovo.github.io/openwrt-tailscale/$(apk --print-arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
+```
+
+Or manually edit `/etc/apk/repositories.d/customfeeds.list` and add the following line (replace `{your device architecture}` with your actual architecture):
+
+```
+https://gunanovo.github.io/openwrt-tailscale/{your device architecture}/packages.adb
 ```
 
 ---
 
-## Installation Methods
+## Installation
 
-Choose your preferred method to install Tailscale on OpenWrt:
-
-### Web UI:
-
-1. Navigate to **System → Software**
-2. Click *Update lists* to refresh packages
-3. Search for `tailscale`
-4. Install the main package and any desired utilities
-
-### Command Line:
+### OpenWrt 24.10 or earlier (OPKG)
 
 ```sh
 opkg update
 opkg install tailscale
 ```
 
+### OpenWrt 25.10 or later (APK)
+
+```sh
+apk update
+apk add tailscale
+```
+
 > [!NOTE]
-> The "failed log upload" message during installation is expected and can be safely ignored.
+> The `"failed log upload"` message that may appear during installation is expected and can be safely ignored.
 
 ---
 
 ## Web UI (LuCI)
-For a graphical interface to manage Tailscale, we recommend installing the LuCI app which build by [@Tokisaki-Galaxy](https://github.com/Tokisaki-Galaxy) and open source on GitHub: [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community)  
-This provides an easy-to-use web interface to configure and manage Tailscale directly from OpenWrt's LuCI dashboard.
+
+For a graphical interface to manage Tailscale, we recommend installing the LuCI app developed by [@Tokisaki-Galaxy](https://github.com/Tokisaki-Galaxy) and open-sourced on GitHub: [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community)  
+This provides an easy-to-use web interface to configure and manage Tailscale directly from the OpenWrt LuCI dashboard.
 
 ---
 
@@ -70,7 +82,7 @@ This provides an easy-to-use web interface to configure and manage Tailscale dir
 
 After installation, you need to configure Tailscale to connect your device to the Tailscale network.
 
-Run the following command:
+Run the following command (adjust parameters as needed):
 
 ```sh
 tailscale up \
@@ -78,35 +90,13 @@ tailscale up \
     --advertise-routes=10.0.0.0/24 \
     --advertise-exit-node
 ```
-> [!WARNING]
-> If you're using OpenWrt == 22.03 you will also need to specify `--netfilter-mode=off`. For versions 23+ do NOT include netfilter-mode.  
 
----
+> [!WARNING]
+> If you are using OpenWrt 22.03, you must also add `--netfilter-mode=off`; for OpenWrt 23+ **do not** include this parameter.
 
 > [!TIP]
-> Consider adding `--hostname=your-router-name` for easier identification.
-
-> [!NOTE]
-> If you encounter any of the following situations:
-> > 1. Your device has limited RAM, and during usage, Tailscale consumes an excessive amount of memory;  
-> > 2. Or Tailscale is killed and restarted by the OOM Killer;  
-> > 3. Or you’re not sure why Tailscale keeps restarting unexpectedly;  
->
-> Then you may try trading higher CPU usage for lower memory usage. Here's how:  
-> > 1. Edit the `/etc/init.d/tailscale` file:
-> >    ```bash
-> >    vi /etc/init.d/tailscale  
-> >    ```
-> > 2. Locate the following line:
-> >    ```bash
-> >    procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode"  
-> >    ```
-> > 3. Append `GOGC=10` to the end of that line so it becomes:
-> >    ```bash
-> >    procd_set_param env TS_DEBUG_FIREWALL_MODE="$fw_mode" GOGC=10  
-> >    ```
-> >    This will make Tailscale more aggressive in memory garbage collection.
+> Consider adding `--hostname=your-router-name` for easier identification on your Tailscale network.
 
 ---
 
-> 💖 If this project helps you, feel free to star⭐ it!  
+> 💖 If this project helps you, please consider giving it a ⭐!

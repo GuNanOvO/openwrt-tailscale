@@ -13,59 +13,11 @@
 ![IPK Package](https://img.shields.io/badge/IPK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)
 ![APK Package](https://img.shields.io/badge/APK%20Package-OpenWrt-42a5f5?style=flat-square&logo=OpenWrt&logoColor=white&labelColor=1976d2)  
 
-### 本仓库提供以下内容：
+### 本项目提供以下内容：
 
 * 适用于多种架构的、最新的、更小的 **Tailscale.ipk** 和 **Tailscale.apk** 软件包
-* 一键安装脚本，支持 **持久化安装**、**临时安装** Tailscale
+* 一键安装脚本，支持 **持久化安装**、**临时安装** Tailscale 至你的 OpenWrt 24.10 或 OpenWrt 25.12 设备
 * **OPKG 和 APK 软件源**，更简单、更加方便持续更新 ➡️ [ [Smaller Tailscale Repo](https://gunanovo.github.io/openwrt-tailscale/) ]
-
----
-
-<details>
-<summary><h3>支持架构列表：</h3></summary>
-
-以下目标架构平台受支持，由于架构较多，测试仍未完善，希望您能测试使用并反馈♥️
-
-   * `aarch64_cortex-a53`
-   * `aarch64_cortex-a72`
-   * `aarch64_cortex-a76`
-   * `aarch64_generic`
-   * `arm_arm1176jzf-s_vfp`
-   * `arm_arm926ej-s`
-   * `arm_cortex-a15_neon-vfpv4`
-   * `arm_cortex-a5_vfpv4`
-   * `arm_cortex-a7`
-   * `arm_cortex-a7_neon-vfpv4`
-   * `arm_cortex-a7_vfpv4`
-   * `arm_cortex-a8_vfpv3`
-   * `arm_cortex-a9`
-   * `arm_cortex-a9_neon`
-   * `arm_cortex-a9_vfpv3-d16`
-   * `arm_fa526`
-   * `arm_xscale`
-   * `i386_pentium-mmx`
-   * `i386_pentium4`
-   * `loongarch64_generic`
-   * `mips64_mips64r2`
-   * `mips64_octeonplus`
-   * `mips64el_mips64r2`
-   * `mips_24kc`
-   * `mips_4kec`
-   * `mips_mips32`
-   * `mipsel_24kc`
-   * `mipsel_24kc_24kf`
-   * `mipsel_74kc`
-   * `mipsel_mips32`
-   * `riscv64_riscv64`
-   * `x86_64`✅
-
-以下架构不受支持：  
-   * `armeb_xscale`
-   * `powerpc64_e5500`
-   * `powerpc_464fp`
-   * `powerpc_8548`
-
-</details>
 
 ---
 
@@ -81,11 +33,11 @@
 > 
 > **注意事项:**
 >
-> * 运行内存小于 256MB 的设备可能无法运行；  
+> * 运行内存小于 256MB 的设备可能无法运行，详见[关于内存占用](https://github.com/GuNanOvO/openwrt-tailscale/issues/17)；  
 > * 临时安装高度依赖于网络环境，可靠性较低！建议仅用于无法持久安装的设备；  
 > * 多数设备或架构未经过测试，如果您测试不可用，烦请提出issues,我会尽快与您沟通进行修复；  
 
-#### **一键式命令行脚本：**
+#### 一键式命令行脚本：
 
 SSH链接至OpenWrt设备执行：
 
@@ -96,7 +48,7 @@ wget -O /usr/sbin/install.sh https://ghfast.top/https://raw.githubusercontent.co
 For Mainland China users only. 
 For other regions, please refer to [English README](README_en.md)  
 
-#### **一键式命令行脚本使用自定义代理：**
+#### 一键式命令行脚本使用自定义代理：
 
 使用参数`--custom-proxy`：
 
@@ -104,25 +56,27 @@ For other regions, please refer to [English README](README_en.md)
 wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --custom-proxy
 ```
 
-#### **添加软件源：**
+#### 添加软件源：
 
 详见本项目分支 [软件源分支](https://github.com/GuNanOvO/openwrt-tailscale/tree/feed) 或本项目软件源页面 [Smaller Tailscale Repository For OpenWrt](https://gunanovo.github.io/openwrt-tailscale/)
 
 仅包含受支持的架构的包
 
-#### **自行安装ipk或apk软件包：**
-1. 于本仓库[Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases)下载与您设备对应架构的ipk或apk软件包；
+#### 自行安装ipk或apk软件包：
+
+1. 于本项目 [Releases](https://github.com/GuNanOvO/openwrt-tailscale/releases) 下载与您设备对应架构的ipk或apk软件包；
 2. 可以于OpenWrt设备后台网页界面 -> 系统 -> 软件包
    -> 上传软件包，选择您下载的软件包进行上传并安装；
 
-注意: 
-显示安装错误，则先测试 `tailscale up` ，如若正常，则安装成功。
+> [!NOTE]
+> 一切安装结果成功与否以能否正常运行 `tailscale up` 为准，如若 `tailscale up` 正常返回登录url，则安装成功；如若显示 `command not found` 或其他错误，则安装失败；
 
 #### **Luci 图形化界面推荐：**
 
 为方便使用，免除大部分命令行操作，可自行选择使用：
 来自于@Tokisaki-Galaxy开源项目：[luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community)。  
   
+### 其他情况说明：
 
 > [!NOTE]
 > 如果你有如下情况出现：
@@ -158,46 +112,42 @@ wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com
 
 使用了下列编译参数，精简了tailscale，详见[Makefile](../package/tailscale/Makefile)：
 
-* **TAGS**: 
+* **[TAGS](../package/tailscale/Makefile#L31)**:  
 
-```
+``` text
 ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 ```
 
-* **LDFLAGS**:
+* **[LDFLAGS](../package/tailscale/Makefile#L29)**:
 
-```
--s -w -buildid=
+``` text
+-s -w
 ```
 
-使用了[UPX](https://upx.github.io/)二进制文件压缩技术，并使用了以下参数，详见[Makefile](../package/tailscale/Makefile)：
+使用了[UPX](https://upx.github.io/)二进制文件压缩技术，并使用了以下参数，详见[Makefile](../package/tailscale/Makefile#L65-L74)：
 
-```
+``` text
 --best --lzma
 ```
 
 ---
 
-### 脚本逻辑:
+### 脚本逻辑:  
 
-* **持久安装**：代替手动下载ipk包，自动将ipk包下载至设备，使用`opkg install`进行安装；  
-* **临时安装**：下载ipk包至设备，解包ipk,提取二进制文件，放置于`/tmp`目录下，并在`/usr/sbin`目录下创建连接；
+* **持久安装**：代替手动下载ipk包或apk包到设备，使用 `opkg install` 或 `apk add` 进行安装；  
+* **临时安装**：下载二进制可执行文件至设备 `/tmp` 目录下，并在 `/usr/sbin` 目录下创建脚本连接；
 
 以上两点，可详查于[install.sh](../install.sh)
 
 ---
 
-### 特别致谢 🙏
+### Powered By
 
-**[[UPX](https://upx.github.io/)]**：UPX技术，为本仓库编译如此小巧的tailscale包创造了可能；
-
-**[[Github Actions](https://github.com/features/actions)]**：用于自动化构建与发布；
-
-**[[Github加速代理-ghfast](https://ghfast.top/)]**: 本仓库安装脚本中使用的加速代理服务其一；
-
-**[[Github加速代理-gh-proxy](https://gh-proxy.com/)]**: 本仓库安装脚本中使用的加速代理服务其二；
-
-**[[Github加速代理-jsdelivr](https://www.jsdelivr.com/?docs=gh)]**: 本仓库安装脚本中使用的加速代理服务其三；
+**[[UPX](https://upx.github.io/)]**：UPX技术，为本项目编译如此小巧的tailscale包创造了可能；  
+**[[Github Actions](https://github.com/features/actions)]**：用于自动化构建、发布、部署软件源；  
+**[[Github加速代理-ghfast](https://ghfast.top/)]**: 本项目安装脚本中使用的加速代理服务其一；  
+**[[Github加速代理-gh-proxy](https://gh-proxy.com/)]**: 本项目安装脚本中使用的加速代理服务其二；  
+**[[Github加速代理-jsdelivr](https://www.jsdelivr.com/?docs=gh)]**: 本项目安装脚本中使用的加速代理服务其三；  
 
 ---
 
@@ -205,59 +155,21 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 
 遇到问题请至 [Issues](https://github.com/GuNanOvO/openwrt-tailscale/issues) 提交，请附上：
 
-1. 设备架构信息（`uname -m`）
-2. 目标平台架构信息（`opkg print-architecture`）
-3. 安装模式（持久/临时/opkg安装）
-4. 相关日志片段
+1. 目标平台架构信息（`opkg print-architecture`）
+2. 安装模式（持久/临时/opkg安装/apk安装）
+3. 相关日志片段
 
 ---
 
 ### 自行复刻
 
-如果你需要对本项目进行fork复刻，你需要注意以下几点：  
-
-**修改install脚本**：
-
-* 修改脚本顶部变量区域的：`REPO_URL` & `REPO` 对应到你的fork仓库。
-
-**修改github actions 工作流文件**：
-
-* 修改`.github/workflows/build-tailscale.yml`与`.github/workflows/check-version.yml`当中的所有`GuNanOvO/openwrt-tailscale`为你fork项目，通常只需要修改env部分
-
-**工作流文件当中使用的SECRETS**：
-
-* `secrets.USIGN_SECRET_KEY_B64`：
-
-  * 使用usign生成的私钥，用于签名ipk包，使用base64对私钥进行编码后，设置于仓库的setting > security > secrets and variables > actions > Repository secrets
-* `secrets.RSA_SECRET_KEY_B64`：
-
-  * 使用rsa生成的私钥，用于签名apk索引，使用base64对私钥进行编码后，设置于仓库的setting > security > secrets and variables > actions > Repository secrets
-* `secrets.PAT_TOKEN`：
-
-  * github账户`repo`权限token，用于供`.github/workflows/check-version.yml`触发
-  * `.github/workflows/build-tailscale.yml`进行构建工作
-* `secrets.GHCR_READ_TOKEN`：  
-
-  * github账户`read:packages`权限token
-  * 用于供action检测上游ghcr发布版本，默认不使用ghcr版本，可去除
+如果你需要对本项目进行fork复刻，检查 [有关对fork的说明](./FORK.md) 。
 
 ---
 
-### 安全声明
-本项目是对 **Tailscale** 官方开源软件的再分发，主要目的是为 **OpenWrt** 用户提供及时**更新的**、且更适用于**小存储容量**的OpenWrt设备的软件包，以替换官方源中已过时的版本。
-过时的 Tailscale 版本可能存在已知安全漏洞，及时更新对于保障网络安全至关重要。
+### 安全与免责声明
 
-**透明与可验证**：  
- * **源代码公开**：所有打包、构建与安装脚本完全开源，任何人均可审查、复现整个构建、安装流程。
- * **自动化构建**：构建与打包过程完全由 GitHub Actions 自动执行，构建日志和产物对外公开，确保无人工干预。
- * **官方源码构建**：所有二进制文件均直接从 [**Tailscale**](https://github.com/tailscale/tailscale) 官方项目 的发布版本源码编译，无任何功能性修改或隐藏代码。
- * **可重复构建**：任何人可使用本项目的脚本在自己的 GitHub 或本地环境中重现构建结果，以验证一致性。  
-**安全承诺**：  
- * 本项目 **不植入任何恶意代码**，不收集、不上传用户的任何数据。
- * 仅对构建过程进行优化（如体积精简），不改动 Tailscale 的核心功能与安全机制。
- * 所有发布的软件包均提供可公开验证的构建记录与校验信息（SHA256 校验和 / usign 签名）。
-
-通过以上措施，本项目旨在为 OpenWrt 用户提供 **安全、透明、可审计** 的 Tailscale 安装与更新途径，降低使用过时版本带来的安全风险。
+本项目是基于 [Tailscale 官方源码](https://github.com/tailscale/tailscale) 的第三方压缩优化版本，与官方无关。本项目所有源码、脚本、软件包按 “原样” 提供，所有编译、打包、发布步骤均由 [Github Actions](https://github.com/GuNanOvO/openwrt-tailscale/actions) 自动完成，使用本项目即表示您已知晓并自行承担潜在的安全与稳定性风险。
 
 ---
 
@@ -267,4 +179,4 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 
 ---
 
-> 💖 如果本项目对您有帮助，欢迎点亮小星星⭐！  
+> 💖 如果本项目对您有帮助，给我一颗小星星⭐表示支持，谢谢！  
