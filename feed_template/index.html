@@ -74,12 +74,12 @@
                         <p>2. Add the repository to your OpenWrt configuration:</p>
                         <div class="code-block">
                             <p>Run the following command on your OpenWrt device:</p>
-                            <pre>echo "https://gunanovo.github.io/openwrt-tailscale/$(apk --print-arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list</pre>
+                            <pre>echo "https://gunanovo.github.io/openwrt-tailscale/$(cat /etc/apk/arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list</pre>
                             <p>Or manually edit the file <code>/etc/apk/repositories.d/customfeeds.list</code> and add
                                 the following line:</p>
                             <pre>https://gunanovo.github.io/openwrt-tailscale/{your device architecture}/packages.adb</pre>
                             <p>Replace <code>{your device architecture}</code> with your device architecture. You can
-                                check it using <code>apk --print-arch</code>.</p>
+                                check it using <code>cat /etc/apk/arch</code>.</p>
                         </div>
                     </section>
 
@@ -240,10 +240,10 @@ opkg install tailscale</pre>
                         <p>2、将软件源添加到你的 OpenWrt 配置中：</p>
                         <div class="code-block">
                             <p>在你的 OpenWrt 设备上执行以下命令：</p>
-                            <pre>echo "https://gunanovo.github.io/openwrt-tailscale/$(apk --print-arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list</pre>
+                            <pre>echo "https://gunanovo.github.io/openwrt-tailscale/$(cat /etc/apk/arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list</pre>
                             <p>或者手动编辑 <code>/etc/apk/repositories.d/customfeeds.list</code> 文件添加以下内容：</p>
                             <pre>https://gunanovo.github.io/openwrt-tailscale/{你的设备架构}/packages.adb</pre>
-                            <p>请注意替换 <code>{你的设备架构}</code> 为你的设备架构，可使用 <code>apk --print-arch</code> 查看设备架构。</p>
+                            <p>请注意替换 <code>{你的设备架构}</code> 为你的设备架构，可使用 <code>cat /etc/apk/arch</code> 查看设备架构。</p>
                         </div>
                     </section>
 
@@ -442,7 +442,7 @@ opkg install tailscale</pre>
                     <p>To check your device architecture on your openwrt 24.10 or earlier device, run</p>
                     <pre>opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1</pre>
                     <p>To check your device architecture on your openwrt 25.12 or later device, run</p>
-                    <pre>apk --print-arch</pre>
+                    <pre>cat /etc/apk/arch</pre>
                     <p>Use <code>.ipk</code> for OpenWrt 24.10 or earlier, and <code>.apk</code> for OpenWrt 25.12 or later.</p>
                 </section>
                 <!-- arch-section-anchor -->

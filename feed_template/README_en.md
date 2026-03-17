@@ -39,7 +39,7 @@ wget -O /etc/apk/keys/gunanovo@github.io.pub https://gunanovo.github.io/openwrt-
 **2. Add the repository**
 
 ```sh
-echo "https://gunanovo.github.io/openwrt-tailscale/$(apk --print-arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
+echo "https://gunanovo.github.io/openwrt-tailscale/$(cat /etc/apk/arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
 ```
 
 Or manually edit `/etc/apk/repositories.d/customfeeds.list` and add the following line (replace `{your device architecture}` with your actual architecture):
