@@ -105,7 +105,7 @@ check_device_target() {
             | grep -vE '^(all|noarch)$' \
             | head -n 1)"
     elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-        raw_target="$(apk --print-arch 2>/dev/null)"
+        raw_target="$(cat /etc/apk/arch 2>/dev/null)"
     fi
 
     if [ -z "$raw_target" ]; then
