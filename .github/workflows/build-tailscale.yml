@@ -580,7 +580,7 @@ jobs:
 
           Openwrt 25.12 or later / 或更高版本：:
           \`\`\`bash
-          apk --print-arch
+          cat /etc/apk/arch
           \`\`\`
           ---
         

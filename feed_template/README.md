@@ -39,7 +39,7 @@ wget -O /etc/apk/keys/gunanovo@github.io.pub https://gunanovo.github.io/openwrt-
 **2. 添加软件源**
 
 ```sh
-echo "https://gunanovo.github.io/openwrt-tailscale/$(apk --print-arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
+echo "https://gunanovo.github.io/openwrt-tailscale/$(cat /etc/apk/arch)/packages.adb" >> /etc/apk/repositories.d/customfeeds.list
 ```
 
 或者手动编辑 `/etc/apk/repositories.d/customfeeds.list`，添加以下行（请将 `{你的设备架构}` 替换为实际架构）：
