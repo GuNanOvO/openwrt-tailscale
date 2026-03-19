@@ -280,7 +280,7 @@ jobs:
 
       - name: Collect Build Artifacts
         env:
-          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-${{  steps.get_build_version.outputs.version }}-r1.ipk tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk"
+          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk"
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"
 
@@ -300,8 +300,20 @@ jobs:
           done
           
           du -b "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"/tailscaled | cut -f1 > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.size"
-          
+
           echo "${{ steps.get_build_version.outputs.version }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
+
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
+          fi
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/apk.sha256"
+          fi
+
+          sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscaled" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.sha256"
+
+          cp "repo/package/tailscale/files/tailscale.conf" "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale.conf"
+          cp "repo/package/tailscale/files/tailscale.init" "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale.init"
 
           echo "Artifact collection attempted for platform: ${{ matrix.platform }}. Contents of artifact directory:"
           ls -la "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/"
