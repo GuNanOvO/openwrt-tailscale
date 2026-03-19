@@ -287,7 +287,7 @@ get_tailscale_info() {
     fi
 
     TAILSCALE_LATEST_VERSION="$version"
-    TAILSCALE_FILE="tailscale_${TAILSCALE_LATEST_VERSION}_${DEVICE_TARGET}"
+    TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION}-r1"
     TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
