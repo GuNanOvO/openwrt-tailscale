@@ -62,10 +62,10 @@ else
     exit 1
 fi
 
-# rename the generated ipk package to standard format: tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
+# rename the generated ipk package to standard format: tailscale-${PKG_VERSION}-r1.ipk
 echo "Renaming generated IPK package to standard format..."
-mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
-ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.ipk
+mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.ipk
+ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.ipk
 
 cp /builder/keys/key-build.sec ./key-build
 make package/index -j$(nproc) V=s

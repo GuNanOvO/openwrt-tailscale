@@ -59,11 +59,6 @@ else
     exit 1
 fi
 
-# rename the generated apk package to standard format: tailscale_${PKG_VERSION}_${TARGET_ARCH}.apk
-echo "Renaming generated APK package to standard format..."
-mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.apk
-ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale_${PKG_VERSION}_${TARGET_ARCH}.apk
-
 # change to package directory for index generation and signing
 echo "Making index and signing index..."
 cd /builder/bin/packages/${TARGET_ARCH}/base
@@ -74,7 +69,7 @@ cd /builder/bin/packages/${TARGET_ARCH}/base
     --sign-key /builder/keys/key-build.rsa \
     --keys-dir /builder/keys/ \
     --allow-untrusted \
-    tailscale_${PKG_VERSION}_${TARGET_ARCH}.apk
+    tailscale-${PKG_VERSION}-r1.apk
 
 # check if the index file and signature file is generated
 if [ -f packages.adb ] ; then
