@@ -72,9 +72,11 @@ ifneq ($(DISABLE_UPX),1)
 else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
-
-	mkdir -p /builder/bin/packages/$(ARCH_PACKAGES)/base
-	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled /builder/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+	# [Maintainer Note] Save a copy of the binary for the repository. 
+    # Feel free to remove the next two lines for local builds.
+	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
+	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
+	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale

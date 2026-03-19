@@ -232,7 +232,7 @@ test_proxy() {
 
     for attempt_times in $attempt_range; do
         for attempt_proxy in $PROXYS; do
-            attempt_url="$attempt_proxy/version"
+            attempt_url="$attempt_proxy/${DEVICE_TARGET}/version"
             version=$(wget -qO- --timeout=$attempt_timeout "$attempt_url" | tr -d ' \n\r')
 
             if [ -n "$version" ] && [[ "$version" =~ ^[0-9] ]]; then
