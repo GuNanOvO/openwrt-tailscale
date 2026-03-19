@@ -300,12 +300,14 @@ jobs:
           done
           
           du -b "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"/tailscaled | cut -f1 > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.size"
+          
+          echo "${{ steps.get_build_version.outputs.version }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
 
           echo "Artifact collection attempted for platform: ${{ matrix.platform }}. Contents of artifact directory:"
           ls -la "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/"
 
       - name: Upload Artifacts
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.platform }}
           path: ${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/
