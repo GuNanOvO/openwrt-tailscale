@@ -90,7 +90,7 @@ $(TOPDIR)/upx/upx
 路径下必须存在 UPX 可执行文件。  
 The UPX binary must be placed at this path.
 
-说明：
+说明：  
 Note:
 
 * 若不需要压缩，可移除此段代码  
@@ -113,7 +113,7 @@ This copies the `tailscaled` binary after build:
 * 输出路径：`bin/packages/.../base/`
 * Output path: `bin/packages/.../base/`
 
-用途：
+用途：  
 Purpose:
 
 * 方便直接获取二进制文件  
@@ -121,7 +121,7 @@ Purpose:
 * 用于调试或手动分发  
   Useful for debugging or manual distribution
 
-说明：
+说明：  
 Note:
 
 * 如果只需要 `.ipk` 或 `.apk` 包，可以删除这两行  
