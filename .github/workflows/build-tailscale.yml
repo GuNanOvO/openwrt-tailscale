@@ -362,7 +362,6 @@ jobs:
 
       - name: Deploy to Feed Branch
         env:
-          USIGN_SECRET_KEY_B64: ${{ secrets.USIGN_SECRET_KEY_B64 }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # Configure Git for committing and pushing changes
@@ -484,6 +483,7 @@ jobs:
     steps:
 
       # PREPARE ARTIFACTS
+      
       - name: Download Artifacts
         uses: actions/download-artifact@v5
         with:

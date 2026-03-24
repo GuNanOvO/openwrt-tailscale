@@ -1,8 +1,8 @@
 #!/bin/sh
 
 # 脚本信息
-SCRIPT_VERSION="v1.1.0"
-SCRIPT_DATE="2025/03/04"
+SCRIPT_VERSION="v1.1.1"
+SCRIPT_DATE="2025/03/24"
 
 # 基本配置
 REPO="gunanovo/openwrt-tailscale"
@@ -68,7 +68,7 @@ script_info() {
     echo "┌────────────────────────────────────────────────────────────────────────────────────────┐"
     echo "│ 一个用于在OpenWrt上安装Tailscale或更新Tailscale或...的一个脚本。                       │"
     echo "│ 项目地址: "$REPO_URL"                                │"
-    echo "│ 脚本版本: "$SCRIPT_VERSION"                                                                        │"
+    echo "│ 脚本版本: "$SCRIPT_VERSION"                                                                       │"
     echo "│ 更新日期: "$SCRIPT_DATE"                                                                   │"
     echo "│ 感谢您的使用, 如有帮助, 还请点颗star /<3                                               │"
     echo "└────────────────────────────────────────────────────────────────────────────────────────┘"
@@ -307,28 +307,32 @@ get_tailscale_info() {
 update() {
     echo "[INFO]: 正在更新..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        echo "[INFO]: 检测到临时安装模式，执行临时安装更新..."
         temp_install "" "true"
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+        echo "[INFO]: 检测到持久安装模式，执行持久安装更新..."
         persistent_install "" "true"
     fi
     while true; do
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ [WARNING]!!!请您确认以下信息:                         ║"
-        echo "║                                                       ║"
-        echo "║ 您正在执行更新Tailscale, Tailscale需要重启, 如果您当 ║"
-        echo "║ 当前正在通过Tailscale连接至设备有可能断开与设备的连接 ║"
-        echo "║ 请您确认您的操作, 避免造成失! 感谢您的使用!         ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 您正在执行更新Tailscale, Tailscale需要重启, 如果您当"
+        echo "│ 当前正在通过Tailscale连接至设备有可能断开与设备的连接"
+        echo "│ 请您确认您的操作, 避免造成失! 感谢您的使用!"
+        echo "└─"
+        echo ""
 
         read -n 1 -p "确认重启tailscale吗? (y/N): " choice
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            echo "[INFO]: 停止tailscale服务..."
             /etc/init.d/tailscale stop
+            echo "[INFO]: 启动tailscale服务..."
             /etc/init.d/tailscale start
+            echo "[INFO]: tailscale服务重启完成"
             break
         else
-            echo "[INFO]: 取消重启tailscale, 您稍后可自行通过命令 /etc/init.d/tailscale stop && /etc/init.d/tailscale start 来重启tailscale服务"
+            echo "[INFO]: 取消重启tailscale，稍后可自行通过命令 /etc/init.d/tailscale stop && /etc/init.d/tailscale start 来重启tailscale服务"
             break
         fi
     done
@@ -337,28 +341,31 @@ update() {
 }
 
 # 函数：卸载
-remove() { 
+remove() {
     while true; do
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ [WARNING]!!!请您确认以下信息:                         ║"
-        echo "║                                                       ║"
-        echo "║ 您正在执行卸载Tailscale, 卸载后,您所有依托于Tailscale ║"
-        echo "║ 的服务都将失效, 如果您当前正在通过Tailscale连接至设备 ║"
-        echo "║ 则有可能断开与设备的连接, 请您确认您的操作, 避免造成  ║"
-        echo "║ 损失! 感谢您的使用!                                   ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 您正在执行卸载Tailscale, 卸载后,您所有依托于Tailscale"
+        echo "│ 的服务都将失效, 如果您当前正在通过Tailscale连接至设备"
+        echo "│ 则有可能断开与设备的连接, 请您确认您的操作, 避免造成"
+        echo "│ 损失! 感谢您的使用!"
+        echo "└─"
+        echo ""
 
         read -n 1 -p "确认卸载tailscale吗? (y/N): " choice
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            echo "[INFO]: 开始卸载tailscale..."
             tailscale_stoper
 
             if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+                echo "[INFO]: 移除持久安装的tailscale包..."
                 if [ "$PACKAGE_MANAGER" = "opkg" ]; then
                     opkg remove tailscale
+                    echo "[INFO]: opkg包移除完成"
                 elif [ "$PACKAGE_MANAGER" = "apk" ]; then
                     apk del tailscale
+                    echo "[INFO]: apk包移除完成"
                 fi
             fi
 
@@ -366,17 +373,21 @@ remove() {
             local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
             local binaries="tailscale tailscaled"
 
+            echo "[INFO]: 清理tailscale相关文件..."
             # remove指定目录的 tailscale 或 tailscaled 文件
             for dir in $directories; do
                 for bin in $binaries; do
                     if [ -f "$dir/$bin" ]; then
+                        echo "[INFO]: 删除文件: $dir/$bin"
                         rm -rf $dir/$bin
                         echo "[INFO]: 已删除文件: $dir/$bin"
                     fi
                 done
             done
 
+            echo "[INFO]: 删除tailscale虚拟网卡..."
             ip link delete tailscale0
+            echo "[INFO]: tailscale卸载完成"
             script_exit
         else
             echo "[INFO]: 取消卸载"
@@ -388,19 +399,19 @@ remove() {
 # 函数：清理未知文件
 remove_unknown_file() {
     while true; do
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ [WARNING]!!!请您确认以下信息:                         ║"
-        echo "║                                                       ║"
-        echo "║ 您正在执行删除Tailscale残留文件,如果这些文件为您自行  ║"
-        echo "║ 创建,则不应该被删除,请您取消该操作!                   ║"
-        echo "║ 请您确认您的操作, 避免造成损失!                       ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 您正在执行删除Tailscale残留文件,如果这些文件为您自行"
+        echo "│ 创建,则不应该被删除,请您取消该操作!"
+        echo "│ 请您确认您的操作, 避免造成损失!"
+        echo "└─"
+        echo ""
 
         # remove指定目录的 tailscale 或 tailscaled 文件
         local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
         local files="tailscale tailscaled"
 
+        echo "[INFO]: 扫描tailscale残留文件..."
         for dir in $directories; do
             for file in $files; do
                 if [ -f "$dir/$file" ]; then
@@ -412,20 +423,23 @@ remove_unknown_file() {
         read -n 1 -p "确认删除残留文件吗? (y/N): " choice
 
         if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+            echo "[INFO]: 开始删除残留文件..."
             tailscale_stoper
 
             for dir in $directories; do
                 for file in $files; do
                     if [ -f "$dir/$file" ]; then
+                        echo "[INFO]: 删除文件: $dir/$file"
                         rm -rf $dir/$file
                         echo "[INFO]: 已删除文件: $dir/$file"
                     fi
                 done
             done
 
+            echo "[INFO]: 删除tailscale虚拟网卡..."
             ip link delete tailscale0
 
-            echo "[INFO]: 已删除所有残留文件, 重启脚本..."
+            echo "[INFO]: 已删除所有残留文件，重启脚本..."
             sleep 2
             exec "$0" "$@"
 
@@ -444,10 +458,14 @@ clean_old_installation() {
         local old_paths="/usr/bin/tailscale /usr/bin/tailscaled"
         for file in $old_paths; do
             if [ -f "$file" ]; then
+                echo "[INFO]: 删除旧文件: $file"
                 rm -f "$file"
                 echo "[INFO]: 已删除旧文件: $file"
             fi
         done
+        echo "[INFO]: 旧文件清理完成"
+    else
+        echo "[INFO]: 未检测到已安装的tailscale，跳过清理"
     fi
 }
 
@@ -457,19 +475,19 @@ persistent_install() {
     local silent_install=$2
 
     if [ "$silent_install" != "true" ]; then
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ [WARNING]!!!请您确认以下信息:                         ║"
-        echo "║                                                       ║"
-        echo "║ 使用持久安装时, 请您确认您的openwrt的剩余空间至少大于 ║"
-        echo "║ "$TAILSCALE_FILE_SIZE", 推荐大于$(expr $TAILSCALE_FILE_SIZE \* 3)M.                                       ║"
-        echo "║ 安装时产生任何错误, 您可以于:                         ║"
-        echo "║ "$REPO_URL"/issues  ║"
-        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 使用持久安装时, 请您确认您的openwrt的剩余空间至少大于"
+        echo "│ "$TAILSCALE_FILE_SIZE", 推荐大于$(expr $TAILSCALE_FILE_SIZE \* 3)M."
+        echo "│ 安装时产生任何错误, 您可以于:"
+        echo "│ "$REPO_URL"/issues"
+        echo "│ 提出反馈. 谢谢您的使用! /<3"
+        echo "└─"
+        echo ""
         read -n 1 -p "确认采用持久安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
+            echo "[INFO]: 取消持久安装"
             return
         fi
     fi
@@ -478,41 +496,87 @@ persistent_install() {
     clean_old_installation
 
     if [ "$confirm2persistent_install" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
+        echo "[INFO]: 清理临时文件..."
         rm -rf /tmp/tailscale
         rm -rf /tmp/tailscaled
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
+        echo "[INFO]: 临时文件清理完成"
     fi
-    
+
     echo ""
     echo "[INFO]: 正在持久安装..."
+    echo "[INFO]: 开始下载tailscale文件..."
     downloader
-    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-        opkg remove tailscale
-        opkg install /tmp/$TAILSCALE_FILE.ipk
-        rm -rf "$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
-    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-        apk del tailscale
-        apk add --allow-untrusted /tmp/$TAILSCALE_FILE.apk
-        rm -rf "$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+
+    local install_success=false
+    local install_attempt_range="1 2 3"
+
+    for install_attempt in $install_attempt_range; do
+        echo "[INFO]: 安装尝试 $install_attempt/3"
+        if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+            echo "[INFO]: 移除旧的tailscale包..."
+            opkg remove tailscale 2>/dev/null || true
+            echo "[INFO]: 安装tailscale IPK包..."
+            if opkg install /tmp/$TAILSCALE_FILE.ipk; then
+                install_success=true
+                echo "[INFO]: IPK包安装成功"
+                rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.sha256"
+                break
+            else
+                echo "[INFO]: IPK包安装失败，准备重试..."
+            fi
+        elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+            echo "[INFO]: 移除旧的tailscale包..."
+            apk del tailscale 2>/dev/null || true
+            echo "[INFO]: 安装tailscale APK包..."
+            if apk add --allow-untrusted /tmp/$TAILSCALE_FILE.apk; then
+                install_success=true
+                echo "[INFO]: APK包安装成功"
+                rm -f "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+                break
+            else
+                echo "[INFO]: APK包安装失败，准备重试..."
+            fi
+        fi
+    done
+
+    if ! $install_success; then
+        echo "[ERROR]: 包安装失败，已重试3次，可能原因：设备存储空间不足、网络连接异常或未知错误"
+        echo "[ERROR]: 请检查设备存储空间、网络连接后重试"
+        rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+        exit 1
     fi
-    
-    if [ "$silent_install" != "true" ]; then
-        echo ""
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ Tailscale安装&服务启动完成!!!                         ║"
-        echo "║                                                       ║"
-        echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
-        echo "║ 直接启动: tailscale up                                ║"
-        echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
-        echo "║ "$REPO_URL"/issues  ║"
-        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
-        echo ""
-        echo "[INFO]: 正在重新初始化脚本, 请稍候..."
-        init "" "false"
+
+    echo "[INFO]: 验证安装状态..."
+    check_tailscale_install_status
+
+    if [ "$TAILSCALE_INSTALL_STATUS" == "persistent" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
+        echo "[INFO]: 持久安装完成!"
+        echo "[INFO]: 正在启动tailscale服务..."
+
+        tailscaled up &>/dev/null &
+
+        if [ "$silent_install" != "true" ]; then
+            echo ""
+            echo "┌─ Tailscale安装&服务启动完成!!!"
+            echo "│"
+            echo "│ 现在您可以按照您希望的方式开始使用!"
+            echo "│ 直接启动: tailscale up"
+            echo "│ 安装后有任何无法使用的问题, 可以于:"
+            echo "│ "$REPO_URL"/issues"
+            echo "│ 提出反馈. 谢谢您的使用! /<3"
+            echo "└─"
+            echo ""
+            echo ""
+            echo "[INFO]: 正在重新初始化脚本, 请稍候..."
+            init "" "false"
+        fi
+    else
+        echo "[ERROR]: 持久安装失败，请检查安装日志"
+        exit 1
     fi
 }
 
@@ -522,27 +586,27 @@ temp_to_persistent() {
 }
 
 # 函数：临时安装
-temp_install() { 
+temp_install() {
     local confirm2temp_install=$1
     local silent_install=$2
 
     if [ "$silent_install" != "true" ]; then
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ [WARNING]!!!请您确认以下信息:                         ║"
-        echo "║                                                       ║"
-        echo "║ 临时安装是将tailscale文件置于/tmp目录, /tmp目录会在重 ║"
-        echo "║ 启设备后清空. 如果该脚本在重启后重新下载tailscale失败 ║"
-        echo "║ 则tailscale将无法正常使用, 您所有依托于tailscale的服  ║"
-        echo "║ 务都将失效, 请您明悉并确定该讯息, 以免造成损失. 谢谢! ║"
-        echo "║ 如果可以持久安装，推荐您采取持久安装方式!             ║"
-        echo "║ 安装时产生任何错误, 您可以于:                         ║"
-        echo "║ "$REPO_URL"/issues  ║"
-        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 临时安装是将tailscale文件置于/tmp目录, /tmp目录会在重"
+        echo "│ 启设备后清空. 如果该脚本在重启后重新下载tailscale失败"
+        echo "│ 则tailscale将无法正常使用, 您所有依托于tailscale的服"
+        echo "│ 务都将失效, 请您明悉并确定该讯息, 以免造成损失. 谢谢!"
+        echo "│ 如果可以持久安装，推荐您采取持久安装方式!"
+        echo "│ 安装时产生任何错误, 您可以于:"
+        echo "│ "$REPO_URL"/issues"
+        echo "│ 提出反馈. 谢谢您的使用! /<3"
+        echo "└─"
+        echo ""
         read -n 1 -p "确认采用临时安装方式安装tailscale吗? (y/N): " choice
 
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
+            echo "[INFO]: 取消临时安装"
             return
         fi
     fi
@@ -551,13 +615,16 @@ temp_install() {
     clean_old_installation
 
     if [ "$confirm2temp_install" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
+        echo "[INFO]: 清理持久安装文件..."
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
+        echo "[INFO]: 持久安装文件清理完成"
     fi
 
     echo ""
-    echo "[INFO]: 正在临时安装..." 
+    echo "[INFO]: 正在临时安装..."
 
     local attempt_range="1 2 3"
     local attempt_timeout=20
@@ -566,31 +633,38 @@ temp_install() {
     local file_path="/tmp/tailscaled"
 
     for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3"
+        echo "[INFO]: 下载tailscaled二进制文件..."
         if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
             if [ "$attempt_times" == "3" ]; then
-                echo "[ERROR]: tailscaled 三次下载均失败, 即将重启脚本!"
+                echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
+                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
                 sleep 3
                 init
             fi
+            echo "[INFO]: 下载失败，准备重试..."
             continue
         fi
 
-        wget -cO "$sha_file" --timeout="$attempt_timeout"  "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256" 
+        echo "[INFO]: 下载配置文件和初始化脚本..."
+        wget -cO "$sha_file" --timeout="$attempt_timeout"  "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
         wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
         wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf "  $file_path" >> "$sha_file"
 
+        echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
-                echo "[ERROR]: tailscaled 文件三次下载均失败, 即将重启脚本, 请重试!"
+                echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
+                echo "[ERROR]: 即将重启脚本，请重试"
                 sleep 3
-                rm -f "$file_path" "$sha_file" "/etc/config/tailscale" "/etc/init.d/tailscale"
+                rm -f "$file_path" "$sha_file"
                 init
             else
-                echo "[INFO]: tailscaled 文件校验不通过, 正在尝试重新下载!"
-                rm -f "$file_path" "$sha_file" "/etc/config/tailscale" "/etc/init.d/tailscale"
+                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+                rm -f "$file_path" "$sha_file"
                 sleep 3
             fi
         else
@@ -600,52 +674,98 @@ temp_install() {
         fi
     done
 
+    echo "[INFO]: 创建启动脚本..."
     echo "$TMP_TAILSCALE" > /usr/sbin/tailscale
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
-    
-    echo "[INFO]: 临时安装完成!"
-    echo "[INFO]: 正在启动tailscale服务..."
 
-    if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-        opkg update
-        opkg install $PACKAGES_TO_CHECK
-    elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-        apk update
-        apk add --no-cache $PACKAGES_TO_CHECK
+    if [ "$TMP_INSTALL" != "true" ]; then
+        echo "[INFO]: 安装依赖包..."
+        local pkg_install_success=false
+        local pkg_attempt_range="1 2 3"
+
+        for pkg_attempt in $pkg_attempt_range; do
+            echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
+            if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                echo "[INFO]: 更新opkg包列表..."
+                opkg update || continue
+                echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
+                opkg install $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed | grep -q "^$pkg " || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包安装成功"
+                    break
+                fi
+            elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                echo "[INFO]: 更新apk包列表..."
+                apk update || continue
+                echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
+                apk add --no-cache $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info | grep -q "^$pkg$" || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包安装成功"
+                    break
+                fi
+            fi
+        done
+
+        if ! $pkg_install_success; then
+            echo "[ERROR]: 依赖包安装失败，已重试3次，可能原因：网络连接异常或包源不可用"
+            exit 1
+        fi
     fi
 
+    echo "[INFO]: 设置文件权限..."
     chmod +x /etc/init.d/tailscale
     chmod +x /usr/sbin/tailscale
     chmod +x /usr/sbin/tailscaled
     chmod +x /tmp/tailscale
     chmod +x /tmp/tailscaled
-    
+
+    echo "[INFO]: 临时安装完成!"
+    echo "[INFO]: 正在启动tailscale服务..."
+
     /etc/init.d/tailscale enable
     /etc/init.d/tailscale start
 
     sleep 3
 
-    tailscaled &>/dev/null &
-    if [ "$TMP_INSTALL" == "true" ]; then
-        tailscale up
-    fi
-    if [ "$silent_install" != "true" ]; then
-        echo "[INFO]: tailscale服务启动完成"
-        echo ""
-        echo "╔═══════════════════════════════════════════════════════╗"
-        echo "║ Tailscale安装&服务启动完成!!!                         ║"
-        echo "║                                                       ║"
-        echo "║ 现在您可以按照您希望的方式开始使用!                   ║"
-        echo "║ 直接启动: tailscale up                                ║"
-        echo "║ 安装后有任何无法使用的问题, 可以于:                   ║"
-        echo "║ "$REPO_URL"/issues  ║"
-        echo "║ 提出反馈. 谢谢您的使用! /<3                           ║"
-        echo "║                                                       ║"
-        echo "╚═══════════════════════════════════════════════════════╝"
-        echo ""
-        echo "[INFO]: 正在重新初始化脚本, 请稍候..."
-        init "" "false"
+    tailscaled up &>/dev/null &
+
+    sleep 2
+    check_tailscale_install_status
+
+    if [ "$TAILSCALE_INSTALL_STATUS" == "temp" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
+        if [ "$silent_install" != "true" ]; then
+            echo "[INFO]: tailscale服务启动完成"
+            echo ""
+            echo "┌─ Tailscale安装&服务启动完成!!!"
+            echo "│"
+            echo "│ 现在您可以按照您希望的方式开始使用!"
+            echo "│ 直接启动: tailscale up"
+            echo "│ 安装后有任何无法使用的问题, 可以于:"
+            echo "│ "$REPO_URL"/issues"
+            echo "│ 提出反馈. 谢谢您的使用! /<3"
+            echo "└─"
+            echo ""
+            echo "[INFO]: 正在重新初始化脚本, 请稍候..."
+            init "" "false"
+        fi
+    else
+        echo "[ERROR]: 临时安装失败，请检查安装日志"
+        exit 1
     fi
 }
 
@@ -671,16 +791,22 @@ downloader() {
         file_path="/tmp/$TAILSCALE_FILE.apk"
     fi
 
+    echo "[INFO]: 开始下载tailscale包文件: $target_file"
+
     for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3"
         if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
-                echo "[ERROR]: $target_file 三次下载均失败, 即将重启脚本!"
+                echo "[ERROR]: $target_file 三次下载均失败，可能原因：网络连接异常或代理不可用"
+                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
                 sleep 3
                 init
             fi
+            echo "[INFO]: 下载失败，准备重试..."
             continue
         fi
 
+        echo "[INFO]: 下载校验文件..."
         if [ "$PACKAGE_MANAGER" = "opkg" ]; then
             wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/ipk.sha256"
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
@@ -688,18 +814,18 @@ downloader() {
         fi
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-
         printf "  $file_path\n" >> "$sha_file"
 
-
+        echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
-                echo "[ERROR]: tailscale 文件三次下载均失败, 即将重启脚本, 请重试!"
+                echo "[ERROR]: tailscale 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
+                echo "[ERROR]: 即将重启脚本，请重试"
                 sleep 3
                 rm -f "$file_path" "$sha_file"
                 init
             else
-                echo "[INFO]: tailscale 文件校验不通过, 正在尝试重新下载!"
+                echo "[INFO]: tailscale 文件校验不通过，正在尝试重新下载..."
                 rm -f "$file_path" "$sha_file"
                 sleep 3
             fi
@@ -714,17 +840,27 @@ downloader() {
 # 函数：tailscale服务停止器
 tailscale_stoper() {
     echo ""
+    echo "[INFO]: 停止tailscale服务..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        echo "[INFO]: 检测到临时安装模式"
         /etc/init.d/tailscale stop
+        echo "[INFO]: 执行tailscale down..."
         /tmp/tailscale down --accept-risk=lose-ssh
+        echo "[INFO]: 执行tailscale logout..."
         /tmp/tailscale logout
+        echo "[INFO]: 禁用tailscale开机启动..."
         /etc/init.d/tailscale disable
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+        echo "[INFO]: 检测到持久安装模式"
         /etc/init.d/tailscale stop
+        echo "[INFO]: 执行tailscale down..."
         /usr/sbin/tailscale down --accept-risk=lose-ssh
+        echo "[INFO]: 执行tailscale logout..."
         /usr/sbin/tailscale logout
+        echo "[INFO]: 禁用tailscale开机启动..."
         /etc/init.d/tailscale disable
     fi
+    echo "[INFO]: tailscale服务停止完成"
     echo ""
 }
 
@@ -773,17 +909,16 @@ init() {
 
 # 函数：退出
 script_exit() {
-        echo "┌───────────────────────────────────────────────────────┐"
-        echo "│ THANKS!!!感谢您的信任与使用!!!                        │"
-        echo "│                                                       │"
-        echo "│ 如果该脚本对您有帮助, 您可以点一颗Star支持我!         │"
-        echo "│ "$REPO_URL"/        │"
-        echo "│ 安装后产生无法使用等情况, 您可以于:                   │"
-        echo "│ "$REPO_URL"/issues  │"
-        echo "│ 提出反馈. 谢谢您的使用! /<3                           │"
-        echo "│                                                       │"
-        echo "└───────────────────────────────────────────────────────┘"
-        exit 0
+    echo ""
+    echo "┌─ THANKS!!!感谢您的信任与使用!!!"
+    echo "│"
+    echo "│ 如果该脚本对您有帮助, 您可以点一颗Star支持我!"
+    echo "│ "$REPO_URL"/"
+    echo "│ 安装后产生无法使用等情况, 您可以于:"
+    echo "│ "$REPO_URL"/issues"
+    echo "│ 提出反馈. 谢谢您的使用! /<3"
+    echo "└─"
+    exit 0
 }
 
 
@@ -948,7 +1083,7 @@ option_menu() {
 
 show_help() {
     echo "Tailscale on OpenWrt installer script. $SCRIPT_VERSION"
-    echo ""$REPO_URL""
+    echo "  Repo: $REPO_URL"
     echo "  Usage:   "
     echo "      --help: Show this help"
     echo "      --custom-proxy: Custom github proxy"
@@ -1014,7 +1149,9 @@ main() {
 }
 
 if [ "$TMP_INSTALL" = "true" ]; then
+    check_package_manager
     check_device_target
+    test_proxy
     get_tailscale_info
     temp_install "" "true"
     exit 0
