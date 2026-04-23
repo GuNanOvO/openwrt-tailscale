@@ -450,7 +450,8 @@ setup_tailscale_firewall() {
         echo "[INFO]: tailscale firewall zone already exists, skipping creation"
     fi
 
-    for section in $(uci -q show firewall | sed -n "s/^\(firewall\.@forwarding\[[0-9]\+\]\)=forwarding$/\1/p"); do
+    uci -q show firewall | sed -n "s/^\(firewall\.@forwarding\[[0-9]\+\]\)=forwarding$/\1/p" | while IFS= read -r section; do
+        [ -n "$section" ] || continue
         src="$(uci -q get "$section.src")"
         dest="$(uci -q get "$section.dest")"
 
@@ -480,8 +481,15 @@ setup_tailscale_firewall() {
     fi
 
     if [ "$changed" = "true" ]; then
-        echo "[INFO]: Committing and restarting firewall"
-        uci commit firewall
+        if ! uci commit firewall; then
+            echo "[ERROR]: Firewall configuration commit failed"
+            return 1
+        fi
+
+        if ! /etc/init.d/firewall restart; then
+            echo "[ERROR]: Firewall restart failed"
+            return 1
+        fi
         /etc/init.d/firewall restart
     else
         echo "[INFO]: Firewall configuration is up to date, skipping restart"
