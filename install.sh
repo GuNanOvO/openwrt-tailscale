@@ -469,6 +469,75 @@ clean_old_installation() {
     fi
 }
 
+# 函数：配置tailscale防火墙区域（幂等）
+setup_tailscale_firewall() {
+    if ! command -v uci >/dev/null 2>&1; then
+        echo "[INFO]: 未检测到uci命令，跳过防火墙配置"
+        return 0
+    fi
+
+    local changed=false
+    local has_lan_to_tailscale=false
+    local has_tailscale_to_lan=false
+    local section
+    local src
+    local dest
+
+    echo "[INFO]: 检查tailscale防火墙配置..."
+
+    if ! uci -q get firewall.tailscale >/dev/null 2>&1; then
+        echo "[INFO]: 创建tailscale防火墙区域"
+        uci set firewall.tailscale=zone
+        uci set firewall.tailscale.name='tailscale'
+        uci set firewall.tailscale.input='ACCEPT'
+        uci set firewall.tailscale.output='ACCEPT'
+        uci set firewall.tailscale.forward='ACCEPT'
+        uci add_list firewall.tailscale.device='tailscale+'
+        uci set firewall.tailscale.masq='1'
+        uci set firewall.tailscale.mtu_fix='1'
+        changed=true
+    else
+        echo "[INFO]: tailscale防火墙区域已存在，跳过创建"
+    fi
+
+    for section in $(uci -q show firewall | sed -n "s/^\(firewall\.@forwarding\[[0-9]\+\]\)=forwarding$/\1/p"); do
+        src="$(uci -q get "$section.src")"
+        dest="$(uci -q get "$section.dest")"
+
+        if [ "$src" = "lan" ] && [ "$dest" = "tailscale" ]; then
+            has_lan_to_tailscale=true
+        fi
+
+        if [ "$src" = "tailscale" ] && [ "$dest" = "lan" ]; then
+            has_tailscale_to_lan=true
+        fi
+    done
+
+    if [ "$has_lan_to_tailscale" != "true" ]; then
+        echo "[INFO]: 添加转发规则 lan -> tailscale"
+        uci add firewall forwarding
+        uci set firewall.@forwarding[-1].src='lan'
+        uci set firewall.@forwarding[-1].dest='tailscale'
+        changed=true
+    fi
+
+    if [ "$has_tailscale_to_lan" != "true" ]; then
+        echo "[INFO]: 添加转发规则 tailscale -> lan"
+        uci add firewall forwarding
+        uci set firewall.@forwarding[-1].src='tailscale'
+        uci set firewall.@forwarding[-1].dest='lan'
+        changed=true
+    fi
+
+    if [ "$changed" = "true" ]; then
+        echo "[INFO]: 提交并重启防火墙"
+        uci commit firewall
+        /etc/init.d/firewall restart
+    else
+        echo "[INFO]: 防火墙配置已是最新，跳过重启"
+    fi
+}
+
 # 函数：持久安装
 persistent_install() {
     local confirm2persistent_install=$1
@@ -549,6 +618,8 @@ persistent_install() {
         rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
         exit 1
     fi
+
+    setup_tailscale_firewall
 
     echo "[INFO]: 验证安装状态..."
     check_tailscale_install_status
@@ -739,6 +810,8 @@ temp_install() {
 
     /etc/init.d/tailscale enable
     /etc/init.d/tailscale start
+
+    setup_tailscale_firewall
 
     sleep 3
 
