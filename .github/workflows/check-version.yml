@@ -45,7 +45,7 @@ jobs:
             method=$(cat .config/check-method | tr -d '[:space:]')
             echo "Using method from .config/check-method: $method"
           else
-            method="ghcr"
+            method="tag"
             echo "Using default method: $method"
           fi
 
@@ -54,6 +54,7 @@ jobs:
 
       - name: Get GHCR stable version
         id: get_ghcr
+        if: ${{ steps.load-method.outputs.method == 'ghcr' }}
         uses: actions/github-script@v6
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
