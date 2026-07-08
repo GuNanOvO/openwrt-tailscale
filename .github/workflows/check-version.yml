@@ -103,29 +103,29 @@ jobs:
             console.log('Upstream latest stable version tag:', versionTag);
             core.setOutput('stable_version', versionTag);
 
-      - name: Get latest tag from release
+      - name: Get latest stable release from GitHub Releases
         id: get_tag_release
         uses: actions/github-script@v6
         with:
           script: |
-            const { data: tags } = await github.rest.repos.listTags({
+            const parse = v => v.slice(1).split('.').map(Number);
+
+            const { data: releases } = await github.rest.repos.listReleases({
               owner: 'tailscale',
               repo: 'tailscale',
-              per_page: 100
+              per_page: 20
             });
 
-            const stableTags = tags
-              .map(tag => tag.name)
-              .filter(name => /^v\d+\.\d+\.\d+$/.test(name));
+            // Only consider stable releases (not pre-release) with semver tag
+            const stableReleases = releases
+              .filter(r => !r.prerelease && /^v\d+\.\d+\.\d+$/.test(r.tag_name))
+              .sort((a, b) => {
+                const [a1, a2, a3] = parse(a.tag_name);
+                const [b1, b2, b3] = parse(b.tag_name);
+                return b1 - a1 || b2 - a2 || b3 - a3;
+              });
 
-            stableTags.sort((a, b) => {
-              const parse = v => v.slice(1).split('.').map(Number);
-              const [a1, a2, a3] = parse(a);
-              const [b1, b2, b3] = parse(b);
-              return b1 - a1 || b2 - a2 || b3 - a3;
-            });
-
-            const latest = stableTags[0] || '';
+            const latest = stableReleases[0]?.tag_name || '';
             core.setOutput('tag', latest);
 
       - name: Get latest release tag from openwrt-tailscale
@@ -149,30 +149,42 @@ jobs:
           check_method="${{ steps.load-method.outputs.method }}"
           echo "Using version check method: $check_method"
           
+          # Read current version from Makefile
+          CURRENT_VERSION=$(grep -oP '^PKG_VERSION:=\K.*' package/tailscale/Makefile | tr -d '[:space:]')
+          echo "Current Makefile version: v${CURRENT_VERSION}"
+          
           if [ "$check_method" = "ghcr" ]; then
-            echo "GHCR Upstream Version: ${{ steps.get_ghcr.outputs.stable_version }}"
-            echo "Local Version: ${{ steps.get_small.outputs.tag }}"
+            DETECTED_VERSION="${{ steps.get_ghcr.outputs.stable_version }}"
+            echo "GHCR Upstream Version: $DETECTED_VERSION"
+            echo "Local Version: v${CURRENT_VERSION}"
             
-            if [ "${{ steps.get_ghcr.outputs.stable_version }}" != "${{ steps.get_small.outputs.tag }}" ]; then
-              echo "New version found in GHCR"
+            if [ -z "$DETECTED_VERSION" ]; then
+              echo "No version detected from GHCR, skipping"
+              echo "should_build=false" >> ${GITHUB_OUTPUT}
+            elif [ "v${CURRENT_VERSION}" != "$DETECTED_VERSION" ]; then
+              echo "Version mismatch, triggering build"
               echo "should_build=true" >> ${GITHUB_OUTPUT}
-              echo "selected_version=${{ steps.get_ghcr.outputs.stable_version }}" >> ${GITHUB_OUTPUT}
+              echo "selected_version=$DETECTED_VERSION" >> ${GITHUB_OUTPUT}
               echo "check_method=ghcr" >> ${GITHUB_OUTPUT}
             else
-              echo "No new version found in GHCR"
+              echo "Version matches (v${CURRENT_VERSION}), no action needed"
               echo "should_build=false" >> ${GITHUB_OUTPUT}
             fi
           else
-            echo "Tag Release Version: ${{ steps.get_tag_release.outputs.tag }}"
-            echo "Local Version: ${{ steps.get_small.outputs.tag }}"
+            DETECTED_VERSION="${{ steps.get_tag_release.outputs.tag }}"
+            echo "GitHub Release Version: $DETECTED_VERSION"
+            echo "Local Version: v${CURRENT_VERSION}"
             
-            if [ "${{ steps.get_tag_release.outputs.tag }}" != "${{ steps.get_small.outputs.tag }}" ]; then
-              echo "New version found in tag release"
+            if [ -z "$DETECTED_VERSION" ]; then
+              echo "No version detected from GitHub Releases, skipping"
+              echo "should_build=false" >> ${GITHUB_OUTPUT}
+            elif [ "v${CURRENT_VERSION}" != "$DETECTED_VERSION" ]; then
+              echo "Version mismatch, triggering build"
               echo "should_build=true" >> ${GITHUB_OUTPUT}
-              echo "selected_version=${{ steps.get_tag_release.outputs.tag }}" >> ${GITHUB_OUTPUT}
+              echo "selected_version=$DETECTED_VERSION" >> ${GITHUB_OUTPUT}
               echo "check_method=tag" >> ${GITHUB_OUTPUT}
             else
-              echo "No new version found in tag release"
+              echo "Version matches (v${CURRENT_VERSION}), no action needed"
               echo "should_build=false" >> ${GITHUB_OUTPUT}
             fi
           fi

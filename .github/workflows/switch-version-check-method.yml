@@ -9,7 +9,7 @@ on:
         options:
           - ghcr
           - tag
-        default: 'ghcr'
+        default: 'tag'
         required: true
 
 jobs:

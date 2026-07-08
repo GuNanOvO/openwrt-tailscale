@@ -2,8 +2,60 @@
 
 # Notes on Forking the `package` Directory for Self-Building
 
-部分用户会 fork 本仓库的 `package` 目录，并在 OpenWrt SDK 中自行编译。本文对 Makefile 中的关键配置进行说明，方便理解和按需调整。  
+部分用户会 fork 本仓库的 `package` 目录，并在 OpenWrt SDK 中自行编译。本文对 Makefile 中的关键配置进行说明，方便理解和按需调整。
 Some users fork the `package` directory from this repository and build it using the OpenWrt SDK. This document explains key parts of the Makefile for better understanding and customization.
+
+## 0. 自编译 OpenWrt 固件时的 Go 版本问题
+
+如果你是从自己编译的 OpenWrt 固件源码树里直接构建本包，且该 buildroot 使用了官方 packages feed 自带的旧版 Go，那么较新的 Tailscale 源码可能会在编译阶段报错，例如：
+
+- `go.mod requires go >= ...`
+- `unknown directive: tool`
+
+这通常不是 Makefile 本身的问题，而是因为构建时实际使用的 Go 版本太旧，无法满足 Tailscale 新版本的要求。
+
+### 解决方案：直接编译进固件
+
+步骤一：在 buildroot 根目录执行下面的脚本，用上游 Go 版本覆盖当前的 Go 工具链：
+
+```bash
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+```
+
+步骤二：在菜单中选中 tailscale 包（或者直接写入 `.config`）：
+
+```bash
+make menuconfig
+# 进入 Network → VPN → 选中 tailscale（按 Y）
+```
+
+或直接追加到配置文件：
+
+```bash
+echo "CONFIG_PACKAGE_tailscale=y" >> .config
+make defconfig
+```
+
+步骤三：直接全量编译固件（tailscale 会作为其中一部分自动编译）：
+
+```bash
+make -j$(nproc) V=s
+```
+
+> **注意**：不需要先手动执行 `make package/tailscale/compile`。全量 `make` 会自动把 `.config` 中选中的包都编译好并打包进固件镜像。
+
+如果你只想要编译出 `.ipk` 包（而非完整固件），则执行：
+
+```bash
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+make package/tailscale/compile -j$(nproc) V=s
+```
+
+如果你使用的是非 amd64 主机，也可以显式指定 `GO_ARCH`：
+
+```bash
+GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+```
 
 ---
 
@@ -15,7 +67,7 @@ Some users fork the `package` directory from this repository and build it using 
 GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 ```
 
-该配置用于裁剪 Tailscale 的功能模块，从而减小最终二进制体积。  
+该配置用于裁剪 Tailscale 的功能模块，从而减小最终二进制体积。
 These `GO_PKG_TAGS` strip unnecessary modules from Tailscale to reduce binary size.
 
 * `ts_include_cli`：保留 CLI 功能 / keep CLI support
@@ -24,9 +76,9 @@ These `GO_PKG_TAGS` strip unnecessary modules from Tailscale to reduce binary si
 说明：
 Note:
 
-* 若需要完整功能，可移除部分 `ts_omit_*` 参数  
+* 若需要完整功能，可移除部分 `ts_omit_*` 参数
   Remove some `ts_omit_*` flags if full functionality is required
-* 功能越完整，体积越大  
+* 功能越完整，体积越大
   More features will significantly increase binary size
 
 ---
@@ -41,14 +93,14 @@ ifneq ($(filter mips64% riscv64% loongarch64%,$(ARCH)),)
 endif
 ```
 
-该逻辑用于在以下架构上禁用 UPX：  
+该逻辑用于在以下架构上禁用 UPX：
 This disables UPX compression on the following architectures:
 
 * mips64
 * riscv64
 * loongarch64
 
-原因：这些架构上 UPX 兼容性较差，可能导致程序异常。  
+原因：这些架构上 UPX 兼容性较差，可能导致程序异常。
 Reason: UPX may be unstable or unsupported on these architectures.
 
 ---
@@ -70,7 +122,7 @@ else
 endif
 ```
 
-该代码用于对 `tailscaled` 二进制进行压缩：  
+该代码用于对 `tailscaled` 二进制进行压缩：
 This section compresses the `tailscaled` binary using UPX:
 
 * 自动检测是否已压缩
@@ -80,20 +132,20 @@ This section compresses the `tailscaled` binary using UPX:
 * 已压缩则跳过
   Skips if already compressed
 
-使用要求：  
+使用要求：
 Requirement:
 
 ```
 $(TOPDIR)/upx/upx
 ```
 
-路径下必须存在 UPX 可执行文件。  
+路径下必须存在 UPX 可执行文件。
 The UPX binary must be placed at this path.
 
-说明：  
+说明：
 Note:
 
-* 若不需要压缩，可移除此段代码  
+* 若不需要压缩，可移除此段代码
   This block can be removed if compression is not needed
 
 ---
@@ -107,24 +159,24 @@ mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
 $(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
 ```
 
-该代码会在编译完成后额外复制一份 `tailscaled`：  
+该代码会在编译完成后额外复制一份 `tailscaled`：
 This copies the `tailscaled` binary after build:
 
 * 输出路径：`bin/packages/.../base/`
 * Output path: `bin/packages/.../base/`
 
-用途：  
+用途：
 Purpose:
 
-* 方便直接获取二进制文件  
+* 方便直接获取二进制文件
   Easy access to raw binary
-* 用于调试或手动分发  
+* 用于调试或手动分发
   Useful for debugging or manual distribution
 
-说明：  
+说明：
 Note:
 
-* 如果只需要 `.ipk` 或 `.apk` 包，可以删除这两行  
+* 如果只需要 `.ipk` 或 `.apk` 包，可以删除这两行
   Can be safely removed if only `.ipk` or `.apk` packages are needed
 
 ---
@@ -133,19 +185,19 @@ Note:
 
 ## Recommendations
 
-* 需要更小体积 → 保留裁剪参数  
+* 需要更小体积 → 保留裁剪参数
   Smaller size → keep `ts_omit_*` flags
 
-* 需要完整功能 → 减少裁剪  
+* 需要完整功能 → 减少裁剪
   Full features → remove some omit flags
 
-* 遇到运行问题 → 尝试禁用 UPX  
+* 遇到运行问题 → 尝试禁用 UPX
   Runtime issues → try disabling UPX
 
-* 仅用于标准打包 → 删除额外二进制导出  
+* 仅用于标准打包 → 删除额外二进制导出
   Standard packaging only → remove extra binary export
 
 ---
 
-如有问题欢迎反馈。  
+如有问题欢迎反馈。
 Feedback is welcome if you encounter any issues.

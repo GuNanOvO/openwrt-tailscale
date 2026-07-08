@@ -1,0 +1,44 @@
+{
+    "name": "OpenWrt Tailscale Dev",
+    "build": {
+        "dockerfile": "Dockerfile",
+        "args": {
+            "VARIANT": "ubuntu-24.04",
+            "GO_VERSION": "1.23.4"
+        }
+    },
+    "mounts": [
+        "source=/var/run/docker.sock,target=/var/run/docker.sock,type=bind"
+    ],
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=cached",
+    "remoteUser": "vscode",
+    "postCreateCommand": "sudo chown vscode:vscode /var/run/docker.sock 2>/dev/null && cd /workspace && if [ -f .devcontainer/setup.sh ]; then bash .devcontainer/setup.sh; else echo 'Warning: .devcontainer/setup.sh not found in /workspace'; fi",
+    "workspaceFolder": "/workspace",
+    "customizations": {
+        "vscode": {
+            "settings": {
+                "go.gopath": "/home/vscode/go",
+                "go.goroot": "/usr/local/go",
+                "go.toolsManagement.autoUpdate": true,
+                "shellcheck.enable": true,
+                "shellcheck.run": "onSave",
+                "shellformat.flag": "-l -s",
+                "files.trimTrailingWhitespace": true,
+                "files.insertFinalNewline": true,
+                "files.trimFinalNewlines": true,
+                "editor.formatOnSave": true,
+                "editor.renderWhitespace": "boundary",
+                "editor.bracketPairColorization.enabled": true,
+                "editor.guides.bracketPairs": true,
+                "markdown.extension.toc.levels": "2..4",
+                "terminal.integrated.defaultProfile.linux": "bash",
+                "terminal.integrated.profiles.linux": {
+                    "bash": {
+                        "path": "bash"
+                    }
+                }
+            }
+        }
+    },
+    "forwardPorts": []
+}
