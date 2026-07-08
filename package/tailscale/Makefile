@@ -63,16 +63,20 @@ define Package/tailscale/install
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
 
 ifneq ($(DISABLE_UPX),1)
-	if ! $(TOPDIR)/upx/upx -t $(GO_PKG_BUILD_BIN_DIR)/tailscaled >/dev/null 2>&1; then \
-		echo "==> UPX enabling on ARCH $(ARCH)"; \
-		$(TOPDIR)/upx/upx --best --lzma $(GO_PKG_BUILD_BIN_DIR)/tailscaled; \
+	if [ -f "$(TOPDIR)/upx/upx" ]; then \
+		if ! $(TOPDIR)/upx/upx -t $(GO_PKG_BUILD_BIN_DIR)/tailscaled >/dev/null 2>&1; then \
+			echo "==> UPX enabling on ARCH $(ARCH)"; \
+			$(TOPDIR)/upx/upx --best --lzma $(GO_PKG_BUILD_BIN_DIR)/tailscaled; \
+		else \
+			echo "==> UPX already compressed on ARCH $(ARCH)"; \
+		fi; \
 	else \
-		echo "==> UPX already compressed on ARCH $(ARCH)"; \
+		echo "==> UPX not found, skipping compression on ARCH $(ARCH)"; \
 	fi
 else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
-	# [Maintainer Note] Save a copy of the binary for the repository. 
+	# [Maintainer Note] Save a copy of the binary for the repository.
     # Feel free to remove the next two lines for local builds.
 	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
 	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base

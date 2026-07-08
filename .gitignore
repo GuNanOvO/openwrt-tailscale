@@ -1,0 +1,20 @@
+# OpenWrt Tailscale build artifacts
+bin/
+staging_dir/
+build_dir/
+.config
+.config.old
+feeds/
+dl/
+logs/
+tmp/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+tmp/
