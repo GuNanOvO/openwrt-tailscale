@@ -45,7 +45,7 @@ jobs:
             method=$(cat .config/check-method | tr -d '[:space:]')
             echo "Using method from .config/check-method: $method"
           else
-            method="ghcr"
+            method="tag"
             echo "Using default method: $method"
           fi
 
@@ -54,6 +54,7 @@ jobs:
 
       - name: Get GHCR stable version
         id: get_ghcr
+        if: ${{ steps.load-method.outputs.method == 'ghcr' }}
         uses: actions/github-script@v6
         env:
           GHCR_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
@@ -70,12 +71,29 @@ jobs:
             );
             const versions = await res.json();
 
-            const latestStableObj = versions.find(v => {
+            // 首先查找同时有 stable 和 latest 标签的版本
+            let latestStableObj = versions.find(v => {
               const tags = v.metadata.container.tags || [];
               return tags.includes('stable') && tags.includes('latest');
             });
 
-            if (!latestStableObj) throw new Error('No version found with both stable and latest tags');
+            // 如果找不到，查找有 latest 标签的版本
+            if (!latestStableObj) {
+              latestStableObj = versions.find(v => {
+                const tags = v.metadata.container.tags || [];
+                return tags.includes('latest');
+              });
+            }
+
+            // 如果还是找不到，查找有 stable 标签的版本
+            if (!latestStableObj) {
+              latestStableObj = versions.find(v => {
+                const tags = v.metadata.container.tags || [];
+                return tags.includes('stable');
+              });
+            }
+
+            if (!latestStableObj) throw new Error('No stable or latest version found in GHCR');
 
             const versionTag = (latestStableObj.metadata.container.tags || [])
               .filter(tag => tag !== 'latest' && tag !== 'stable')[0];
