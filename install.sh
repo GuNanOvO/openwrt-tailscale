@@ -565,6 +565,18 @@ clean_old_installation() {
     else
         echo "[INFO]: 未检测到已安装的tailscale，跳过清理"
     fi
+
+    # 始终清理二进制安装标记和自定义路径下的文件
+    if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local bin_path
+        bin_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$bin_path" ] && [ "$bin_path" != "/usr/sbin" ]; then
+            echo "[INFO]: 清理二进制安装文件: ${bin_path}"
+            rm -f "${bin_path}/tailscale" "${bin_path}/tailscaled" 2>/dev/null || true
+        fi
+        rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+        echo "[INFO]: 安装标记已清理"
+    fi
 }
 
 # 函数：持久安装

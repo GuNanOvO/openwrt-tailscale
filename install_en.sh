@@ -514,6 +514,18 @@ clean_old_installation() {
     else
         echo "[INFO]: No installed tailscale detected, skipping cleanup"
     fi
+
+    # Always clean up binary install marker and custom path files
+    if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local bin_path
+        bin_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$bin_path" ] && [ "$bin_path" != "/usr/sbin" ]; then
+            echo "[INFO]: Cleaning binary installation files: ${bin_path}"
+            rm -f "${bin_path}/tailscale" "${bin_path}/tailscaled" 2>/dev/null || true
+        fi
+        rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+        echo "[INFO]: Install marker cleaned"
+    fi
 }
 
 # Function: Persistent Installation
