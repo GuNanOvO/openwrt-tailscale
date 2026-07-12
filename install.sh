@@ -895,6 +895,19 @@ binary_install() {
 
     # 确定安装路径
     local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    # 如果 CUSTOM_INSTALL_PATH 未设置但存在标记文件，从标记文件恢复路径
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$marker_path" ]; then
+            install_path="$marker_path"
+            echo "[INFO]: 从标记文件恢复安装路径: ${install_path}"
+        fi
+    fi
+    # 确保是绝对路径
+    if ! echo "$install_path" | grep -q "^/"; then
+        install_path="$(cd "$(pwd)" 2>/dev/null; pwd)/${install_path}"
+    fi
     if [ -z "$install_path" ]; then
         install_path="/usr/sbin"
     fi
@@ -1075,11 +1088,17 @@ binary_install() {
         echo "[WARNING]:   $PACKAGES_TO_CHECK"
     fi
 
-    # 修改 init.d 脚本中的二进制路径
-    if [ "$install_path" != "/usr/sbin" ]; then
+    # 修改 init.d 脚本中的二进制路径（如果与默认不同）
+    local initd_path="${install_path}"
+    if [ "$install_path" = "/usr/sbin" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        [ -n "$marker_path" ] && initd_path="$marker_path"
+    fi
+    if [ "$initd_path" != "/usr/sbin" ]; then
         echo "[INFO]: 更新init.d脚本中的二进制路径..."
         if [ -f "/etc/init.d/tailscale" ]; then
-            sed -i "s|/usr/sbin/tailscaled|${install_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
+            sed -i "s|/usr/sbin/tailscaled|${initd_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
         fi
     fi
 
@@ -1569,8 +1588,12 @@ binary_install_menu() {
     echo ""
     read -p "安装路径 (留空=默认): " input_path
     if [ -n "$input_path" ]; then
-        # 确保路径以完整路径形式存在
-        input_path="${input_path%/}"  # 去掉尾部斜杠
+        # 转换为绝对路径
+        input_path="${input_path%/}"
+        if ! echo "$input_path" | grep -q "^/"; then
+            input_path="$(cd "$(pwd)" 2>/dev/null; pwd)/${input_path}"
+            echo "[INFO]: 转换为绝对路径: ${input_path}"
+        fi
         CUSTOM_INSTALL_PATH="$input_path"
         BINARY_INSTALL_PATH="$input_path"
         echo "[INFO]: 使用自定义路径: $input_path"

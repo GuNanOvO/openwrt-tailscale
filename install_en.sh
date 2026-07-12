@@ -847,6 +847,19 @@ binary_install() {
 
     # Determine install path
     local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    # If CUSTOM_INSTALL_PATH not set but marker exists, restore path from marker
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$marker_path" ]; then
+            install_path="$marker_path"
+            echo "[INFO]: Restored install path from marker: ${install_path}"
+        fi
+    fi
+    # Ensure absolute path
+    if ! echo "$install_path" | grep -q "^/"; then
+        install_path="$(cd "$(pwd)" 2>/dev/null; pwd)/${install_path}"
+    fi
     if [ -z "$install_path" ]; then
         install_path="/usr/sbin"
     fi
@@ -1030,11 +1043,17 @@ binary_install() {
         echo "[WARNING]:   $PACKAGES_TO_CHECK"
     fi
 
-    # Update binary path in init.d script if custom path
-    if [ "$install_path" != "/usr/sbin" ]; then
+    # Update binary path in init.d script if different from default
+    local initd_path="${install_path}"
+    if [ "$install_path" = "/usr/sbin" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        [ -n "$marker_path" ] && initd_path="$marker_path"
+    fi
+    if [ "$initd_path" != "/usr/sbin" ]; then
         echo "[INFO]: Updating binary path in init.d script..."
         if [ -f "/etc/init.d/tailscale" ]; then
-            sed -i "s|/usr/sbin/tailscaled|${install_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
+            sed -i "s|/usr/sbin/tailscaled|${initd_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
         fi
     fi
 
@@ -1269,7 +1288,12 @@ binary_install_menu() {
     echo ""
     read -p "Install path (empty=default): " input_path
     if [ -n "$input_path" ]; then
+        # Convert to absolute path
         input_path="${input_path%/}"
+        if ! echo "$input_path" | grep -q "^/"; then
+            input_path="$(cd "$(pwd)" 2>/dev/null; pwd)/${input_path}"
+            echo "[INFO]: Converted to absolute path: ${input_path}"
+        fi
         CUSTOM_INSTALL_PATH="$input_path"
         BINARY_INSTALL_PATH="$input_path"
         echo "[INFO]: Using custom path: $input_path"
