@@ -53,6 +53,9 @@ CUSTOM_INSTALL_PATH=""
 # Install mode marker file
 TAILSCALE_MODE_MARKER="/usr/sbin/.tailscale_install_mode"
 
+# Non-interactive mode (skip confirmation prompts)
+YES_MODE="false"
+
 ENABLE_INIT_PROGRESS_BAR="true"
 
 
@@ -318,6 +321,17 @@ update() {
         echo "[INFO]: Detected binary installation mode, executing binary installation update..."
         binary_install "" "true"
     fi
+
+    # Skip restart confirmation if --yes mode
+    if [ "$YES_MODE" = "true" ]; then
+        echo "[INFO]: --yes mode, auto-restarting tailscale service..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        /etc/init.d/tailscale start 2>/dev/null || true
+        echo "[INFO]: Tailscale service restart complete"
+        init "" "false"
+        return
+    fi
+
     while true; do
         echo ""
         echo "┌─ [WARNING]!!! Please confirm the following:"
@@ -349,75 +363,78 @@ update() {
 
 # Function: Uninstall
 remove() {
-    while true; do
-        echo "┌─ [WARNING]!!! Please confirm the following:"
-        echo "│"
-        echo "│ You are uninstalling Tailscale. After uninstallation,"
-        echo "│ all your services relying on Tailscale will fail. If"
-        echo "│ you are currently connected to the device via"
-        echo "│ Tailscale, you may lose connection. Please confirm"
-        echo "│ your operation to avoid loss! Thank you for using!"
-        echo "└─"
-        echo ""
+    if [ "$YES_MODE" != "true" ]; then
+        while true; do
+            echo "┌─ [WARNING]!!! Please confirm the following:"
+            echo "│"
+            echo "│ You are uninstalling Tailscale. After uninstallation,"
+            echo "│ all your services relying on Tailscale will fail. If"
+            echo "│ you are currently connected to the device via"
+            echo "│ Tailscale, you may lose connection. Please confirm"
+            echo "│ your operation to avoid loss! Thank you for using!"
+            echo "└─"
+            echo ""
 
-        read -n 1 -p "Confirm uninstall tailscale? (y/N): " choice
+            read -n 1 -p "Confirm uninstall tailscale? (y/N): " choice
 
-        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
-            echo "[INFO]: Starting uninstall..."
-            tailscale_stoper
-
-            if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
-                echo "[INFO]: Removing persistent installation tailscale package..."
-                if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-                    opkg remove tailscale
-                    echo "[INFO]: opkg package removal complete"
-                elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-                    apk del tailscale
-                    echo "[INFO]: apk package removal complete"
-                fi
+            if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+                break
+            else
+                echo "[INFO]: Cancel uninstall"
+                return
             fi
+        done
+    fi
+    echo "[INFO]: Starting uninstall..."
+    tailscale_stoper
 
-            # Clean up binary installation path files if in binary mode
-            if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
-                local binary_path=""
-                if [ -f "$TAILSCALE_MODE_MARKER" ]; then
-                    binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
-                fi
-                if [ -z "$binary_path" ]; then
-                    binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
-                fi
-                echo "[INFO]: Cleaning binary installation files: ${binary_path}"
-                rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
-                echo "[INFO]: Binary installation file cleanup complete"
-            fi
-
-            # Remove tailscale or tailscaled files in specified directories
-            local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
-            local binaries="tailscale tailscaled"
-
-            echo "[INFO]: Cleaning tailscale related files..."
-            for dir in $directories; do
-                for bin in $binaries; do
-                    if [ -f "$dir/$bin" ]; then
-                        echo "[INFO]: Deleting file: $dir/$bin"
-                        rm -rf $dir/$bin
-                        echo "[INFO]: Deleted file: $dir/$bin"
-                    fi
-                done
-            done
-
-            # Clean up install mode marker
-            rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
-
-            echo "[INFO]: Deleting tailscale virtual network interface..."
-            ip link delete tailscale0
-            echo "[INFO]: Tailscale uninstall complete"
-            script_exit
-        else
-            echo "[INFO]: Cancel uninstall"
-            break
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+        echo "[INFO]: Removing persistent installation tailscale package..."
+        if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+            opkg remove tailscale
+            echo "[INFO]: opkg package removal complete"
+        elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+            apk del tailscale
+            echo "[INFO]: apk package removal complete"
         fi
+    fi
+
+    # Clean up binary installation path files if in binary mode
+    if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        local binary_path=""
+        if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+            binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        fi
+        if [ -z "$binary_path" ]; then
+            binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+        fi
+        echo "[INFO]: Cleaning binary installation files: ${binary_path}"
+        rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
+        echo "[INFO]: Binary installation file cleanup complete"
+    fi
+
+    # Remove tailscale or tailscaled files in specified directories
+    local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
+    local binaries="tailscale tailscaled"
+
+    echo "[INFO]: Cleaning tailscale related files..."
+    for dir in $directories; do
+        for bin in $binaries; do
+            if [ -f "$dir/$bin" ]; then
+                echo "[INFO]: Deleting file: $dir/$bin"
+                rm -rf $dir/$bin
+                echo "[INFO]: Deleted file: $dir/$bin"
+            fi
+        done
     done
+
+    # Clean up install mode marker
+    rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+
+    echo "[INFO]: Deleting tailscale virtual network interface..."
+    ip link delete tailscale0
+    echo "[INFO]: Tailscale uninstall complete"
+    script_exit
 }
 
 # Function: Clean Unknown Files
@@ -1407,26 +1424,59 @@ option_menu() {
 show_help() {
     echo "Tailscale on OpenWrt installer script. $SCRIPT_VERSION"
     echo "  Repo: $REPO_URL"
-    echo "  Usage:   "
-    echo "      --help: Show this help"
-    echo "      --tempinstall: Temporary installation mode"
-    echo "      --bin-install [path]: Binary installation mode, optional install path"
-    echo "      --install-path <path>: Custom install path for binary mode"
-
+    echo ""
+    echo "  Usage:   $0 [options]"
+    echo ""
+    echo "  Options:"
+    echo "      --help                    Show this help"
+    echo "      --yes                     Skip all confirmation prompts"
+    echo ""
+    echo "  Install modes (mutually exclusive, pick one):"
+    echo "      --persistent-install      Install via opkg/apk package manager"
+    echo "      --temp-install            Install to /tmp (volatile)"
+    echo "      --bin-install [path]      Install as binary directly (optional path)"
+    echo "      --mode persistent|temp|binary [path]"
+    echo "                                Unified mode selector"
+    echo ""
+    echo "  Install options:"
+    echo "      --install-path <path>     Custom install path for binary mode"
+    echo "      --custom-proxy            Use a custom GitHub proxy"
+    echo ""
+    echo "  Other actions:"
+    echo "      --uninstall               Uninstall tailscale (use with --yes)"
+    echo "      --update                  Update tailscale (use with --yes)"
+    echo ""
+    echo "  Examples:"
+    echo "      $0 --bin-install                          # Binary mode, default path"
+    echo "      $0 --bin-install /mnt/usb                  # Binary mode, USB path"
+    echo "      $0 --mode binary /mnt/usb --yes            # Same, no confirmations"
+    echo "      $0 --persistent-install --yes               # Silent persistent install"
+    echo "      $0 --uninstall --yes                        # Silent uninstall"
+    echo "      $0 --temp-install                           # Temp install"
 }
 
 
 # Read Parameters
 BIN_INSTALL="false"
+PERSISTENT_INSTALL="false"
+UPDATE_MODE="false"
+UNINSTALL_MODE="false"
 prev_arg=""
+next_is_path=false
 for arg in "$@"; do
     case $arg in
     --help)
         show_help
         exit 0
         ;;
-    --tempinstall)
+    --yes|-y)
+        YES_MODE="true"
+        ;;
+    --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --persistent-install)
+        PERSISTENT_INSTALL="true"
         ;;
     --bin-install)
         BIN_INSTALL="true"
@@ -1434,16 +1484,42 @@ for arg in "$@"; do
     --install-path)
         # This parameter is handled in the next iteration
         ;;
+    --mode)
+        # This parameter is handled in the next iteration
+        ;;
+    --uninstall)
+        UNINSTALL_MODE="true"
+        ;;
+    --update)
+        UPDATE_MODE="true"
+        ;;
     *)
-        # Check if it's a value for --install-path or --bin-install
+        # Check if it's a value for --install-path, --mode, or --bin-install
         if [ "$prev_arg" = "--install-path" ]; then
             CUSTOM_INSTALL_PATH="$arg"
             BINARY_INSTALL_PATH="$arg"
+        elif [ "$prev_arg" = "--mode" ]; then
+            case "$arg" in
+                persistent) PERSISTENT_INSTALL="true" ;;
+                temp|tmp)   TMP_INSTALL="true" ;;
+                binary)     BIN_INSTALL="true" ;;
+                *)
+                    echo "[ERROR]: Invalid mode '$arg'. Use: persistent, temp, or binary"
+                    exit 1
+                    ;;
+            esac
+            next_is_path=true
         elif [ "$prev_arg" = "--bin-install" ]; then
             # --bin-install accepts optional path argument
             CUSTOM_INSTALL_PATH="$arg"
             BINARY_INSTALL_PATH="$arg"
             BIN_INSTALL="true"
+        elif [ "$next_is_path" = "true" ]; then
+            if [ -n "$arg" ] && ! echo "$arg" | grep -q "^-"; then
+                CUSTOM_INSTALL_PATH="$arg"
+                BINARY_INSTALL_PATH="$arg"
+            fi
+            next_is_path=false
         else
             echo "[ERROR]: Unknown argument: $arg"
             show_help
@@ -1474,11 +1550,40 @@ if [ "$TMP_INSTALL" = "true" ]; then
     exit 0
 fi
 
+if [ "$PERSISTENT_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    get_tailscale_info
+    persistent_install "" "true"
+    exit 0
+fi
+
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
     get_tailscale_info
     binary_install "" "true"
+    exit 0
+fi
+
+if [ "$UPDATE_MODE" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    get_tailscale_info
+    update
+    exit 0
+fi
+
+if [ "$UNINSTALL_MODE" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        remove
+    else
+        echo "[INFO]: Tailscale is not installed, nothing to uninstall"
+    fi
     exit 0
 fi
 

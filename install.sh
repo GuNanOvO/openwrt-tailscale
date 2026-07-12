@@ -65,6 +65,9 @@ CUSTOM_INSTALL_PATH=""
 # 安装模式标记文件
 TAILSCALE_MODE_MARKER="/usr/sbin/.tailscale_install_mode"
 
+# 免交互模式（跳过确认提示）
+YES_MODE="false"
+
 ENABLE_INIT_PROGRESS_BAR="true"
 
 
@@ -372,6 +375,17 @@ update() {
         echo "[INFO]: 检测到二进制安装模式，执行二进制安装更新..."
         binary_install "" "true"
     fi
+
+    # 如果更新已经重新安装了tailscale, 跳过重启确认
+    if [ "$YES_MODE" = "true" ]; then
+        echo "[INFO]: --yes 模式, 自动重启tailscale服务..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        /etc/init.d/tailscale start 2>/dev/null || true
+        echo "[INFO]: tailscale服务重启完成"
+        init "" "false"
+        return
+    fi
+
     while true; do
         echo "┌─ [WARNING]!!!请您确认以下信息:"
         echo "│"
@@ -401,74 +415,78 @@ update() {
 
 # 函数：卸载
 remove() {
-    while true; do
-        echo "┌─ [WARNING]!!!请您确认以下信息:"
-        echo "│"
-        echo "│ 您正在执行卸载Tailscale, 卸载后,您所有依托于Tailscale"
-        echo "│ 的服务都将失效, 如果您当前正在通过Tailscale连接至设备"
-        echo "│ 则有可能断开与设备的连接, 请您确认您的操作, 避免造成"
-        echo "│ 损失! 感谢您的使用!"
-        echo "└─"
-        echo ""
+    if [ "$YES_MODE" != "true" ]; then
+        while true; do
+            echo "┌─ [WARNING]!!!请您确认以下信息:"
+            echo "│"
+            echo "│ 您正在执行卸载Tailscale, 卸载后,您所有依托于Tailscale"
+            echo "│ 的服务都将失效, 如果您当前正在通过Tailscale连接至设备"
+            echo "│ 则有可能断开与设备的连接, 请您确认您的操作, 避免造成"
+            echo "│ 损失! 感谢您的使用!"
+            echo "└─"
+            echo ""
 
-        read -n 1 -p "确认卸载tailscale吗? (y/N): " choice
+            read -n 1 -p "确认卸载tailscale吗? (y/N): " choice
 
-        if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
-            echo "[INFO]: 开始卸载tailscale..."
-            tailscale_stoper
-
-            if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
-                echo "[INFO]: 移除持久安装的tailscale包..."
-                if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-                    opkg remove tailscale
-                    echo "[INFO]: opkg包移除完成"
-                elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-                    apk del tailscale
-                    echo "[INFO]: apk包移除完成"
-                fi
+            if [ "$choice" = "Y" ] || [ "$choice" = "y" ]; then
+                break
+            else
+                echo "[INFO]: 取消卸载"
+                return
             fi
+        done
+    fi
 
-            # 如果是二进制安装模式，清理二进制安装路径下的文件
-            if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
-                local binary_path=""
-                if [ -f "$TAILSCALE_MODE_MARKER" ]; then
-                    binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
-                fi
-                if [ -z "$binary_path" ]; then
-                    binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
-                fi
-                echo "[INFO]: 清理二进制安装文件: ${binary_path}"
-                rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
-                echo "[INFO]: 二进制安装文件清理完成"
-            fi
+    echo "[INFO]: 开始卸载tailscale..."
+    tailscale_stoper
 
-            # remove指定目录的 tailscale 或 tailscaled 文件
-            local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
-            local binaries="tailscale tailscaled"
-
-            echo "[INFO]: 清理tailscale相关文件..."
-            for dir in $directories; do
-                for bin in $binaries; do
-                    if [ -f "$dir/$bin" ]; then
-                        echo "[INFO]: 删除文件: $dir/$bin"
-                        rm -rf $dir/$bin
-                        echo "[INFO]: 已删除文件: $dir/$bin"
-                    fi
-                done
-            done
-
-            # 清理安装模式标记
-            rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
-
-            echo "[INFO]: 删除tailscale虚拟网卡..."
-            ip link delete tailscale0
-            echo "[INFO]: tailscale卸载完成"
-            script_exit
-        else
-            echo "[INFO]: 取消卸载"
-            break
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+        echo "[INFO]: 移除持久安装的tailscale包..."
+        if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+            opkg remove tailscale
+            echo "[INFO]: opkg包移除完成"
+        elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+            apk del tailscale
+            echo "[INFO]: apk包移除完成"
         fi
+    fi
+
+    # 如果是二进制安装模式，清理二进制安装路径下的文件
+    if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        local binary_path=""
+        if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+            binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        fi
+        if [ -z "$binary_path" ]; then
+            binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+        fi
+        echo "[INFO]: 清理二进制安装文件: ${binary_path}"
+        rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
+        echo "[INFO]: 二进制安装文件清理完成"
+    fi
+
+    # remove指定目录的 tailscale 或 tailscaled 文件
+    local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
+    local binaries="tailscale tailscaled"
+
+    echo "[INFO]: 清理tailscale相关文件..."
+    for dir in $directories; do
+        for bin in $binaries; do
+            if [ -f "$dir/$bin" ]; then
+                echo "[INFO]: 删除文件: $dir/$bin"
+                rm -rf $dir/$bin
+                echo "[INFO]: 已删除文件: $dir/$bin"
+            fi
+        done
     done
+
+    # 清理安装模式标记
+    rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+
+    echo "[INFO]: 删除tailscale虚拟网卡..."
+    ip link delete tailscale0
+    echo "[INFO]: tailscale卸载完成"
+    script_exit
 }
 
 # 函数：清理未知文件
@@ -1469,17 +1487,43 @@ option_menu() {
 show_help() {
     echo "Tailscale on OpenWrt installer script. $SCRIPT_VERSION"
     echo "  Repo: $REPO_URL"
-    echo "  Usage:   "
-    echo "      --help: Show this help"
-    echo "      --custom-proxy: Custom github proxy"
-    echo "      --bin-install [path]: Binary installation mode, optional install path"
-    echo "      --install-path <path>: Custom install path for binary mode"
-
+    echo ""
+    echo "  Usage:   $0 [options]"
+    echo ""
+    echo "  Options:"
+    echo "      --help                    Show this help"
+    echo "      --yes                     Skip all confirmation prompts"
+    echo ""
+    echo "  Install modes (mutually exclusive, pick one):"
+    echo "      --persistent-install      Install via opkg/apk package manager"
+    echo "      --temp-install            Install to /tmp (volatile)"
+    echo "      --bin-install [path]      Install as binary directly (optional path)"
+    echo "      --mode persistent|temp|binary [path]"
+    echo "                                Unified mode selector"
+    echo ""
+    echo "  Install options:"
+    echo "      --install-path <path>     Custom install path for binary mode"
+    echo "      --custom-proxy            Use a custom GitHub proxy"
+    echo ""
+    echo "  Other actions:"
+    echo "      --uninstall               Uninstall tailscale (use with --yes)"
+    echo "      --update                  Update tailscale (use with --yes)"
+    echo ""
+    echo "  Examples:"
+    echo "      $0 --bin-install                          # Binary mode, default path"
+    echo "      $0 --bin-install /mnt/usb                  # Binary mode, USB path"
+    echo "      $0 --mode binary /mnt/usb --yes            # Same, no confirmations"
+    echo "      $0 --persistent-install --yes               # Silent persistent install"
+    echo "      $0 --uninstall --yes                        # Silent uninstall"
+    echo "      $0 --temp-install                           # Temp install"
 }
 
 
 # 读取参数
 BIN_INSTALL="false"
+PERSISTENT_INSTALL="false"
+UPDATE_MODE="false"
+UNINSTALL_MODE="false"
 prev_arg=""
 for arg in "$@"; do
     case $arg in
@@ -1487,14 +1531,29 @@ for arg in "$@"; do
         show_help
         exit 0
         ;;
-    --tempinstall)
+    --yes|-y)
+        YES_MODE="true"
+        ;;
+    --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --persistent-install)
+        PERSISTENT_INSTALL="true"
         ;;
     --bin-install)
         BIN_INSTALL="true"
         ;;
     --install-path)
         # 此参数在后续循环中处理
+        ;;
+    --mode)
+        # 此参数在后续循环中处理
+        ;;
+    --uninstall)
+        UNINSTALL_MODE="true"
+        ;;
+    --update)
+        UPDATE_MODE="true"
         ;;
     --custom-proxy)
         while true; do
@@ -1525,15 +1584,35 @@ for arg in "$@"; do
         done
         ;;
     *)
-        # 检查是否为 --install-path 的参数值
+        # 检查是否为 --install-path / --mode 或 --bin-install 的参数值
         if [ "$prev_arg" = "--install-path" ]; then
             CUSTOM_INSTALL_PATH="$arg"
             BINARY_INSTALL_PATH="$arg"
+        elif [ "$prev_arg" = "--mode" ]; then
+            # --mode persistent|temp|binary [path]
+            case "$arg" in
+                persistent) PERSISTENT_INSTALL="true" ;;
+                temp|tmp)   TMP_INSTALL="true" ;;
+                binary)     BIN_INSTALL="true" ;;
+                *)
+                    echo "[ERROR]: Invalid mode '$arg'. Use: persistent, temp, or binary"
+                    exit 1
+                    ;;
+            esac
+            # 下一个参数可能是路径
+            next_is_path=true
         elif [ "$prev_arg" = "--bin-install" ]; then
             # --bin-install 可接受可选路径参数
             CUSTOM_INSTALL_PATH="$arg"
             BINARY_INSTALL_PATH="$arg"
             BIN_INSTALL="true"
+        elif [ "$prev_arg" = "--mode" ] || [ "$next_is_path" = "true" ]; then
+            # --mode persistent/temp/binary 后的可选路径
+            if [ -n "$arg" ] && ! echo "$arg" | grep -q "^-"; then
+                CUSTOM_INSTALL_PATH="$arg"
+                BINARY_INSTALL_PATH="$arg"
+            fi
+            next_is_path=false
         else
             echo "[ERROR]: Unknown argument: $arg"
             show_help
@@ -1565,12 +1644,43 @@ if [ "$TMP_INSTALL" = "true" ]; then
     exit 0
 fi
 
+if [ "$PERSISTENT_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    test_proxy
+    get_tailscale_info
+    persistent_install "" "true"
+    exit 0
+fi
+
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
     test_proxy
     get_tailscale_info
     binary_install "" "true"
+    exit 0
+fi
+
+if [ "$UPDATE_MODE" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    test_proxy
+    get_tailscale_info
+    update
+    exit 0
+fi
+
+if [ "$UNINSTALL_MODE" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        remove
+    else
+        echo "[INFO]: Tailscale 未安装, 无需卸载"
+    fi
     exit 0
 fi
 
