@@ -68,6 +68,11 @@ TAILSCALE_MODE_MARKER="/usr/sbin/.tailscale_install_mode"
 # 免交互模式（跳过确认提示）
 YES_MODE="false"
 
+# Cron 自动更新
+CRON_SCRIPT="/usr/sbin/tailscale-update-check"
+CRON_ID="# tailscale-auto-update"
+CRON_LOG="/var/log/tailscale-update.log"
+
 ENABLE_INIT_PROGRESS_BAR="true"
 
 
@@ -1130,6 +1135,165 @@ binary_to_temp() {
     temp_install "true"
 }
 
+# ──────────────────────────────────────────────
+# Cron 自动更新
+# ──────────────────────────────────────────────
+
+# 函数：更简单的版本号比较 (返回 0 表示有新版本)
+version_gt() {
+    test "$(echo "$@" | tr " " "\n" | sort -V | tail -n 1)" = "$1"
+}
+
+# 函数：cron 检测更新（被 cron 脚本调用）
+cron_check_update() {
+    local old_version="$TAILSCALE_LOCAL_VERSION"
+    local new_version="$TAILSCALE_LATEST_VERSION"
+
+    if [ -z "$old_version" ] || [ "$old_version" = "none" ]; then
+        echo "[$(date)] TAILSCALE_CRON: 未检测到已安装版本, 跳过更新检查" >> "$CRON_LOG"
+        return 0
+    fi
+
+    if [ -z "$new_version" ]; then
+        echo "[$(date)] TAILSCALE_CRON: 无法获取远程版本, 可能网络不可达" >> "$CRON_LOG"
+        return 0
+    fi
+
+    echo "[$(date)] TAILSCALE_CRON: 本地版本=$old_version, 远程版本=$new_version" >> "$CRON_LOG"
+
+    if [ "$old_version" = "$new_version" ]; then
+        echo "[$(date)] TAILSCALE_CRON: 已是最新版本, 无需更新" >> "$CRON_LOG"
+        return 0
+    fi
+
+    if version_gt "$new_version" "$old_version"; then
+        echo "[$(date)] TAILSCALE_CRON: 发现新版本 $new_version (当前 $old_version), 开始自动更新..." >> "$CRON_LOG"
+        # 根据当前安装模式自动选择更新方式
+        case "$TAILSCALE_INSTALL_STATUS" in
+            temp)
+                temp_install "" "true" 2>&1 >> "$CRON_LOG"
+                ;;
+            persistent)
+                persistent_install "" "true" 2>&1 >> "$CRON_LOG"
+                ;;
+            binary)
+                binary_install "" "true" 2>&1 >> "$CRON_LOG"
+                ;;
+        esac
+        echo "[$(date)] TAILSCALE_CRON: 更新完成(模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+    fi
+}
+
+# 函数：生成 cron 检查脚本
+generate_cron_script() {
+    cat > "$CRON_SCRIPT" << 'CRONEOF'
+#!/bin/sh
+# Tailscale 自动更新检查脚本 - 由 install.sh 生成
+# 此脚本被 crond 定时调用
+
+# 获取脚本路径 (install.sh 可能在不同位置)
+SCRIPT_CANDIDATES="/usr/sbin/install.sh /tmp/install.sh /mnt/install.sh
+$(dirname "$0")/install.sh"
+
+for script in $SCRIPT_CANDIDATES; do
+    if [ -f "$script" ]; then
+        # 运行 cron-check (初始化 + 版本比较 + 自动更新)
+        sh "$script" --cron-check
+        exit $?
+    fi
+done
+
+# 如果找不到 install.sh, 尝试直接下载版本信息并记录
+LOG="/var/log/tailscale-update.log"
+echo "[$(date)] TAILSCALE_CRON: 错误 - 找不到 install.sh" >> "$LOG"
+exit 1
+CRONEOF
+    chmod +x "$CRON_SCRIPT"
+}
+
+# 函数：设置 crontab
+cron_setup() {
+    local interval="${1:-daily}"
+
+    # 生成检查脚本
+    generate_cron_script
+
+    # 解析时间间隔
+    local cron_time=""
+    case "$interval" in
+        hourly)    cron_time="0 * * * *" ;;
+        daily)     cron_time="0 4 * * *" ;;
+        weekly)    cron_time="0 4 * * 0" ;;
+        monthly)   cron_time="0 4 1 * *" ;;
+        */minutes) cron_time="*/$interval * * * *" ;;
+        *)
+            # 尝试作为分钟数解析
+            if echo "$interval" | grep -q '^[0-9]\+$'; then
+                cron_time="*/${interval} * * * *"
+            else
+                echo "[ERROR]: 未知间隔 '$interval', 使用 daily"
+                cron_time="0 4 * * *"
+            fi
+            ;;
+    esac
+
+    # 写入 crontab
+    local cron_line="${cron_time} ${CRON_ID} ${CRON_SCRIPT} >/dev/null 2>&1"
+
+    # 检查是否已存在
+    if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
+        sed -i "/$CRON_ID/d" /etc/crontabs/root 2>/dev/null
+        echo "[INFO]: 已移除旧的 cron 条目"
+    fi
+
+    echo "$cron_line" >> /etc/crontabs/root 2>/dev/null || {
+        echo "[ERROR]: 无法写入 /etc/crontabs/root, 请检查权限"
+        return 1
+    }
+
+    # 确保 crond 正在运行
+    if ! pgrep crond >/dev/null 2>&1; then
+        /etc/init.d/cron start 2>/dev/null || crond -b 2>/dev/null || true
+    fi
+
+    echo "[INFO]: cron 自动更新已设置 (间隔: $interval)"
+    echo "[INFO]: 脚本: $CRON_SCRIPT"
+    echo "[INFO]: 日志: $CRON_LOG"
+    echo "[INFO]: 条目: $cron_line"
+}
+
+# 函数：移除 cron
+cron_remove() {
+    if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
+        sed -i "/$CRON_ID/d" /etc/crontabs/root 2>/dev/null
+        echo "[INFO]: cron 自动更新已移除"
+    else
+        echo "[INFO]: 未找到 cron 自动更新条目"
+    fi
+    rm -f "$CRON_SCRIPT" 2>/dev/null || true
+}
+
+# 函数：显示 cron 状态
+cron_status() {
+    echo "╔═══════════════════ Cron 自动更新 ═══════════════════╗"
+    if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
+        local entry
+        entry=$(grep "$CRON_ID" /etc/crontabs/root)
+        echo "  状态: 已启用"
+        echo "  条目: $entry"
+        echo "  脚本: $CRON_SCRIPT"
+        echo "  日志: $CRON_LOG"
+        if [ -f "$CRON_LOG" ]; then
+            echo "  最近日志:"
+            tail -5 "$CRON_LOG" 2>/dev/null | sed 's/^/    /'
+        fi
+    else
+        echo "  状态: 未设置"
+    fi
+    echo "  说明: cron 会用当前安装模式自动更新 tailecale"
+    echo "╚══════════════════════════════════════════════════════╝"
+}
+
 # 函数：下载器
 downloader() {
     local attempt_range="1 2 3"
@@ -1373,6 +1537,15 @@ show_info() {
 }
 
 
+# Cron 菜单快捷函数
+cron_setup_6h() {
+    cron_setup "360"
+}
+cron_setup_daily() {
+    cron_setup "daily"
+}
+
+
 option_menu() {
     # 显示菜单并获取用户输入
     while true; do
@@ -1450,6 +1623,28 @@ option_menu() {
             option_index=$((option_index + 1))
         fi
 
+        # Cron 自动更新选项
+        if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+            if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
+                menu_items="$menu_items $option_index).查看Cron状态"
+                menu_operations="$menu_operations cron_status"
+                option_index=$((option_index + 1))
+                menu_items="$menu_items $option_index).移除Cron自动更新"
+                menu_operations="$menu_operations cron_remove"
+                option_index=$((option_index + 1))
+            else
+                menu_items="$menu_items $option_index).设置Cron自动更新(每6小时)"
+                menu_operations="$menu_operations cron_setup_6h"
+                option_index=$((option_index + 1))
+                menu_items="$menu_items $option_index).设置Cron自动更新(每天)"
+                menu_operations="$menu_operations cron_setup_daily"
+                option_index=$((option_index + 1))
+            fi
+        fi
+        if [ "$IS_TAILSCALE_INSTALLED" != "true" ] || ! grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
+            :
+        fi
+
         menu_items="$menu_items $option_index).退出"
         menu_operations="$menu_operations exit"
 
@@ -1508,6 +1703,9 @@ show_help() {
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin)"
+    echo "      --cron-remove             Remove auto-update cron"
+    echo "      --cron-check              Check for update and install (called by cron)"
     echo ""
     echo "  Examples:"
     echo "      $0 --bin-install                          # Binary mode, default path"
@@ -1516,6 +1714,10 @@ show_help() {
     echo "      $0 --persistent-install --yes               # Silent persistent install"
     echo "      $0 --uninstall --yes                        # Silent uninstall"
     echo "      $0 --temp-install                           # Temp install"
+    echo "      $0 --cron-setup daily                       # Check daily at 4am"
+    echo "      $0 --cron-setup hourly                      # Check every hour"
+    echo "      $0 --cron-setup 30                          # Check every 30 minutes"
+    echo "      $0 --cron-remove                            # Remove cron job"
 }
 
 
@@ -1524,6 +1726,10 @@ BIN_INSTALL="false"
 PERSISTENT_INSTALL="false"
 UPDATE_MODE="false"
 UNINSTALL_MODE="false"
+CRON_CHECK="false"
+CRON_SETUP="false"
+CRON_REMOVE="false"
+CRON_SETUP_INTERVAL="daily"
 prev_arg=""
 for arg in "$@"; do
     case $arg in
@@ -1554,6 +1760,15 @@ for arg in "$@"; do
         ;;
     --update)
         UPDATE_MODE="true"
+        ;;
+    --cron-check)
+        CRON_CHECK="true"
+        ;;
+    --cron-setup)
+        CRON_SETUP="true"
+        ;;
+    --cron-remove)
+        CRON_REMOVE="true"
         ;;
     --custom-proxy)
         while true; do
@@ -1613,6 +1828,8 @@ for arg in "$@"; do
                 BINARY_INSTALL_PATH="$arg"
             fi
             next_is_path=false
+        elif [ "$prev_arg" = "--cron-setup" ]; then
+            CRON_SETUP_INTERVAL="$arg"
         else
             echo "[ERROR]: Unknown argument: $arg"
             show_help
@@ -1681,6 +1898,26 @@ if [ "$UNINSTALL_MODE" = "true" ]; then
     else
         echo "[INFO]: Tailscale 未安装, 无需卸载"
     fi
+    exit 0
+fi
+
+if [ "$CRON_CHECK" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    test_proxy
+    get_tailscale_info
+    cron_check_update
+    exit 0
+fi
+
+if [ "$CRON_SETUP" = "true" ]; then
+    cron_setup "$CRON_SETUP_INTERVAL"
+    exit 0
+fi
+
+if [ "$CRON_REMOVE" = "true" ]; then
+    cron_remove
     exit 0
 fi
 
