@@ -1257,6 +1257,30 @@ cron_setup_daily() {
     cron_setup "daily"
 }
 
+# Menu-based binary install (with path prompt)
+binary_install_menu() {
+    echo ""
+    echo "┌─ Binary Install Path"
+    echo "│"
+    echo "│ Enter install path (e.g., /mnt/sda1/tailscale)"
+    echo "│ Leave empty for default: /usr/sbin"
+    echo "│"
+    echo "└─"
+    echo ""
+    read -p "Install path (empty=default): " input_path
+    if [ -n "$input_path" ]; then
+        input_path="${input_path%/}"
+        CUSTOM_INSTALL_PATH="$input_path"
+        BINARY_INSTALL_PATH="$input_path"
+        echo "[INFO]: Using custom path: $input_path"
+    else
+        CUSTOM_INSTALL_PATH=""
+        echo "[INFO]: Using default path: /usr/sbin"
+    fi
+    echo ""
+    binary_install
+}
+
 # Function: Downloader
 downloader() {
     local attempt_range="1 2 3"
@@ -1544,7 +1568,7 @@ option_menu() {
 
         if [ "$IS_TAILSCALE_INSTALLED" = "false" ]; then
             menu_items="$menu_items $option_index).Binary-Installation"
-            menu_operations="$menu_operations binary_install"
+            menu_operations="$menu_operations binary_install_menu"
             option_index=$((option_index + 1))
         fi
 

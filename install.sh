@@ -1557,6 +1557,31 @@ cron_setup_daily() {
     cron_setup "daily"
 }
 
+# 菜单版二进制安装（带路径提示）
+binary_install_menu() {
+    echo ""
+    echo "┌─ 二进制安装路径设置"
+    echo "│"
+    echo "│ 您可以指定安装路径（如 /mnt/sda1/tailscale）"
+    echo "│ 留空则使用默认路径 /usr/sbin"
+    echo "│"
+    echo "└─"
+    echo ""
+    read -p "安装路径 (留空=默认): " input_path
+    if [ -n "$input_path" ]; then
+        # 确保路径以完整路径形式存在
+        input_path="${input_path%/}"  # 去掉尾部斜杠
+        CUSTOM_INSTALL_PATH="$input_path"
+        BINARY_INSTALL_PATH="$input_path"
+        echo "[INFO]: 使用自定义路径: $input_path"
+    else
+        CUSTOM_INSTALL_PATH=""
+        echo "[INFO]: 使用默认路径: /usr/sbin"
+    fi
+    echo ""
+    binary_install
+}
+
 
 option_menu() {
     # 显示菜单并获取用户输入
@@ -1620,7 +1645,7 @@ option_menu() {
 
         if [ "$IS_TAILSCALE_INSTALLED" = "false" ]; then
             menu_items="$menu_items $option_index).二进制安装"
-            menu_operations="$menu_operations binary_install"
+            menu_operations="$menu_operations binary_install_menu"
             option_index=$((option_index + 1))
         fi
 
