@@ -840,6 +840,55 @@ persistent_to_temp() {
 # Binary Installation Mode
 # ──────────────────────────────────────────────
 
+# Function: Validate install path
+validate_install_path() {
+    local path="$1"
+
+    if [ -z "$path" ]; then
+        echo "[ERROR]: Install path is empty"
+        return 1
+    fi
+
+    local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
+    for bp in $blocked_paths; do
+        if [ "$path" = "$bp" ] || [ "$path" = "${bp}/" ]; then
+            echo "[ERROR]: Refusing to install to system directory: ${path}"
+            return 1
+        fi
+    done
+
+    local check_path=""
+    local IFS='/'
+    for part in $path; do
+        [ -z "$part" ] && continue
+        check_path="${check_path}/${part}"
+        if [ -e "$check_path" ] && [ ! -d "$check_path" ]; then
+            echo "[ERROR]: ${check_path} already exists and is not a directory"
+            return 1
+        fi
+    done
+
+    local parent_dir
+    if [ -d "$path" ]; then
+        parent_dir="$path"
+    else
+        parent_dir=$(dirname "$path" 2>/dev/null)
+        while [ ! -d "$parent_dir" ] && [ "$parent_dir" != "/" ]; do
+            parent_dir=$(dirname "$parent_dir" 2>/dev/null)
+        done
+    fi
+
+    if [ -d "$parent_dir" ]; then
+        if [ ! -w "$parent_dir" ]; then
+            echo "[ERROR]: Parent directory ${parent_dir} is not writable"
+            return 1
+        fi
+    fi
+
+    echo "[INFO]: Path validation passed: ${path}"
+    return 0
+}
+
 # Function: Binary Installation
 binary_install() {
     local confirm2binary_install=$1
@@ -863,6 +912,9 @@ binary_install() {
     if [ -z "$install_path" ]; then
         install_path="/usr/sbin"
     fi
+
+    # Validate path
+    validate_install_path "$install_path" || exit 1
 
     if [ "$silent_install" != "true" ]; then
         echo "┌─ [WARNING]!!! Please confirm the following:"

@@ -888,6 +888,61 @@ persistent_to_temp() {
 # 二进制安装模式
 # ──────────────────────────────────────────────
 
+# 函数：校验安装路径有效性
+validate_install_path() {
+    local path="$1"
+
+    # 空路径检查 (前面已兜底)
+    if [ -z "$path" ]; then
+        echo "[ERROR]: 安装路径为空"
+        return 1
+    fi
+
+    # 系统关键目录白名单 - 禁止安装到这些目录
+    local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
+    for bp in $blocked_paths; do
+        if [ "$path" = "$bp" ] || [ "$path" = "${bp}/" ]; then
+            echo "[ERROR]: 禁止安装到系统关键目录: ${path}"
+            return 1
+        fi
+    done
+
+    # 检查路径中是否存在非目录文件 (逐级检查)
+    local check_path=""
+    local parts
+    local IFS='/'
+    for part in $path; do
+        [ -z "$part" ] && continue
+        check_path="${check_path}/${part}"
+        if [ -e "$check_path" ] && [ ! -d "$check_path" ]; then
+            echo "[ERROR]: 路径 ${check_path} 已存在且不是一个目录"
+            return 1
+        fi
+    done
+
+    # 尝试检查父目录是否可写入
+    local parent_dir
+    if [ -d "$path" ]; then
+        parent_dir="$path"
+    else
+        parent_dir=$(dirname "$path" 2>/dev/null)
+        # 如果父目录不存在，继续向上找
+        while [ ! -d "$parent_dir" ] && [ "$parent_dir" != "/" ]; do
+            parent_dir=$(dirname "$parent_dir" 2>/dev/null)
+        done
+    fi
+
+    if [ -d "$parent_dir" ]; then
+        if [ ! -w "$parent_dir" ]; then
+            echo "[ERROR]: 父目录 ${parent_dir} 不可写入, 请检查权限"
+            return 1
+        fi
+    fi
+
+    echo "[INFO]: 路径校验通过: ${path}"
+    return 0
+}
+
 # 函数：二进制安装
 binary_install() {
     local confirm2binary_install=$1
@@ -911,6 +966,9 @@ binary_install() {
     if [ -z "$install_path" ]; then
         install_path="/usr/sbin"
     fi
+
+    # 校验路径有效性
+    validate_install_path "$install_path" || exit 1
 
     if [ "$silent_install" != "true" ]; then
         echo "┌─ [WARNING]!!!请您确认以下信息:"
