@@ -1256,7 +1256,17 @@ cron_check_update() {
     fi
 
     if version_gt "$new_version" "$old_version"; then
-        echo "[$(date)] TAILSCALE_CRON: 发现新版本 $new_version (当前 $old_version), 开始自动更新..." >> "$CRON_LOG"
+        echo "[$(date)] TAILSCALE_CRON: 发现新版本 $new_version (当前 $old_version)" >> "$CRON_LOG"
+
+        # 安全检测: 如果 tailscale 正在活跃使用, 跳过本次更新
+        local active_peers=0
+        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        if [ "$active_peers" -gt 0 ] 2>/dev/null; then
+            echo "[$(date)] TAILSCALE_CRON: 有 ${active_peers} 个活跃对端, 跳过更新以避免断网" >> "$CRON_LOG"
+            return 0
+        fi
+
+        echo "[$(date)] TAILSCALE_CRON: 开始自动更新..." >> "$CRON_LOG"
         # 根据当前安装模式自动选择更新方式
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
@@ -1303,11 +1313,13 @@ CRONEOF
 # 函数：设置 crontab
 cron_setup() {
     local interval="${1:-daily}"
+    local specific_hour=""
+    local specific_min=""
 
     # 生成检查脚本
     generate_cron_script
 
-    # 解析时间间隔
+    # 解析时间参数
     local cron_time=""
     case "$interval" in
         hourly)    cron_time="0 * * * *" ;;
@@ -1315,6 +1327,25 @@ cron_setup() {
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
         */minutes) cron_time="*/$interval * * * *" ;;
+        *:*)
+            # 支持 HH:MM 或 H:MM 格式（如 05:00 或 5:00）
+            local hour="${interval%%:*}"
+            local min="${interval##*:}"
+            # 去除前导零 (兼容 BusyBox ash)
+            hour="$(echo "$hour" | sed 's/^0*//')"
+            min="$(echo "$min" | sed 's/^0*//')"
+            [ -z "$hour" ] && hour="0"
+            [ -z "$min" ] && min="0"
+            if [ "$hour" -ge 0 ] && [ "$hour" -le 23 ] && [ "$min" -ge 0 ] && [ "$min" -le 59 ] 2>/dev/null; then
+                cron_time="${min} ${hour} * * *"
+                specific_hour="$hour"
+                specific_min="$min"
+                echo "[INFO]: 解析到具体时间: ${hour}:${min}"
+            else
+                echo "[WARNING]: 无效时间格式 '$interval', 使用默认 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *)
             # 尝试作为分钟数解析
             if echo "$interval" | grep -q '^[0-9]\+$'; then
@@ -1633,6 +1664,24 @@ cron_setup_6h() {
 cron_setup_daily() {
     cron_setup "daily"
 }
+cron_setup_custom() {
+    echo ""
+    echo "┌─ 设置每日检查时间"
+    echo "│"
+    echo "│ 请输入具体时间 (24小时制, 格式 HH:MM)"
+    echo "│ 例如: 05:00 (凌晨5点), 22:30 (晚上10点半)"
+    echo "│ 留空则使用默认 04:00"
+    echo "│"
+    echo "│ 建议在非使用时段设置, 避免更新导致断网"
+    echo "└─"
+    echo ""
+    read -p "时间 (HH:MM, 留空=04:00): " custom_time
+    if [ -z "$custom_time" ]; then
+        cron_setup "daily"
+    else
+        cron_setup "$custom_time"
+    fi
+}
 
 # 菜单版二进制安装（带路径提示）
 binary_install_menu() {
@@ -1757,6 +1806,9 @@ option_menu() {
                 menu_items="$menu_items $option_index).设置Cron自动更新(每天)"
                 menu_operations="$menu_operations cron_setup_daily"
                 option_index=$((option_index + 1))
+                menu_items="$menu_items $option_index).设置Cron自动更新(指定时间)"
+                menu_operations="$menu_operations cron_setup_custom"
+                option_index=$((option_index + 1))
             fi
         fi
         if [ "$IS_TAILSCALE_INSTALLED" != "true" ] || ! grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
@@ -1821,7 +1873,7 @@ show_help() {
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
     echo ""
@@ -1833,6 +1885,8 @@ show_help() {
     echo "      $0 --uninstall --yes                        # Silent uninstall"
     echo "      $0 --temp-install                           # Temp install"
     echo "      $0 --cron-setup daily                       # Check daily at 4am"
+    echo "      $0 --cron-setup 05:00                       # Check daily at 5:00"
+    echo "      $0 --cron-setup 22:30                       # Check daily at 22:30"
     echo "      $0 --cron-setup hourly                      # Check every hour"
     echo "      $0 --cron-setup 30                          # Check every 30 minutes"
     echo "      $0 --cron-remove                            # Remove cron job"

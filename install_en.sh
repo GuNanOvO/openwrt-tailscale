@@ -1205,7 +1205,17 @@ cron_check_update() {
     fi
 
     if version_gt "$new_version" "$old_version"; then
-        echo "[$(date)] TAILSCALE_CRON: new version $new_version found (current $old_version), auto-updating..." >> "$CRON_LOG"
+        echo "[$(date)] TAILSCALE_CRON: new version $new_version found (current $old_version)" >> "$CRON_LOG"
+
+        # Safety check: skip update if tailscale has active peers
+        local active_peers=0
+        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        if [ "$active_peers" -gt 0 ] 2>/dev/null; then
+            echo "[$(date)] TAILSCALE_CRON: ${active_peers} active peers, skipping update to avoid disconnection" >> "$CRON_LOG"
+            return 0
+        fi
+
+        echo "[$(date)] TAILSCALE_CRON: auto-updating..." >> "$CRON_LOG"
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
                 temp_install "" "true" 2>&1 >> "$CRON_LOG"
@@ -1248,6 +1258,9 @@ CRONEOF
 # Function: setup crontab
 cron_setup() {
     local interval="${1:-daily}"
+    local specific_hour=""
+    local specific_min=""
+
     generate_cron_script
 
     local cron_time=""
@@ -1256,6 +1269,24 @@ cron_setup() {
         daily)     cron_time="0 4 * * *" ;;
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
+        *:*)
+            local hour="${interval%%:*}"
+            local min="${interval##*:}"
+            # Strip leading zeros (BusyBox ash compatible)
+            hour="$(echo "$hour" | sed 's/^0*//')"
+            min="$(echo "$min" | sed 's/^0*//')"
+            [ -z "$hour" ] && hour="0"
+            [ -z "$min" ] && min="0"
+            if [ "$hour" -ge 0 ] && [ "$hour" -le 23 ] && [ "$min" -ge 0 ] && [ "$min" -le 59 ] 2>/dev/null; then
+                cron_time="${min} ${hour} * * *"
+                specific_hour="$hour"
+                specific_min="$min"
+                echo "[INFO]: Parsed specific time: ${hour}:${min}"
+            else
+                echo "[WARNING]: Invalid time format '$interval', using default 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *)
             if echo "$interval" | grep -q '^[0-9]\+$'; then
                 cron_time="*/${interval} * * * *"
@@ -1326,6 +1357,24 @@ cron_setup_6h() {
 }
 cron_setup_daily() {
     cron_setup "daily"
+}
+cron_setup_custom() {
+    echo ""
+    echo "┌─ Set Daily Check Time"
+    echo "│"
+    echo "│ Enter time in 24h format (HH:MM)"
+    echo "│ Example: 05:00 (5am), 22:30 (10:30pm)"
+    echo "│ Leave empty for default 04:00"
+    echo "│"
+    echo "│ Choose off-peak hours to avoid update disconnection"
+    echo "└─"
+    echo ""
+    read -p "Time (HH:MM, empty=04:00): " custom_time
+    if [ -z "$custom_time" ]; then
+        cron_setup "daily"
+    else
+        cron_setup "$custom_time"
+    fi
 }
 
 # Menu-based binary install (with path prompt)
@@ -1675,6 +1724,9 @@ option_menu() {
                 menu_items="$menu_items $option_index).Setup-Cron-Auto-Update(daily)"
                 menu_operations="$menu_operations cron_setup_daily"
                 option_index=$((option_index + 1))
+                menu_items="$menu_items $option_index).Setup-Cron-Auto-Update(custom-time)"
+                menu_operations="$menu_operations cron_setup_custom"
+                option_index=$((option_index + 1))
             fi
         fi
 
@@ -1736,7 +1788,7 @@ show_help() {
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
     echo ""
@@ -1748,6 +1800,8 @@ show_help() {
     echo "      $0 --uninstall --yes                        # Silent uninstall"
     echo "      $0 --temp-install                           # Temp install"
     echo "      $0 --cron-setup daily                       # Check daily at 4am"
+    echo "      $0 --cron-setup 05:00                       # Check daily at 5:00"
+    echo "      $0 --cron-setup 22:30                       # Check daily at 22:30"
     echo "      $0 --cron-setup hourly                      # Check every hour"
     echo "      $0 --cron-setup 30                          # Check every 30 minutes"
     echo "      $0 --cron-remove                            # Remove cron job"
