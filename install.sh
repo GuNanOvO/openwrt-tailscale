@@ -56,6 +56,14 @@ TAILSCALE_FILE_SIZE="" # 由get_tailscale_info设置
 
 TAILSCALE_PERSISTENT_INSTALLABLE=""
 TAILSCALE_TEMP_INSTALLABLE=""
+TAILSCALE_BINARY_INSTALLABLE=""
+
+# 二进制安装路径 [默认: /usr/sbin]
+BINARY_INSTALL_PATH="/usr/sbin"
+# 自定义安装路径 (由 --install-path 设置)
+CUSTOM_INSTALL_PATH=""
+# 安装模式标记文件
+TAILSCALE_MODE_MARKER="/usr/sbin/.tailscale_install_mode"
 
 ENABLE_INIT_PROGRESS_BAR="true"
 
@@ -89,8 +97,9 @@ check_package_manager() {
     elif command -v apk >/dev/null 2>&1; then
         PACKAGE_MANAGER="apk"
     else
-        echo "[ERROR]: 未找到支持的包管理器，脚本退出。"
-        exit 1
+        PACKAGE_MANAGER=""
+        echo "[WARNING]: 未找到包管理器(opkg/apk)"
+        echo "[WARNING]: 持久安装和临时安装不可用，可使用 --bin-install 进行二进制安装"
     fi
 }
 
@@ -129,23 +138,26 @@ check_tailscale_install_status() {
     local bin_bin="/usr/bin/tailscaled"
     local bin_sbin="/usr/sbin/tailscaled"
     local bin_tmp="/tmp/tailscaled"
-    
+
     local has_bin=false
     local has_sbin=false
     local has_tmp=false
     local bin_is_script=false
+    local bin_is_symlink=false
 
     [ -f "$bin_bin" ] && has_bin=true
     [ -f "$bin_sbin" ] && has_sbin=true
     [ -f "$bin_tmp" ] && has_tmp=true
+    [ -L "$bin_sbin" ] && bin_is_symlink=true
+    [ -L "$bin_bin" ] && bin_is_symlink=true
 
-    if $has_bin; then
+    if $has_bin && ! $bin_is_symlink; then
         if head -n 1 "$bin_bin" 2>/dev/null | grep -q "^#!"; then
             bin_is_script=true
         fi
     fi
-    
-    if $has_sbin; then
+
+    if $has_sbin && ! $bin_is_symlink; then
         if head -n 1 "$bin_sbin" 2>/dev/null | grep -q "^#!"; then
             bin_is_script=true
         fi
@@ -173,11 +185,41 @@ check_tailscale_install_status() {
             IS_TAILSCALE_INSTALLED="true"
         fi
     elif $has_bin || $has_sbin; then
-        # 持久化场景：usr/sbin 下有文件
-        TAILSCALE_INSTALL_STATUS="persistent"
-        IS_TAILSCALE_INSTALLED="true"
+        if $bin_is_symlink; then
+            # 符号链接 → 二进制安装模式（二进制在自定义路径）
+            TAILSCALE_INSTALL_STATUS="binary"
+            IS_TAILSCALE_INSTALLED="true"
+        elif $bin_is_script; then
+            # 检查是临时安装脚本还是二进制安装脚本
+            if grep -q "/tmp/tailscaled" "$bin_sbin" 2>/dev/null || grep -q "/tmp/tailscaled" "$bin_bin" 2>/dev/null; then
+                TAILSCALE_INSTALL_STATUS="temp"
+                IS_TAILSCALE_INSTALLED="true"
+            else
+                TAILSCALE_INSTALL_STATUS="binary"
+                IS_TAILSCALE_INSTALLED="true"
+            fi
+        else
+            # 持久化场景：usr/sbin 下有真实二进制文件
+            TAILSCALE_INSTALL_STATUS="persistent"
+            IS_TAILSCALE_INSTALLED="true"
+        fi
     else
         IS_TAILSCALE_INSTALLED="false"
+    fi
+
+    # 通过标记文件覆盖检测（处理安装路径 = /usr/sbin 的情况）
+    if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$marker_path" ] && [ -f "${marker_path}/tailscaled" ]; then
+            TAILSCALE_INSTALL_STATUS="binary"
+            IS_TAILSCALE_INSTALLED="true"
+            if command -v tailscale >/dev/null 2>&1; then
+                local version_output
+                version_output=$(tailscale version 2>/dev/null | head -n 1 | tr -d '[:space:]')
+                [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="$version_output"
+            fi
+        fi
     fi
 
     [ "$IS_TAILSCALE_INSTALLED" = "true" ] && FOUND_TAILSCALE_FILE="true"
@@ -188,7 +230,7 @@ check_device_memory() {
     local mem_info=$(free 2>/dev/null | grep "Mem:")
     local mem_total_kb=$(echo "$mem_info" | awk '{print $2}')
     local mem_available_kb=$(echo "$mem_info" | awk '{print $7}')
-    
+
     [ -z "$mem_available_kb" ] && mem_available_kb=$(echo "$mem_info" | awk '{print $4}')
 
     if [ -z "$mem_total_kb" ] || ! echo "$mem_total_kb" | grep -q '^[0-9]\+$'; then
@@ -210,7 +252,7 @@ check_device_storage() {
     local storage_info=$(df -Pk "$mount_point")
     local storage_used_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-3)}')
     local storage_available_kb=$(echo "$storage_info" | awk 'NR==2 {print $(NF-2)}')
-    
+
     if [ -z "$storage_used_kb" ] || ! echo "$storage_used_kb" | grep -q '^[0-9]\+$'; then
         echo "[ERROR]: 无法识别 $mount_point 的已用空间数值" && exit 1
     fi
@@ -301,6 +343,20 @@ get_tailscale_info() {
     else
         TAILSCALE_TEMP_INSTALLABLE="false"
     fi
+
+    # 二进制安装可行性：检查目标路径所在分区的可用空间
+    local binary_path_check="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    local binary_mount_point="/"
+    # 尝试获取二进制安装路径的挂载点
+    if [ -d "$binary_path_check" ]; then
+        binary_mount_point="$binary_path_check"
+    fi
+    local binary_storage_info=$(df -Pk "$binary_mount_point" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    if [ -n "$binary_storage_info" ] && [ "$binary_storage_info" -gt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
+        TAILSCALE_BINARY_INSTALLABLE="true"
+    else
+        TAILSCALE_BINARY_INSTALLABLE="false"
+    fi
 }
 
 # 函数：更新
@@ -312,6 +368,9 @@ update() {
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: 检测到持久安装模式，执行持久安装更新..."
         persistent_install "" "true"
+    elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        echo "[INFO]: 检测到二进制安装模式，执行二进制安装更新..."
+        binary_install "" "true"
     fi
     while true; do
         echo "┌─ [WARNING]!!!请您确认以下信息:"
@@ -369,12 +428,25 @@ remove() {
                 fi
             fi
 
+            # 如果是二进制安装模式，清理二进制安装路径下的文件
+            if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+                local binary_path=""
+                if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+                    binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+                fi
+                if [ -z "$binary_path" ]; then
+                    binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+                fi
+                echo "[INFO]: 清理二进制安装文件: ${binary_path}"
+                rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
+                echo "[INFO]: 二进制安装文件清理完成"
+            fi
+
             # remove指定目录的 tailscale 或 tailscaled 文件
             local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
             local binaries="tailscale tailscaled"
 
             echo "[INFO]: 清理tailscale相关文件..."
-            # remove指定目录的 tailscale 或 tailscaled 文件
             for dir in $directories; do
                 for bin in $binaries; do
                     if [ -f "$dir/$bin" ]; then
@@ -384,6 +456,9 @@ remove() {
                     fi
                 done
             done
+
+            # 清理安装模式标记
+            rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
 
             echo "[INFO]: 删除tailscale虚拟网卡..."
             ip link delete tailscale0
@@ -774,6 +849,269 @@ persistent_to_temp() {
     temp_install "true"
 }
 
+# ──────────────────────────────────────────────
+# 二进制安装模式
+# ──────────────────────────────────────────────
+
+# 函数：二进制安装
+binary_install() {
+    local confirm2binary_install=$1
+    local silent_install=$2
+
+    # 确定安装路径
+    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    if [ -z "$install_path" ]; then
+        install_path="/usr/sbin"
+    fi
+
+    if [ "$silent_install" != "true" ]; then
+        echo "┌─ [WARNING]!!!请您确认以下信息:"
+        echo "│"
+        echo "│ 二进制安装模式将直接下载 tailscaled 可执行文件到指定路径"
+        if [ -n "$CUSTOM_INSTALL_PATH" ]; then
+            echo "│ 安装路径: ${install_path}"
+            echo "│ 请确保该路径所在设备有足够空间(至少 ${TAILSCALE_FILE_SIZE}M)"
+        fi
+        echo "│ 此模式不使用 opkg/apk 包管理器进行安装"
+        echo "│ 但仍会尝试通过包管理器安装依赖库"
+        echo "│ 如果包管理器不可用，您需要手动安装以下依赖："
+        echo "│   ${PACKAGES_TO_CHECK}"
+        echo "│ 安装时产生任何错误, 您可以于:"
+        echo "│ ${REPO_URL}/issues"
+        echo "│ 提出反馈. 谢谢您的使用! /<3"
+        echo "└─"
+        echo ""
+        read -n 1 -p "确认采用二进制安装方式安装tailscale吗? (y/N): " choice
+
+        if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
+            echo "[INFO]: 取消二进制安装"
+            return
+        fi
+    fi
+
+    echo ""
+    clean_old_installation
+
+    if [ "$confirm2binary_install" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+        echo "[INFO]: 清理旧安装文件..."
+        rm -rf /tmp/tailscale /tmp/tailscaled
+        echo "[INFO]: 清理完成"
+    fi
+
+    echo ""
+    echo "[INFO]: 正在二进制安装..."
+    echo "[INFO]: 安装路径: ${install_path}"
+
+    # 创建安装目录
+    mkdir -p "${install_path}" 2>/dev/null || {
+        echo "[ERROR]: 无法创建安装目录 ${install_path}"
+        echo "[ERROR]: 请检查路径权限"
+        exit 1
+    }
+
+    # 检查目标路径可用空间
+    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M"
+        echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
+        read -n 1 -p "是否继续? (y/N): " space_choice
+        if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
+            echo "[INFO]: 取消安装"
+            return
+        fi
+    fi
+
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="${install_path}/tailscaled"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3"
+        echo "[INFO]: 下载tailscaled二进制文件..."
+        if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
+                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
+                sleep 3
+                rm -f "$file_path"
+                init
+            fi
+            echo "[INFO]: 下载失败，准备重试..."
+            continue
+        fi
+
+        echo "[INFO]: 下载配置文件和初始化脚本..."
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
+        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+
+        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf "  $file_path" >> "$sha_file"
+
+        echo "[INFO]: 验证文件完整性..."
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
+                echo "[ERROR]: 即将重启脚本，请重试"
+                sleep 3
+                rm -f "$file_path" "$sha_file"
+                init
+            else
+                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+                rm -f "$file_path" "$sha_file"
+                sleep 3
+            fi
+        else
+            echo "[INFO]: tailscaled 文件校验通过!"
+            rm -f "$sha_file"
+            break
+        fi
+    done
+
+    # 设置可执行权限
+    chmod +x "$file_path" 2>/dev/null
+
+    # 创建安装模式标记
+    echo "binary:${install_path}" > "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+
+    # 在安装路径下创建 tailscale -> tailscaled 符号链接
+    ln -sf "tailscaled" "${install_path}/tailscale" 2>/dev/null || true
+
+    # 如果安装路径不是 /usr/sbin，在 /usr/sbin 下创建符号链接指向实际位置
+    if [ "$install_path" != "/usr/sbin" ]; then
+        ln -sf "${install_path}/tailscaled" "/usr/sbin/tailscaled" 2>/dev/null || true
+        ln -sf "${install_path}/tailscale" "/usr/sbin/tailscale" 2>/dev/null || true
+    fi
+
+    # 安装依赖包（如果包管理器可用）
+    if [ -n "$PACKAGE_MANAGER" ]; then
+        echo "[INFO]: 安装依赖包..."
+        local pkg_install_success=false
+        local pkg_attempt_range="1 2 3"
+
+        for pkg_attempt in $pkg_attempt_range; do
+            echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
+            if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                echo "[INFO]: 更新opkg包列表..."
+                opkg update || continue
+                echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
+                opkg install $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed | grep -q "^$pkg " || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包安装成功"
+                    break
+                fi
+            elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                echo "[INFO]: 更新apk包列表..."
+                apk update || continue
+                echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
+                apk add --no-cache $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info | grep -q "^$pkg$" || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包安装成功"
+                    break
+                fi
+            fi
+        done
+
+        if ! $pkg_install_success; then
+            echo "[WARNING]: 部分依赖包安装失败"
+            echo "[WARNING]: 请手动安装: $PACKAGES_TO_CHECK"
+            echo "[WARNING]: 缺少依赖可能导致 tailscale 运行异常"
+        fi
+    else
+        echo "[WARNING]: 未检测到包管理器，请确保以下依赖已手动安装:"
+        echo "[WARNING]:   $PACKAGES_TO_CHECK"
+    fi
+
+    # 修改 init.d 脚本中的二进制路径
+    if [ "$install_path" != "/usr/sbin" ]; then
+        echo "[INFO]: 更新init.d脚本中的二进制路径..."
+        if [ -f "/etc/init.d/tailscale" ]; then
+            sed -i "s|/usr/sbin/tailscaled|${install_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    fi
+
+    echo "[INFO]: 设置文件权限..."
+    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+    chmod +x "/usr/sbin/tailscale" 2>/dev/null || true
+    chmod +x "/usr/sbin/tailscaled" 2>/dev/null || true
+
+    echo "[INFO]: 二进制安装完成!"
+    echo "[INFO]: 正在启动tailscale服务..."
+
+    /etc/init.d/tailscale enable 2>/dev/null || true
+    /etc/init.d/tailscale start 2>/dev/null || true
+
+    sleep 3
+
+    # 尝试启动 tailscaled
+    if [ -f "${install_path}/tailscaled" ]; then
+        ${install_path}/tailscaled up &>/dev/null &
+    fi
+
+    sleep 2
+    check_tailscale_install_status
+
+    if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ] && [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        if [ "$silent_install" != "true" ]; then
+            echo "[INFO]: tailscale服务启动完成"
+            echo ""
+            echo "┌─ Tailscale安装&服务启动完成!!!"
+            echo "│"
+            echo "│ 安装路径: ${install_path}"
+            echo "│ 现在您可以按照您希望的方式开始使用!"
+            echo "│ 直接启动: tailscale up"
+            echo "│ 安装后有任何无法使用的问题, 可以于:"
+            echo "│ ${REPO_URL}/issues"
+            echo "│ 提出反馈. 谢谢您的使用! /<3"
+            echo "└─"
+            echo ""
+            echo "[INFO]: 正在重新初始化脚本, 请稍候..."
+            init "" "false"
+        fi
+    else
+        echo "[ERROR]: 二进制安装失败，请检查安装日志"
+        exit 1
+    fi
+}
+
+# 函数：临时安装切换到二进制安装
+temp_to_binary() {
+    binary_install "true"
+}
+
+# 函数：持久安装切换到二进制安装
+persistent_to_binary() {
+    binary_install "true"
+}
+
+# 函数：二进制安装切换到持久安装
+binary_to_persistent() {
+    persistent_install "true"
+}
+
+# 函数：二进制安装切换到临时安装
+binary_to_temp() {
+    temp_install "true"
+}
+
 # 函数：下载器
 downloader() {
     local attempt_range="1 2 3"
@@ -859,6 +1197,15 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout
         echo "[INFO]: 禁用tailscale开机启动..."
         /etc/init.d/tailscale disable
+    elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        echo "[INFO]: 检测到二进制安装模式"
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        echo "[INFO]: 执行tailscale down..."
+        /usr/sbin/tailscale down --accept-risk=lose-ssh 2>/dev/null || true
+        echo "[INFO]: 执行tailscale logout..."
+        /usr/sbin/tailscale logout 2>/dev/null || true
+        echo "[INFO]: 禁用tailscale开机启动..."
+        /etc/init.d/tailscale disable 2>/dev/null || true
     fi
     echo "[INFO]: tailscale服务停止完成"
     echo ""
@@ -873,12 +1220,12 @@ init() {
     local function_count=7
     local total=$function_count
     local progress=0
-    
+
     if [ "$show_init_progress_bar" != "false" ]; then
 
         if [ "$change_dns" != "false" ]; then
             #询问是否更改DNS
-            read -n 1 -p "[WARNING]: 是否将系统DNS更改为(223.5.5.5,119.29.29.29)以提高解析速度? (y/N): " dns_choice 
+            read -n 1 -p "[WARNING]: 是否将系统DNS更改为(223.5.5.5,119.29.29.29)以提高解析速度? (y/N): " dns_choice
             if [ "$dns_choice" = "Y" ] || [ "$dns_choice" = "y" ]; then
                 echo ""
                 set_system_dns
@@ -889,7 +1236,7 @@ init() {
         echo ""
 
         printf "\r[INFO]初始化中: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
-        
+
         for function in $functions; do
             eval "$function"
             progress=$((progress + 1))
@@ -897,7 +1244,7 @@ init() {
             bars=$((percent / 2))
             printf "\r[INFO]初始化中: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
         done
-    
+
         printf "\r[INFO]  完成  : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$bars"))" "$percent"
     else
         for function in $functions; do
@@ -937,11 +1284,20 @@ show_info() {
         echo "     - 安装状态: 已安装"
         if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
             echo "     - 安装模式: 临时安装"
+            echo "     - 二进制路径: /tmp"
         elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
             echo "     - 安装模式: 持久安装"
+            echo "     - 二进制路径: /usr/sbin"
+        elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+            local binary_info_path="/usr/sbin"
+            if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+                binary_info_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+            fi
+            echo "     - 安装模式: 二进制安装"
+            echo "     - 二进制路径: ${binary_info_path}"
         fi
         echo "     - 版本: $TAILSCALE_LOCAL_VERSION"
-    elif [ "$IS_TAILSCALE_INSTALLED" = "unknown" ]; then
+    elif [ "$TAILSCALE_INSTALL_STATUS" = "unknown" ]; then
         echo "     - 安装状态: 异常"
         echo "     - 安装模式: 未知(存在tailscale文件, 但tailscale运行异常)"
         echo "     - 版本: 未知"
@@ -949,13 +1305,13 @@ show_info() {
         echo "     - 安装状态: 未安装"
         echo "     - 安装模式: 未安装"
         echo "     - 版本: 未安装"
-    
+
     fi
 
     echo "   "
     echo "   最新Tailscale信息："
     echo "     - 版本: $TAILSCALE_LATEST_VERSION"
-    echo "     - 文件大小: $TAILSCALE_FILE_SIZE M" 
+    echo "     - 文件大小: $TAILSCALE_FILE_SIZE M"
     if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
         if [ "$TAILSCALE_LATEST_VERSION" != "$TAILSCALE_LOCAL_VERSION" ]; then
             echo "     - 有新版本可用, 您可以选择更新"
@@ -963,7 +1319,7 @@ show_info() {
             echo "     - 已是最新版本"
         fi
     fi
-    
+
     echo "   "
     echo "   提示："
     if [ "$TAILSCALE_PERSISTENT_INSTALLABLE" = "true" ]; then
@@ -975,6 +1331,11 @@ show_info() {
         echo "     - 临时安装：可用"
     else
         echo "     - 临时安装：不可用"
+    fi
+    if [ "$TAILSCALE_BINARY_INSTALLABLE" = "true" ] || [ -n "$PACKAGE_MANAGER" ]; then
+        echo "     - 二进制安装：可用"
+    else
+        echo "     - 二进制安装：可用(需手动安装依赖)"
     fi
     if [ "$DEVICE_MEM_FREE" -lt 60 ]; then
         echo "     - 设备可用运行内存过低, Tailscale将：可能无法正常运行"
@@ -1047,12 +1408,36 @@ option_menu() {
             option_index=$((option_index + 1))
         fi
 
+        # 二进制安装选项
+        if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+            menu_items="$menu_items $option_index).切换至二进制安装"
+            menu_operations="$menu_operations ${TAILSCALE_INSTALL_STATUS}_to_binary"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$IS_TAILSCALE_INSTALLED" = "false" ]; then
+            menu_items="$menu_items $option_index).二进制安装"
+            menu_operations="$menu_operations binary_install"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+            if [ "$TAILSCALE_PERSISTENT_INSTALLABLE" = "true" ]; then
+                menu_items="$menu_items $option_index).切换至持久安装"
+                menu_operations="$menu_operations binary_to_persistent"
+                option_index=$((option_index + 1))
+            fi
+            menu_items="$menu_items $option_index).切换至临时安装"
+            menu_operations="$menu_operations binary_to_temp"
+            option_index=$((option_index + 1))
+        fi
+
         menu_items="$menu_items $option_index).退出"
         menu_operations="$menu_operations exit"
-        
+
         echo ""
         echo "┌──────────────────────── 菜 单 ────────────────────────┐"
-        
+
         # 遍历选项列表，动态生成菜单
         for item in $menu_items; do
             echo "│       $item"
@@ -1087,11 +1472,15 @@ show_help() {
     echo "  Usage:   "
     echo "      --help: Show this help"
     echo "      --custom-proxy: Custom github proxy"
+    echo "      --bin-install [path]: Binary installation mode, optional install path"
+    echo "      --install-path <path>: Custom install path for binary mode"
 
 }
 
 
 # 读取参数
+BIN_INSTALL="false"
+prev_arg=""
 for arg in "$@"; do
     case $arg in
     --help)
@@ -1100,6 +1489,12 @@ for arg in "$@"; do
         ;;
     --tempinstall)
         TMP_INSTALL="true"
+        ;;
+    --bin-install)
+        BIN_INSTALL="true"
+        ;;
+    --install-path)
+        # 此参数在后续循环中处理
         ;;
     --custom-proxy)
         while true; do
@@ -1125,15 +1520,28 @@ for arg in "$@"; do
                     break 2
                 else
                     break
-                fi 
+                fi
             done
         done
         ;;
     *)
-        echo "[ERROR]: Unknown argument: $arg"
-        show_help
+        # 检查是否为 --install-path 的参数值
+        if [ "$prev_arg" = "--install-path" ]; then
+            CUSTOM_INSTALL_PATH="$arg"
+            BINARY_INSTALL_PATH="$arg"
+        elif [ "$prev_arg" = "--bin-install" ]; then
+            # --bin-install 可接受可选路径参数
+            CUSTOM_INSTALL_PATH="$arg"
+            BINARY_INSTALL_PATH="$arg"
+            BIN_INSTALL="true"
+        else
+            echo "[ERROR]: Unknown argument: $arg"
+            show_help
+            exit 1
+        fi
         ;;
     esac
+    prev_arg="$arg"
 done
 
 # 主程序
@@ -1154,6 +1562,15 @@ if [ "$TMP_INSTALL" = "true" ]; then
     test_proxy
     get_tailscale_info
     temp_install "" "true"
+    exit 0
+fi
+
+if [ "$BIN_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    test_proxy
+    get_tailscale_info
+    binary_install "" "true"
     exit 0
 fi
 

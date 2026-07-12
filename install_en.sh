@@ -44,6 +44,14 @@ TAILSCALE_FILE_SIZE="" # Set by get_tailscale_info
 
 TAILSCALE_PERSISTENT_INSTALLABLE=""
 TAILSCALE_TEMP_INSTALLABLE=""
+TAILSCALE_BINARY_INSTALLABLE=""
+
+# Binary install path [default: /usr/sbin]
+BINARY_INSTALL_PATH="/usr/sbin"
+# Custom install path (set by --install-path)
+CUSTOM_INSTALL_PATH=""
+# Install mode marker file
+TAILSCALE_MODE_MARKER="/usr/sbin/.tailscale_install_mode"
 
 ENABLE_INIT_PROGRESS_BAR="true"
 
@@ -69,8 +77,9 @@ check_package_manager() {
     elif command -v apk >/dev/null 2>&1; then
         PACKAGE_MANAGER="apk"
     else
-        echo "[ERROR]: Unable to identify package manager (opkg or apk), script exiting."
-        exit 1
+        PACKAGE_MANAGER=""
+        echo "[WARNING]: No package manager (opkg/apk) found"
+        echo "[WARNING]: Persistent and temporary install not available, use --bin-install for binary install"
     fi
 }
 
@@ -109,23 +118,26 @@ check_tailscale_install_status() {
     local bin_bin="/usr/bin/tailscaled"
     local bin_sbin="/usr/sbin/tailscaled"
     local bin_tmp="/tmp/tailscaled"
-    
+
     local has_bin=false
     local has_sbin=false
     local has_tmp=false
     local bin_is_script=false
+    local bin_is_symlink=false
 
     [ -f "$bin_bin" ] && has_bin=true
     [ -f "$bin_sbin" ] && has_sbin=true
     [ -f "$bin_tmp" ] && has_tmp=true
+    [ -L "$bin_sbin" ] && bin_is_symlink=true
+    [ -L "$bin_bin" ] && bin_is_symlink=true
 
-    if $has_bin; then
+    if $has_bin && ! $bin_is_symlink; then
         if head -n 1 "$bin_bin" 2>/dev/null | grep -q "^#!"; then
             bin_is_script=true
         fi
     fi
-    
-    if $has_sbin; then
+
+    if $has_sbin && ! $bin_is_symlink; then
         if head -n 1 "$bin_sbin" 2>/dev/null | grep -q "^#!"; then
             bin_is_script=true
         fi
@@ -153,11 +165,41 @@ check_tailscale_install_status() {
             IS_TAILSCALE_INSTALLED="true"
         fi
     elif $has_bin || $has_sbin; then
-        # Persistent scenario: file in usr/sbin
-        TAILSCALE_INSTALL_STATUS="persistent"
-        IS_TAILSCALE_INSTALLED="true"
+        if $bin_is_symlink; then
+            # Symlink → binary install mode (binary at custom path)
+            TAILSCALE_INSTALL_STATUS="binary"
+            IS_TAILSCALE_INSTALLED="true"
+        elif $bin_is_script; then
+            # Check if it's temp install script or binary install script
+            if grep -q "/tmp/tailscaled" "$bin_sbin" 2>/dev/null || grep -q "/tmp/tailscaled" "$bin_bin" 2>/dev/null; then
+                TAILSCALE_INSTALL_STATUS="temp"
+                IS_TAILSCALE_INSTALLED="true"
+            else
+                TAILSCALE_INSTALL_STATUS="binary"
+                IS_TAILSCALE_INSTALLED="true"
+            fi
+        else
+            # Persistent scenario: real binary in usr/sbin
+            TAILSCALE_INSTALL_STATUS="persistent"
+            IS_TAILSCALE_INSTALLED="true"
+        fi
     else
         IS_TAILSCALE_INSTALLED="false"
+    fi
+
+    # Marker file override (handles install path = /usr/sbin case)
+    if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+        local marker_path
+        marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+        if [ -n "$marker_path" ] && [ -f "${marker_path}/tailscaled" ]; then
+            TAILSCALE_INSTALL_STATUS="binary"
+            IS_TAILSCALE_INSTALLED="true"
+            if command -v tailscale >/dev/null 2>&1; then
+                local version_output
+                version_output=$(tailscale version 2>/dev/null | head -n 1 | tr -d '[:space:]')
+                [ -n "$version_output" ] && TAILSCALE_LOCAL_VERSION="$version_output"
+            fi
+        fi
     fi
 
     [ "$IS_TAILSCALE_INSTALLED" = "true" ] && FOUND_TAILSCALE_FILE="true"
@@ -168,7 +210,7 @@ check_device_memory() {
     local mem_info=$(free 2>/dev/null | grep "Mem:")
     local mem_total_kb=$(echo "$mem_info" | awk '{print $2}')
     local mem_available_kb=$(echo "$mem_info" | awk '{print $7}')
-    
+
     [ -z "$mem_available_kb" ] && mem_available_kb=$(echo "$mem_info" | awk '{print $4}')
 
     if [ -z "$mem_total_kb" ] || ! echo "$mem_total_kb" | grep -q '^[0-9]\+$'; then
@@ -215,7 +257,7 @@ get_tailscale_info() {
     for attempt_times in $attempt_range; do
         version=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/${DEVICE_TARGET}/version" | tr -d ' \n\r')
         file_size=$(wget -qO- --timeout=$attempt_timeout "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.size" | tr -d ' \n\r')
-  
+
         if [ -n "$version" ] && [ -n "$file_size" ]; then
             break
         else
@@ -247,6 +289,20 @@ get_tailscale_info() {
     else
         TAILSCALE_TEMP_INSTALLABLE="false"
     fi
+
+    # Binary install feasibility: check available space on target path partition
+    local binary_path_check="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    local binary_mount_point="/"
+    # Try to get the mount point of the binary install path
+    if [ -d "$binary_path_check" ]; then
+        binary_mount_point="$binary_path_check"
+    fi
+    local binary_storage_info=$(df -Pk "$binary_mount_point" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    if [ -n "$binary_storage_info" ] && [ "$binary_storage_info" -gt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
+        TAILSCALE_BINARY_INSTALLABLE="true"
+    else
+        TAILSCALE_BINARY_INSTALLABLE="false"
+    fi
 }
 
 # Function: Update
@@ -258,6 +314,9 @@ update() {
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: Detected persistent installation mode, executing persistent installation update..."
         persistent_install "" "true"
+    elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        echo "[INFO]: Detected binary installation mode, executing binary installation update..."
+        binary_install "" "true"
     fi
     while true; do
         echo ""
@@ -318,12 +377,25 @@ remove() {
                 fi
             fi
 
+            # Clean up binary installation path files if in binary mode
+            if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+                local binary_path=""
+                if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+                    binary_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+                fi
+                if [ -z "$binary_path" ]; then
+                    binary_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+                fi
+                echo "[INFO]: Cleaning binary installation files: ${binary_path}"
+                rm -f "${binary_path}/tailscale" "${binary_path}/tailscaled" 2>/dev/null || true
+                echo "[INFO]: Binary installation file cleanup complete"
+            fi
+
             # Remove tailscale or tailscaled files in specified directories
             local directories="/etc/init.d /etc /etc/config /usr/bin /usr/sbin /tmp /var/lib"
             local binaries="tailscale tailscaled"
 
             echo "[INFO]: Cleaning tailscale related files..."
-            # Remove tailscale or tailscaled files in specified directories
             for dir in $directories; do
                 for bin in $binaries; do
                     if [ -f "$dir/$bin" ]; then
@@ -333,6 +405,9 @@ remove() {
                     fi
                 done
             done
+
+            # Clean up install mode marker
+            rm -f "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
 
             echo "[INFO]: Deleting tailscale virtual network interface..."
             ip link delete tailscale0
@@ -727,6 +802,272 @@ persistent_to_temp() {
     temp_install "true"
 }
 
+# ──────────────────────────────────────────────
+# Binary Installation Mode
+# ──────────────────────────────────────────────
+
+# Function: Binary Installation
+binary_install() {
+    local confirm2binary_install=$1
+    local silent_install=$2
+
+    # Determine install path
+    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    if [ -z "$install_path" ]; then
+        install_path="/usr/sbin"
+    fi
+
+    if [ "$silent_install" != "true" ]; then
+        echo "┌─ [WARNING]!!! Please confirm the following:"
+        echo "│"
+        echo "│ Binary installation mode will download the tailscaled"
+        echo "│ executable directly to the specified path."
+        if [ -n "$CUSTOM_INSTALL_PATH" ]; then
+            echo "│ Install path: ${install_path}"
+            echo "│ Please ensure the target device has enough space (at least ${TAILSCALE_FILE_SIZE}M)"
+        fi
+        echo "│ This mode does NOT use opkg/apk package manager."
+        echo "│ It will still try to install dependencies via package"
+        echo "│ manager if available."
+        echo "│ If package manager is unavailable, you need to manually"
+        echo "│ install the following dependencies:"
+        echo "│   ${PACKAGES_TO_CHECK}"
+        echo "│ If any error occurs during installation, you can"
+        echo "│ report at: ${REPO_URL}/issues"
+        echo "│ Provide feedback. Thank you for using! /<3"
+        echo "└─"
+        echo ""
+        read -n 1 -p "Confirm using binary installation method to install tailscale? (y/N): " choice
+
+        if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
+            echo "[INFO]: Cancel binary installation"
+            return
+        fi
+    fi
+
+    echo ""
+    clean_old_installation
+
+    if [ "$confirm2binary_install" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+        echo "[INFO]: Cleaning old installation files..."
+        rm -rf /tmp/tailscale /tmp/tailscaled
+        echo "[INFO]: Cleanup complete"
+    fi
+
+    echo ""
+    echo "[INFO]: Binary installation in progress..."
+    echo "[INFO]: Install path: ${install_path}"
+
+    # Create install directory
+    mkdir -p "${install_path}" 2>/dev/null || {
+        echo "[ERROR]: Cannot create install directory ${install_path}"
+        echo "[ERROR]: Please check path permissions"
+        exit 1
+    }
+
+    # Check target path available space
+    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: Target path ${install_path} has insufficient space (need ${TAILSCALE_FILE_SIZE}M)"
+        echo "[WARNING]: Currently available: $((target_avail / 1024))M"
+        read -n 1 -p "Continue anyway? (y/N): " space_choice
+        if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
+            echo "[INFO]: Cancel installation"
+            return
+        fi
+    fi
+
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="${install_path}/tailscaled"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: Download attempt $attempt_times/3"
+        echo "[INFO]: Downloading tailscaled binary file..."
+        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
+                echo "[ERROR]: Restarting script, please check network connection and retry"
+                sleep 3
+                rm -f "$file_path"
+                init
+            fi
+            echo "[INFO]: Download failed, preparing to retry..."
+            continue
+        fi
+
+        echo "[INFO]: Downloading configuration files and init scripts..."
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
+        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+
+        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf "  $file_path" >> "$sha_file"
+
+        echo "[INFO]: Verifying file integrity..."
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times, possible causes: file corruption or unstable network"
+                echo "[ERROR]: Restarting script, please retry"
+                sleep 3
+                rm -f "$file_path" "$sha_file"
+                init
+            else
+                echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
+                rm -f "$file_path" "$sha_file"
+                sleep 3
+            fi
+        else
+            echo "[INFO]: Tailscale file verification passed!"
+            rm -f "$sha_file"
+            break
+        fi
+    done
+
+    # Set executable permissions
+    chmod +x "$file_path" 2>/dev/null
+
+    # Create install mode marker
+    echo "binary:${install_path}" > "$TAILSCALE_MODE_MARKER" 2>/dev/null || true
+
+    # Create tailscale -> tailscaled symlink in the install path
+    ln -sf "tailscaled" "${install_path}/tailscale" 2>/dev/null || true
+
+    # If install path is not /usr/sbin, create symlinks in /usr/sbin pointing to actual location
+    if [ "$install_path" != "/usr/sbin" ]; then
+        ln -sf "${install_path}/tailscaled" "/usr/sbin/tailscaled" 2>/dev/null || true
+        ln -sf "${install_path}/tailscale" "/usr/sbin/tailscale" 2>/dev/null || true
+    fi
+
+    # Install dependency packages (if package manager available)
+    if [ -n "$PACKAGE_MANAGER" ]; then
+        echo "[INFO]: Installing dependency packages..."
+        local pkg_install_success=false
+        local pkg_attempt_range="1 2 3"
+
+        for pkg_attempt in $pkg_attempt_range; do
+            echo "[INFO]: Dependency package installation attempt $pkg_attempt/3"
+            if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                echo "[INFO]: Updating opkg package list..."
+                opkg update || continue
+                echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
+                opkg install $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed | grep -q "^$pkg " || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages installed successfully"
+                    break
+                fi
+            elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                echo "[INFO]: Updating apk package list..."
+                apk update || continue
+                echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
+                apk add --no-cache $PACKAGES_TO_CHECK || continue
+
+                local all_installed=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info | grep -q "^$pkg$" || { all_installed=false; break; }
+                done
+
+                if $all_installed; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages installed successfully"
+                    break
+                fi
+            fi
+        done
+
+        if ! $pkg_install_success; then
+            echo "[WARNING]: Some dependency packages failed to install"
+            echo "[WARNING]: Please manually install: $PACKAGES_TO_CHECK"
+            echo "[WARNING]: Missing dependencies may cause tailscale to malfunction"
+        fi
+    else
+        echo "[WARNING]: No package manager detected, please ensure the following dependencies are manually installed:"
+        echo "[WARNING]:   $PACKAGES_TO_CHECK"
+    fi
+
+    # Update binary path in init.d script if custom path
+    if [ "$install_path" != "/usr/sbin" ]; then
+        echo "[INFO]: Updating binary path in init.d script..."
+        if [ -f "/etc/init.d/tailscale" ]; then
+            sed -i "s|/usr/sbin/tailscaled|${install_path}/tailscaled|g" "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    fi
+
+    echo "[INFO]: Setting file permissions..."
+    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+    chmod +x "/usr/sbin/tailscale" 2>/dev/null || true
+    chmod +x "/usr/sbin/tailscaled" 2>/dev/null || true
+
+    echo "[INFO]: Binary installation complete!"
+    echo "[INFO]: Starting tailscale service..."
+
+    /etc/init.d/tailscale enable 2>/dev/null || true
+    /etc/init.d/tailscale start 2>/dev/null || true
+
+    sleep 3
+
+    # Try to start tailscaled
+    if [ -f "${install_path}/tailscaled" ]; then
+        ${install_path}/tailscaled up &>/dev/null &
+    fi
+
+    sleep 2
+    check_tailscale_install_status
+
+    if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ] && [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
+        if [ "$silent_install" != "true" ]; then
+            echo "[INFO]: Tailscale service startup complete"
+            echo ""
+            echo "┌─ Tailscale installation & service startup complete!!!"
+            echo "│"
+            echo "│ Install path: ${install_path}"
+            echo "│ You can now start using it as you wish!"
+            echo "│ Direct startup: tailscale up"
+            echo "│ If any problems occur after installation, you can"
+            echo "│ report at: ${REPO_URL}/issues"
+            echo "│ Provide feedback. Thank you for using! /<3"
+            echo "└─"
+            echo ""
+            echo "[INFO]: Re-initializing script, please wait..."
+            init "" "false"
+        fi
+    else
+        echo "[ERROR]: Binary installation failed, please check installation logs"
+        exit 1
+    fi
+}
+
+# Function: Switch from Temporary to Binary Installation
+temp_to_binary() {
+    binary_install "true"
+}
+
+# Function: Switch from Persistent to Binary Installation
+persistent_to_binary() {
+    binary_install "true"
+}
+
+# Function: Switch from Binary to Persistent Installation
+binary_to_persistent() {
+    persistent_install "true"
+}
+
+# Function: Switch from Binary to Temporary Installation
+binary_to_temp() {
+    temp_install "true"
+}
+
 # Function: Downloader
 downloader() {
     local attempt_range="1 2 3"
@@ -813,6 +1154,15 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout
         echo "[INFO]: Disabling tailscale auto-start..."
         /etc/init.d/tailscale disable
+    elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        echo "[INFO]: Detected binary installation mode"
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        echo "[INFO]: Executing tailscale down..."
+        /usr/sbin/tailscale down --accept-risk=lose-ssh 2>/dev/null || true
+        echo "[INFO]: Executing tailscale logout..."
+        /usr/sbin/tailscale logout 2>/dev/null || true
+        echo "[INFO]: Disabling tailscale auto-start..."
+        /etc/init.d/tailscale disable 2>/dev/null || true
     fi
     echo "[INFO]: Tailscale service stop complete"
     echo ""
@@ -826,12 +1176,12 @@ init() {
     local function_count=6
     local total=$function_count
     local progress=0
-    
+
     if [ "$show_init_progress_bar" != "false" ]; then
         echo ""
 
         printf "\r[INFO] Initializing: [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$progress"))" "$((progress * 2))"
-        
+
         for function in $functions; do
             eval "$function"
             progress=$((progress + 1))
@@ -839,7 +1189,7 @@ init() {
             bars=$((percent / 2))
             printf "\r[INFO] Initializing: [%-50s] %3d%%" "$(printf '=%.0s' $(seq 1 "$bars"))" "$percent"
         done
-    
+
         printf "\r[INFO]   Complete  : [%-50s] %3d%%" "$(printf '='%.0s $(seq 1 "$bars"))" "$percent"
     else
         for function in $functions; do
@@ -880,8 +1230,17 @@ show_info() {
         echo "     - Installation Status: Installed"
         if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
             echo "     - Installation Mode: Temporary Installation"
+            echo "     - Binary Path: /tmp"
         elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
             echo "     - Installation Mode: Persistent Installation"
+            echo "     - Binary Path: /usr/sbin"
+        elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+            local binary_info_path="/usr/sbin"
+            if [ -f "$TAILSCALE_MODE_MARKER" ]; then
+                binary_info_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
+            fi
+            echo "     - Installation Mode: Binary Installation"
+            echo "     - Binary Path: ${binary_info_path}"
         fi
         echo "     - Version: $TAILSCALE_LOCAL_VERSION"
     elif [ "$TAILSCALE_INSTALL_STATUS" = "unknown" ]; then
@@ -892,13 +1251,13 @@ show_info() {
         echo "     - Installation Status: Not Installed"
         echo "     - Installation Mode: Not Installed"
         echo "     - Version: Not Installed"
-    
+
     fi
 
     echo "   "
     echo "   Latest Tailscale Information:"
     echo "     - Version: $TAILSCALE_LATEST_VERSION"
-    echo "     - File Size: $TAILSCALE_FILE_SIZE M" 
+    echo "     - File Size: $TAILSCALE_FILE_SIZE M"
     if [ "$IS_TAILSCALE_INSTALLED" = "true" ]; then
         if [ "$TAILSCALE_LATEST_VERSION" != "$TAILSCALE_LOCAL_VERSION" ]; then
             echo "     - New version available, you can choose to update"
@@ -906,7 +1265,7 @@ show_info() {
             echo "     - Already the latest version"
         fi
     fi
-    
+
     echo "   "
     echo "   Tips:"
     if [ "$TAILSCALE_PERSISTENT_INSTALLABLE" = "true" ]; then
@@ -918,6 +1277,11 @@ show_info() {
         echo "     - Temporary Installation: Available"
     else
         echo "     - Temporary Installation: Not Available"
+    fi
+    if [ "$TAILSCALE_BINARY_INSTALLABLE" = "true" ] || [ -n "$PACKAGE_MANAGER" ]; then
+        echo "     - Binary Installation: Available"
+    else
+        echo "     - Binary Installation: Available (deps may need manual install)"
     fi
     if [ "$DEVICE_MEM_FREE" -lt 60 ]; then
         echo "     - Device available memory too low, Tailscale may: Unable to run normally"
@@ -982,12 +1346,36 @@ option_menu() {
             option_index=$((option_index + 1))
         fi
 
+        # Binary install options
+        if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
+            menu_items="$menu_items $option_index).Switch-to-Binary-Installation"
+            menu_operations="$menu_operations ${TAILSCALE_INSTALL_STATUS}_to_binary"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$IS_TAILSCALE_INSTALLED" = "false" ]; then
+            menu_items="$menu_items $option_index).Binary-Installation"
+            menu_operations="$menu_operations binary_install"
+            option_index=$((option_index + 1))
+        fi
+
+        if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+            if [ "$TAILSCALE_PERSISTENT_INSTALLABLE" = "true" ]; then
+                menu_items="$menu_items $option_index).Switch-to-Persistent-Installation"
+                menu_operations="$menu_operations binary_to_persistent"
+                option_index=$((option_index + 1))
+            fi
+            menu_items="$menu_items $option_index).Switch-to-Temporary-Installation"
+            menu_operations="$menu_operations binary_to_temp"
+            option_index=$((option_index + 1))
+        fi
+
         menu_items="$menu_items $option_index).Exit"
         menu_operations="$menu_operations exit"
-        
+
         echo ""
         echo "┌───────────────────────── MENU ─────────────────────────┐"
-        
+
         # Traverse option list, dynamically generate menu
         for item in $menu_items; do
             echo "│       $item"
@@ -1022,11 +1410,15 @@ show_help() {
     echo "  Usage:   "
     echo "      --help: Show this help"
     echo "      --tempinstall: Temporary installation mode"
+    echo "      --bin-install [path]: Binary installation mode, optional install path"
+    echo "      --install-path <path>: Custom install path for binary mode"
 
 }
 
 
 # Read Parameters
+BIN_INSTALL="false"
+prev_arg=""
 for arg in "$@"; do
     case $arg in
     --help)
@@ -1036,11 +1428,30 @@ for arg in "$@"; do
     --tempinstall)
         TMP_INSTALL="true"
         ;;
+    --bin-install)
+        BIN_INSTALL="true"
+        ;;
+    --install-path)
+        # This parameter is handled in the next iteration
+        ;;
     *)
-        echo "[ERROR]: Unknown argument: $arg"
-        show_help
+        # Check if it's a value for --install-path or --bin-install
+        if [ "$prev_arg" = "--install-path" ]; then
+            CUSTOM_INSTALL_PATH="$arg"
+            BINARY_INSTALL_PATH="$arg"
+        elif [ "$prev_arg" = "--bin-install" ]; then
+            # --bin-install accepts optional path argument
+            CUSTOM_INSTALL_PATH="$arg"
+            BINARY_INSTALL_PATH="$arg"
+            BIN_INSTALL="true"
+        else
+            echo "[ERROR]: Unknown argument: $arg"
+            show_help
+            exit 1
+        fi
         ;;
     esac
+    prev_arg="$arg"
 done
 
 # Main Program
@@ -1060,6 +1471,14 @@ if [ "$TMP_INSTALL" = "true" ]; then
     check_device_target
     get_tailscale_info
     temp_install "" "true"
+    exit 0
+fi
+
+if [ "$BIN_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    get_tailscale_info
+    binary_install "" "true"
     exit 0
 fi
 
