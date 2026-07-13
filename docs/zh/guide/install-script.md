@@ -31,6 +31,13 @@ wget -O /usr/sbin/install.sh https://ghfast.top/https://raw.githubusercontent.co
 wget -O /usr/sbin/install.sh https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install_en.sh && chmod +x /usr/sbin/install.sh && /usr/sbin/install.sh
 ```
 
+### 自定义代理
+使用你自己的 GitHub 代理。脚本只会尝试该代理 — 不会回退到内置代理。
+```sh
+# 自定义代理（将 URL 替换为你自己的代理）
+wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --custom-proxy
+```
+
 脚本会启动交互式菜单。也可以通过命令行参数跳过菜单：
 
 ```sh
