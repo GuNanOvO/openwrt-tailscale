@@ -17,3 +17,11 @@ hero:
       link: https://github.com/GuNanOvO/openwrt-tailscale
 
 ---
+
+<script setup>
+import { withBase } from 'vitepress'
+</script>
+
+<div style="text-align:center;margin-top:2rem;">
+  <img :src="withBase('/banner.png')" alt="Tailscale for OpenWrt" style="max-width:100%;height:auto;border-radius:8px;">
+</div>

@@ -19,7 +19,6 @@ export default defineConfig({
   lastUpdated: true,
 
   themeConfig: {
-    logo: '/banner.png',
     siteTitle: 'Tailscale for OpenWrt',
     search: { provider: 'local' },
     socialLinks: [
