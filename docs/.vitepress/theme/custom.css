@@ -1,0 +1,140 @@
+/* ===== VitePress Custom Styles ===== */
+/* Preserves the feel of the original feed_template style */
+
+:root {
+  --vp-c-brand-1: #0066cc;
+  --vp-c-brand-2: #0055aa;
+  --vp-c-brand-3: #004499;
+  --vp-c-brand-soft: rgba(0, 102, 204, 0.14);
+
+  --vp-c-tip-1: #42b983;
+  --vp-c-tip-soft: rgba(66, 185, 131, 0.14);
+  --vp-c-tip-bg: #e8fff5;
+
+  --vp-c-warning-1: #e6a23c;
+  --vp-c-warning-soft: rgba(230, 162, 60, 0.14);
+
+  --vp-c-danger-1: #c2185b;
+  --vp-c-danger-soft: rgba(194, 24, 91, 0.14);
+}
+
+/* Dark mode overrides */
+.dark {
+  --vp-c-brand-1: #9ecbff;
+  --vp-c-brand-2: #7ab8ff;
+  --vp-c-brand-3: #5aa5ff;
+}
+
+/* Notice / Tip blocks styling */
+.vp-doc .custom-block.tip {
+  border-left-color: var(--vp-c-tip-1);
+}
+
+/* Code blocks - matching original style */
+.vp-doc div[class*='language-'] {
+  border-radius: 8px;
+}
+
+/* Tables - wider sha256 columns on packages page */
+.packages-table .sha256-cell {
+  font-family: monospace;
+  font-size: 0.8rem;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.packages-table .size-cell {
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* Arch section (details/summary) styling for packages page */
+.arch-section {
+  margin-bottom: 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.arch-section summary {
+  padding: 12px 16px;
+  background: var(--vp-c-bg-soft);
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arch-section summary::-webkit-details-marker {
+  display: none;
+}
+
+.arch-section summary::before {
+  content: '▸';
+  display: inline-block;
+  transition: transform 0.2s;
+  font-size: 12px;
+}
+
+.arch-section[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.arch-section summary:hover {
+  background: var(--vp-c-bg-alt);
+}
+
+.arch-section table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.arch-section th {
+  text-align: left;
+  background: var(--vp-c-bg-soft);
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+}
+
+.arch-section td {
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+.arch-section tr:hover td {
+  background: var(--vp-c-bg-soft);
+}
+
+/* Version badge */
+.version-badge {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+/* Home hero customization */
+.VPHero .image-bg {
+  opacity: 0.15;
+}
+
+/* Responsive table wrapper */
+.table-wrapper {
+  overflow-x: auto;
+}
+
+/* Footer — single line, left aligned */
+.VPFooter .message {
+  white-space: nowrap;
+}

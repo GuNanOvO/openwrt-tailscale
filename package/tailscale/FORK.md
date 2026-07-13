@@ -14,6 +14,38 @@ Some users fork the `package` directory from this repository and build it using 
 
 这通常不是 Makefile 本身的问题，而是因为构建时实际使用的 Go 版本太旧，无法满足 Tailscale 新版本的要求。
 
+### 准备工作：把本包加入你的 buildroot
+
+**方法 A：添加为 feed（推荐）**
+
+编辑 `feeds.conf.default`，加入一行：
+
+```
+src-git openwrt_tailscale https://github.com/GuNanOvO/openwrt-tailscale.git
+```
+
+然后更新 feed 并安装：
+
+```bash
+./scripts/feeds update openwrt_tailscale
+./scripts/feeds install tailscale
+```
+
+之后本包的 Makefile 会出现在 `package/feeds/openwrt_tailscale/tailscale/`。
+
+**方法 B：手动复制**
+
+```bash
+# 先克隆本仓库
+git clone --depth=1 https://github.com/GuNanOvO/openwrt-tailscale.git /tmp/openwrt-tailscale
+
+# 删除 feeds 中可能存在的旧 tailscale
+rm -rf package/feeds/packages/tailscale
+
+# 复制本包的 Makefile 和文件
+cp -r /tmp/openwrt-tailscale/package/tailscale ./package/tailscale/
+```
+
 ### 解决方案：直接编译进固件
 
 步骤一：在 buildroot 根目录执行下面的脚本，用上游 Go 版本覆盖当前的 Go 工具链：

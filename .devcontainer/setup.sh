@@ -26,16 +26,25 @@ alias build-ipk='bash .devcontainer/scripts/build-ipk.sh'
 alias build-apk='bash .devcontainer/scripts/build-apk.sh'
 alias lsd='ls -lah'
 alias tree='tree -C'
+alias docs-dev='cd /workspace/docs && npm run dev'
 EOF
 
 # 确保构建脚本可执行
 chmod +x .devcontainer/scripts/*.sh
+
+# 预安装 docs 依赖 (如果 docs/package.json 存在)
+if [ -f /workspace/docs/package.json ] && [ ! -d /workspace/docs/node_modules ]; then
+    echo ""
+    echo "=== Pre-installing VitePress docs dependencies... ==="
+    cd /workspace/docs && npm install 2>/dev/null && echo "Done." || echo "Skipped (npm install failed)"
+fi
 
 echo ""
 echo "=== Setup Complete! ==="
 echo "Available commands:"
 echo "  build-ipk <version> <arch>  - Build IPK package"
 echo "  build-apk <version> <arch>  - Build APK package"
+echo "  docs-dev                    - Start VitePress dev server for docs preview"
 echo ""
 echo "Example:"
 echo "  build-ipk 1.92.5 aarch64_cortex-a53"

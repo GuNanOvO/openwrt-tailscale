@@ -43,6 +43,7 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
         rsync \
         unzip \
         xz-utils \
+        socat \
     # GitHub CLI (通过官方仓库安装，避免依赖 ghcr.io features)
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
     && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
@@ -52,6 +53,12 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get autoremove -y \
     && apt-get clean -y \
     && rm -rf /var/lib/apt/lists/*
+
+# 安装 Node.js (VitePress 文档开发需要)
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
+    && apt-get install -y nodejs \
+    && node --version && npm --version \
+    && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 # 安装 Go (编译 Tailscale 需要)
 ARG GO_VERSION="1.23.4"

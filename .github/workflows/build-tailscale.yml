@@ -1,7 +1,7 @@
 name: Smaller Tailscale Build Pipeline
 
 on:
-  workflow_dispatch: 
+  workflow_dispatch:
   repository_dispatch:
     types: [ build-tailscale ]
 
@@ -38,7 +38,7 @@ jobs:
 
           UPX_VER="${UPX_TAG#v}"
           echo "Detected UPX Version: $UPX_VER"
-          
+
           echo "upx_ver=$UPX_VER" >> "$GITHUB_OUTPUT"
           echo "UPX_VER=$UPX_VER" >> "$GITHUB_ENV"
 
@@ -76,7 +76,7 @@ jobs:
 
           GO_VER="${GO_TAG#go}"
           echo "Detected Go Version: $GO_VER"
-          
+
           echo "go_version=$GO_VER" >> "$GITHUB_OUTPUT"
           echo "GO_VERSION=$GO_VER" >> "$GITHUB_ENV"
 
@@ -98,7 +98,7 @@ jobs:
           curl -L -o go.tar.gz "$GO_URL"
           tar -C go -xzf go.tar.gz --strip-components=1
           rm -f go.tar.gz
-      
+
       - name: Save Go Cache
         if: steps.cache_go.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
@@ -165,9 +165,9 @@ jobs:
         id: get_build_version
         run: |
           VERSION=$(sed -n 's/^PKG_VERSION:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
-          
+
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          
+
 
           echo "Parsed version: $VERSION"
 
@@ -189,7 +189,7 @@ jobs:
 
           mkdir tailscale
           cp -r repo/package/tailscale/. tailscale/
-          
+
           mkdir keys
           echo "$USIGN_SECRET_KEY_B64" | base64 -d > keys/key-build.sec
           echo "$RSA_SECRET_KEY_B64" | base64 -d > keys/key-build.rsa
@@ -269,13 +269,13 @@ jobs:
               ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }} \
               bash /builder/build_scripts/build_apk.sh "${{ steps.get_build_version.outputs.version }}" "${{ matrix.platform }}"
           fi
-        
+
       - name: Clean Up Build Scripts and Keys
         run: |
           rm -rf build_scripts
           rm -rf tailscale
           rm -rf keys
-      
+
       # UPLOAD ARTIFACTS
 
       - name: Collect Build Artifacts
@@ -298,7 +298,7 @@ jobs:
               fi
             fi
           done
-          
+
           du -b "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"/tailscaled | cut -f1 > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.size"
 
           echo "${{ steps.get_build_version.outputs.version }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
@@ -325,7 +325,7 @@ jobs:
           path: ${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/
           if-no-files-found: error
           retention-days: 30
-  
+
   # Deploy To Feed Barch
 
   deploy:
@@ -346,7 +346,7 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ${{ env.ARTIFACT_DIR }}
-      
+
       - name: List Downloaded Artifacts
         run: |
           echo "Downloaded artifacts:"
@@ -357,6 +357,24 @@ jobs:
         with:
           ref: main
           path: repo
+
+      # BUILD VITEPRESS DOCS
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build VitePress Docs
+        run: |
+          cd repo/docs
+          # Inject build date and version into footer
+          sed -i "s/__BUILD_DATE__/${{ env.BUILD_DATE }}/" .vitepress/config.mts
+          sed -i "s/__BUILD_VERSION__/${{ env.RELEASE_VERSION }}/" .vitepress/config.mts
+          npm ci
+          npx vitepress build .
+          echo "VitePress build complete."
+          ls -la .vitepress/dist/
 
       # DEPLOY FEED
 
@@ -377,91 +395,80 @@ jobs:
           git remote add origin "https://${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git"
           git checkout --orphan feed
 
-          # Fetch the latest main branch to get the feed template
-          git fetch origin main --depth=1
-          git checkout origin/main -- feed_template/
+          # Copy VitePress built site as the main page
+          cp -r ../repo/docs/.vitepress/dist/* ./
 
-          # Copy feed template files to the root of the branch
-          cp -r feed_template/* ./
+          # Copy static assets from feed_template (keys, verification, banner)
+          git fetch origin main --depth=1
+          git checkout origin/main -- \
+            feed_template/key-build.pub \
+            feed_template/key-build.rsa.pub \
+            feed_template/google83715db89cd31b69.html \
+            feed_template/banner.png
+
+          cp feed_template/key-build.pub ./
+          cp feed_template/key-build.rsa.pub ./
+          cp feed_template/google83715db89cd31b69.html ./
+          cp feed_template/banner.png ./
           rm -rf feed_template
+
+          # Copy install scripts from repo root
+          cp ../repo/install.sh ./
+          cp ../repo/install_en.sh ./
 
           # Create .nojekyll to prevent GitHub Pages from ignoring files with underscores
           touch .nojekyll
-          
+
+          # Copy package artifacts
           cp -r ../${{ env.ARTIFACT_DIR }}/* ./
 
-          # Generate HTML sections for each architecture and insert into index.html
-          generate_arch_sections() {
-            for arch_dir in */; do
-              [ -d "$arch_dir" ] || continue
-              arch=${arch_dir%/}
+          # Generate package-manifest.json for the VitePress Packages page
+          python3 << 'PYEOF'
+          import os, json, hashlib, subprocess
 
-              echo "<details class=\"arch-section\">"
-              echo "    <summary>📂 $arch</summary>"
-              echo "    <table>"
-              echo "        <thead>"
-              echo "            <tr><th>File</th><th>Size</th><th>Sha256Sum</th></tr>"
-              echo "        </thead>"
-              echo "        <tbody>"
-
-              for file_path in "$arch"/*; do
-                [ -f "$file_path" ] || continue
-
-                file=$(basename "$file_path")
-
-                case "$file" in
-                  *.ipk|*.apk|tailscaled|Packages|Packages.gz|Packages.sig|packages.adb)
-                    ;;
-                  *)
-                    continue
-                    ;;
-                esac
-
-                fsize=$(du -h "$file_path" | cut -f1)
-                fsha256=$(sha256sum "$file_path" | cut -d' ' -f1)
-
-                echo "            <tr>"
-                echo "                <td><a href=\"$arch/$file\">$file</a></td>"
-                echo "                <td class=\"size-cell\">$fsize</td>"
-                echo "                <td class=\"sha256-cell\">$fsha256</td>"
-                echo "            </tr>"
-              done
-
-              echo "        </tbody>"
-              echo "    </table>"
-              echo "</details>"
-            done
+          manifest = {
+              "buildDate": os.environ["BUILD_DATE"],
+              "version": os.environ["RELEASE_VERSION"],
+              "architectures": {}
           }
-          
-          # Use the function to generate sections and insert into index.html
-          generate_arch_sections > tbody.tmp
 
-          # Replace the placeholder section in index.html with the generated content
-          sed -i '/<!-- arch-section-anchor -->/,/<!-- end-arch-section-anchor -->/ {
-            /<!-- arch-section-anchor -->/!{
-              /<!-- end-arch-section-anchor -->/!d
-            }
-          }' index.html
-          sed -i '/<!-- arch-section-anchor -->/r tbody.tmp' index.html
-          
-          # Replace date anchor with the current build date
-          current_date="${{ env.BUILD_DATE }}"
-          sed -i '/<!-- date-anchor -->/,/<!-- end-date-anchor -->/ {
-              /<span id="date">/ {
-                  s#<span id="date">.*</span>#<span id="date">'"${current_date}"'</span>#
-              }
-          }' index.html
+          valid_exts = ('.ipk', '.apk')
+          valid_names = ('tailscaled', 'Packages', 'Packages.gz', 'Packages.sig', 'packages.adb')
 
-          # Replace version anchor with the current release version
-          version=$(echo "${{ env.RELEASE_TAG }}" | sed 's/^v//')
-          sed -i '/<!-- version-anchor -->/,/<!-- end-version-anchor -->/ {
-              /<span id="version">/ {
-                  s#<span id="version">.*</span>#<span id="version">'"${version}"'</span>#
-              }
-          }' index.html
+          for entry in sorted(os.listdir('.')):
+              if not os.path.isdir(entry):
+                  continue
+              arch = entry
+              files = []
+              for fname in sorted(os.listdir(arch)):
+                  fpath = os.path.join(arch, fname)
+                  if not os.path.isfile(fpath):
+                      continue
+                  if fname.endswith(valid_exts) or fname in valid_names:
+                      size_bytes = os.path.getsize(fpath)
+                      # human-readable size
+                      for unit in ('B', 'K', 'M', 'G'):
+                          if size_bytes < 1024:
+                              break
+                          size_bytes /= 1024
+                      fsize = f"{size_bytes:.1f}{unit}"
+                      # sha256
+                      sha = hashlib.sha256()
+                      with open(fpath, 'rb') as f:
+                          for chunk in iter(lambda: f.read(8192), b''):
+                              sha.update(chunk)
+                      files.append({
+                          "name": fname,
+                          "size": fsize,
+                          "sha256": sha.hexdigest()
+                      })
+              if files:
+                  manifest["architectures"][arch] = {"files": files}
 
-          # Clean up temporary file
-          rm -f tbody.tmp
+          with open('package-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          print(f"Generated package-manifest.json with {len(manifest['architectures'])} architectures")
+          PYEOF
 
           # Commit and push changes to the feed branch
           git add -A
@@ -483,12 +490,12 @@ jobs:
     steps:
 
       # PREPARE ARTIFACTS
-      
+
       - name: Download Artifacts
         uses: actions/download-artifact@v5
         with:
           path: ${{ env.ARTIFACT_DIR }}
-      
+
       - name: List Downloaded Artifacts
         run: |
           echo "Downloaded artifacts:"
@@ -555,24 +562,24 @@ jobs:
           full_table="${table}${rows}"
 
           release_body="
-          ## Smaller Tailscale / 更小的Tailscale  
+          ## Smaller Tailscale / 更小的Tailscale
           #### Version / 版本 : ${{ env.RELEASE_TAG }}
           #### Build Date / 构建日期 : ${{ env.BUILD_DATE }}
           #### Upstream Changelog / 上游更新日志 : [https://tailscale.com/changelog](https://tailscale.com/changelog)
           ---
 
-          #### 本项目是为 OpenWRT 构建的 Tailscale 精简版本，使用官方 SDK 编译，旨在降低存储空间占用。    
-          - 使用 OpenWRT 官方 SDK 编译。  
-          - 采用 UPX 压缩技术大幅缩小二进制体积。  
-          - 标准 IPK、APK 包，支持 opkg、apk 直接安装。  
+          #### 本项目是为 OpenWRT 构建的 Tailscale 精简版本，使用官方 SDK 编译，旨在降低存储空间占用。
+          - 使用 OpenWRT 官方 SDK 编译。
+          - 采用 UPX 压缩技术大幅缩小二进制体积。
+          - 标准 IPK、APK 包，支持 opkg、apk 直接安装。
 
-          #### Minimalistic Tailscale build for OpenWRT using the official SDK.  
-          - Compiled with official OpenWRT SDK.  
-          - Significant size reduction via UPX compression.  
-          - Standard IPK, APK packages for direct opkg, apk installation.  
+          #### Minimalistic Tailscale build for OpenWRT using the official SDK.
+          - Compiled with official OpenWRT SDK.
+          - Significant size reduction via UPX compression.
+          - Standard IPK, APK packages for direct opkg, apk installation.
 
-          #### Architecture Check / 架构查询  
-          Openwrt 24.10 or earlier / 或更早版本：:  
+          #### Architecture Check / 架构查询
+          Openwrt 24.10 or earlier / 或更早版本：:
           \`\`\`bash
           opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1
           \`\`\`
@@ -582,12 +589,12 @@ jobs:
           cat /etc/apk/arch
           \`\`\`
           ---
-        
+
           #### Download Links / 下载清单
           > [!IMPORTANT]
           > 请根据设备架构与openwrt版本选择对应的安装包。
           > OpenWrt 24.10或更早版本请使用 .ipk 包，OpenWrt 25.12或更高版本请使用 .apk 包。
-          >  
+          >
           > Please select the correct package for your device architecture.
           > Use .ipk for OpenWrt 24.10 or earlier, and .apk for OpenWrt 25.12 or later.
 

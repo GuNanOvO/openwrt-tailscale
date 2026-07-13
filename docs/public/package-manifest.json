@@ -1,0 +1,51 @@
+{
+  "buildDate": "2026-07-12 00:00:00 UTC",
+  "version": "1.100.0",
+  "architectures": {
+    "x86_64": {
+      "files": [
+        { "name": "tailscale_1.100.0_x86_64.ipk", "size": "8.2M", "sha256": "abc123def456..." },
+        { "name": "tailscale_1.100.0_x86_64.apk", "size": "8.1M", "sha256": "def456abc789..." },
+        { "name": "tailscaled", "size": "12.5M", "sha256": "789abcdef012..." },
+        { "name": "Packages", "size": "1.2K", "sha256": "ghi789jkl012..." },
+        { "name": "Packages.gz", "size": "0.6K", "sha256": "jkl012mno345..." },
+        { "name": "Packages.sig", "size": "0.3K", "sha256": "mno345pqr678..." }
+      ]
+    },
+    "aarch64_cortex-a53": {
+      "files": [
+        { "name": "tailscale_1.100.0_aarch64_cortex-a53.ipk", "size": "7.8M", "sha256": "pqr678stu901..." },
+        { "name": "tailscale_1.100.0_aarch64_cortex-a53.apk", "size": "7.7M", "sha256": "stu901vwx234..." },
+        { "name": "tailscaled", "size": "11.9M", "sha256": "vwx234yza567..." },
+        { "name": "Packages", "size": "1.2K", "sha256": "yza567bcd890..." },
+        { "name": "Packages.gz", "size": "0.6K", "sha256": "bcd890efg123..." },
+        { "name": "Packages.sig", "size": "0.3K", "sha256": "efg123hij456..." }
+      ]
+    },
+    "aarch64_cortex-a72": {
+      "files": [
+        { "name": "tailscale_1.100.0_aarch64_cortex-a72.ipk", "size": "7.8M", "sha256": "hij456klm789..." },
+        { "name": "tailscale_1.100.0_aarch64_cortex-a72.apk", "size": "7.7M", "sha256": "klm789nop012..." },
+        { "name": "Packages", "size": "1.2K", "sha256": "nop012qrs345..." },
+        { "name": "Packages.gz", "size": "0.6K", "sha256": "qrs345tuv678..." },
+        { "name": "Packages.sig", "size": "0.3K", "sha256": "tuv678wxy901..." }
+      ]
+    },
+    "arm_cortex-a7": {
+      "files": [
+        { "name": "tailscale_1.100.0_arm_cortex-a7.ipk", "size": "7.2M", "sha256": "wxy901zab234..." },
+        { "name": "Packages", "size": "1.2K", "sha256": "zab234cde567..." },
+        { "name": "Packages.gz", "size": "0.6K", "sha256": "cde567fgh890..." },
+        { "name": "Packages.sig", "size": "0.3K", "sha256": "fgh890ijk123..." }
+      ]
+    },
+    "mips_24kc": {
+      "files": [
+        { "name": "tailscale_1.100.0_mips_24kc.ipk", "size": "8.5M", "sha256": "ijk123lmn456..." },
+        { "name": "Packages", "size": "1.2K", "sha256": "lmn456opq789..." },
+        { "name": "Packages.gz", "size": "0.6K", "sha256": "opq789rst012..." },
+        { "name": "Packages.sig", "size": "0.3K", "sha256": "rst012uvw345..." }
+      ]
+    }
+  }
+}
