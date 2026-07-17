@@ -32,6 +32,13 @@ wget -O /usr/sbin/install.sh https://ghfast.top/https://raw.githubusercontent.co
 ```
 This repository provides the script **as-is**. You are responsible for deciding whether to use it. This repository is not responsible for the security of third-party proxies. You have been warned.  
 
+### Custom Proxy
+Use your own GitHub proxy. The script will only try your proxy — no fallback to built-in proxies.
+```sh
+# Custom proxy (replace the URL with your own proxy)
+wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/install.sh && chmod +x /usr/bin/install.sh && /usr/bin/install.sh --custom-proxy
+```
+
 The script launches an interactive menu. You can also bypass the menu with command-line arguments:
 
 ```sh

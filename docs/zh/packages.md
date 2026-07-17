@@ -111,7 +111,7 @@ function filteredArchitectures() {
         <tbody>
           <tr v-for="file in data.files" :key="file.name">
             <td>
-              <a :href="`${arch}/${file.name}`" style="font-family:monospace;font-size:0.9rem;">{{ file.name }}</a>
+              <a :href="`${base}${arch}/${file.name}`" style="font-family:monospace;font-size:0.9rem;">{{ file.name }}</a>
             </td>
             <td class="size-cell" style="text-align:right;white-space:nowrap;font-family:monospace;font-size:0.85rem;">{{ file.size }}</td>
             <td style="font-family:monospace;font-size:0.78rem;word-break:break-all;">{{ file.sha256 }}</td>
