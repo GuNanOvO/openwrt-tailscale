@@ -1,0 +1,185 @@
+name: Update VitePress Docs on Feed Branch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update-docs:
+    name: Update Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Main (Docs Source)
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: main-repo
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build VitePress Docs
+        run: |
+          cd main-repo/docs
+          npm ci
+          npx vitepress build .
+          echo "VitePress build complete."
+          ls -la .vitepress/dist/
+
+      - name: Checkout Feed Branch
+        uses: actions/checkout@v5
+        with:
+          ref: feed
+          path: feed-repo
+
+      - name: Get Build Timestamp
+        id: meta
+        run: |
+          echo "build_date=$(date -u +'%Y-%m-%d %H:%M:%S UTC')" >> $GITHUB_OUTPUT
+
+      - name: Update Docs on Feed Branch
+        run: |
+          set -e
+          cd feed-repo
+          shopt -s nullglob dotglob
+
+          echo "=== Phase 1: Preserve package dirs and static files ==="
+          mkdir -p /tmp/preserve
+
+          for item in *; do
+            # Always keep .git internals
+            [ "$item" = ".git" ] && continue
+
+            # Architecture package dirs: any directory containing .ipk or .apk files
+            if [ -d "$item" ] && ls "$item"/*.ipk "$item"/*.apk >/dev/null 2>&1; then
+              echo "  [KEEP] package dir: $item"
+              cp -a "$item" /tmp/preserve/
+              continue
+            fi
+
+            # Known static / non-VitePress files to preserve
+            case "$item" in
+              key-build.pub|key-build.rsa.pub|google*.html|\
+              install.sh|install_en.sh|\
+              .nojekyll|.gitignore|LICENSE|NOTICE)
+                echo "  [KEEP] static file: $item"
+                cp -a "$item" /tmp/preserve/
+                ;;
+              *)
+                echo "  [DROP] $item"
+                ;;
+            esac
+          done
+
+          echo ""
+          echo "=== Phase 2: Wipe everything except .git ==="
+          find . -mindepth 1 -maxdepth 1 -not -name '.git' -exec rm -rf {} +
+
+          echo ""
+          echo "=== Phase 3: Copy new VitePress output ==="
+          cp -r ../main-repo/docs/.vitepress/dist/* ./
+          echo "VitePress dist copied."
+
+          echo ""
+          echo "=== Phase 4: Restore preserved files ==="
+          if [ -n "$(ls -A /tmp/preserve 2>/dev/null)" ]; then
+            cp -a /tmp/preserve/* ./
+            echo "Preserved files restored:"
+            ls -la /tmp/preserve/
+          else
+            echo "No files to restore."
+          fi
+
+          # Ensure .nojekyll exists (GitHub Pages requirement)
+          touch .nojekyll
+
+          echo ""
+          echo "=== Phase 5: Regenerate package-manifest.json ==="
+          python3 << 'PYEOF'
+          import os, json, hashlib, re
+
+          manifest = {
+              "buildDate": os.environ.get("BUILD_DATE", ""),
+              "version": "",
+              "architectures": {}
+          }
+
+          valid_exts = ('.ipk', '.apk')
+          valid_names = {'tailscaled', 'Packages', 'Packages.gz', 'Packages.sig', 'packages.adb'}
+
+          for entry in sorted(os.listdir('.')):
+              entry_path = entry
+              if not os.path.isdir(entry_path):
+                  continue
+
+              # Check if this looks like an architecture dir
+              contents = os.listdir(entry_path)
+              has_packages = any(
+                  f.endswith(valid_exts) or f in valid_names
+                  for f in contents
+                  if os.path.isfile(os.path.join(entry_path, f))
+              )
+              if not has_packages:
+                  continue
+
+              arch = entry
+              files = []
+              for fname in sorted(os.listdir(entry_path)):
+                  fpath = os.path.join(entry_path, fname)
+                  if not os.path.isfile(fpath):
+                      continue
+                  if fname.endswith(valid_exts) or fname in valid_names:
+                      size_bytes = os.path.getsize(fpath)
+                      for unit in ('B', 'K', 'M', 'G'):
+                          if size_bytes < 1024:
+                              break
+                          size_bytes /= 1024
+                      fsize = f"{size_bytes:.1f}{unit}"
+                      sha = hashlib.sha256()
+                      with open(fpath, 'rb') as f:
+                          for chunk in iter(lambda: f.read(8192), b''):
+                              sha.update(chunk)
+                      files.append({
+                          "name": fname,
+                          "size": fsize,
+                          "sha256": sha.hexdigest()
+                      })
+
+              if files:
+                  manifest["architectures"][arch] = {"files": files}
+
+          # Extract version from the first .ipk filename found
+          for arch_data in manifest["architectures"].values():
+              for f in arch_data["files"]:
+                  if f["name"].endswith('.ipk'):
+                      m = re.match(r'tailscale_([\d.]+)_', f['name'])
+                      if m:
+                          manifest["version"] = m.group(1)
+                      break
+              if manifest["version"]:
+                  break
+
+          with open('package-manifest.json', 'w') as f:
+              json.dump(manifest, f, indent=2)
+          print(f"package-manifest.json generated: {len(manifest['architectures'])} architectures, version={manifest['version']}")
+          PYEOF
+        env:
+          BUILD_DATE: ${{ steps.meta.outputs.build_date }}
+
+      - name: Commit and Push to Feed
+        run: |
+          cd feed-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+          else
+            git commit -m "docs: update VitePress pages (${{ steps.meta.outputs.build_date }})"
+            git push origin feed --force
+            echo "Pushed to feed branch."
+          fi
