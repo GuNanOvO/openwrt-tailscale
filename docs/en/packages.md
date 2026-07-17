@@ -35,9 +35,10 @@ const error = ref(null)
 const searchQuery = ref('')
 const expandedAll = ref(false)
 
+const base = import.meta.env.BASE_URL || '/openwrt-tailscale/'
+
 onMounted(async () => {
   try {
-    const base = import.meta.env.BASE_URL || '/openwrt-tailscale/'
     const resp = await fetch(`${base}package-manifest.json`)
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
     manifest.value = await resp.json()

@@ -404,12 +404,16 @@ jobs:
             feed_template/key-build.pub \
             feed_template/key-build.rsa.pub \
             feed_template/google83715db89cd31b69.html \
-            feed_template/banner.png
+            feed_template/banner.png \
+            feed_template/README.md \
+            feed_template/README_en.md
 
           cp feed_template/key-build.pub ./
           cp feed_template/key-build.rsa.pub ./
           cp feed_template/google83715db89cd31b69.html ./
           cp feed_template/banner.png ./
+          cp feed_template/README.md ./
+          cp feed_template/README_en.md ./
           rm -rf feed_template
 
           # Copy install scripts from repo root
