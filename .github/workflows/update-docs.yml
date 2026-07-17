@@ -66,7 +66,8 @@ jobs:
               key-build.pub|key-build.rsa.pub|google*.html|\
               install.sh|install_en.sh|\
               README.md|README_en.md|\
-              .nojekyll|.gitignore|LICENSE|NOTICE)
+              .nojekyll|.gitignore|LICENSE|NOTICE|\
+              package-manifest.json)
                 echo "  [KEEP] static file: $item"
                 cp -a "$item" /tmp/preserve/
                 ;;
@@ -98,79 +99,6 @@ jobs:
           # Ensure .nojekyll exists (GitHub Pages requirement)
           touch .nojekyll
 
-          echo ""
-          echo "=== Phase 5: Regenerate package-manifest.json ==="
-          python3 << 'PYEOF'
-          import os, json, hashlib, re
-
-          manifest = {
-              "buildDate": os.environ.get("BUILD_DATE", ""),
-              "version": "",
-              "architectures": {}
-          }
-
-          valid_exts = ('.ipk', '.apk')
-          valid_names = {'tailscaled', 'Packages', 'Packages.gz', 'Packages.sig', 'packages.adb'}
-
-          for entry in sorted(os.listdir('.')):
-              entry_path = entry
-              if not os.path.isdir(entry_path):
-                  continue
-
-              # Check if this looks like an architecture dir
-              contents = os.listdir(entry_path)
-              has_packages = any(
-                  f.endswith(valid_exts) or f in valid_names
-                  for f in contents
-                  if os.path.isfile(os.path.join(entry_path, f))
-              )
-              if not has_packages:
-                  continue
-
-              arch = entry
-              files = []
-              for fname in sorted(os.listdir(entry_path)):
-                  fpath = os.path.join(entry_path, fname)
-                  if not os.path.isfile(fpath):
-                      continue
-                  if fname.endswith(valid_exts) or fname in valid_names:
-                      size_bytes = os.path.getsize(fpath)
-                      for unit in ('B', 'K', 'M', 'G'):
-                          if size_bytes < 1024:
-                              break
-                          size_bytes /= 1024
-                      fsize = f"{size_bytes:.1f}{unit}"
-                      sha = hashlib.sha256()
-                      with open(fpath, 'rb') as f:
-                          for chunk in iter(lambda: f.read(8192), b''):
-                              sha.update(chunk)
-                      files.append({
-                          "name": fname,
-                          "size": fsize,
-                          "sha256": sha.hexdigest()
-                      })
-
-              if files:
-                  manifest["architectures"][arch] = {"files": files}
-
-          # Extract version from the first .ipk filename found
-          for arch_data in manifest["architectures"].values():
-              for f in arch_data["files"]:
-                  if f["name"].endswith('.ipk'):
-                      m = re.match(r'tailscale_([\d.]+)_', f['name'])
-                      if m:
-                          manifest["version"] = m.group(1)
-                      break
-              if manifest["version"]:
-                  break
-
-          with open('package-manifest.json', 'w') as f:
-              json.dump(manifest, f, indent=2)
-          print(f"package-manifest.json generated: {len(manifest['architectures'])} architectures, version={manifest['version']}")
-          PYEOF
-        env:
-          BUILD_DATE: ${{ steps.meta.outputs.build_date }}
-
       - name: Commit and Push to Feed
         run: |
           cd feed-repo
@@ -179,8 +107,12 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit."
-          else
-            git commit -m "docs: update VitePress pages (${{ steps.meta.outputs.build_date }})"
-            git push origin feed --force
-            echo "Pushed to feed branch."
+            exit 0
           fi
+          git checkout --orphan temp
+          git add -A
+          git commit -m "docs: update VitePress pages (${{ steps.meta.outputs.build_date }})"
+          git branch -D feed
+          git branch -m temp feed
+          git push origin feed --force
+          echo "Pushed to feed branch."
