@@ -65,6 +65,7 @@ jobs:
             case "$item" in
               key-build.pub|key-build.rsa.pub|google*.html|\
               install.sh|install_en.sh|\
+              README.md|README_en.md|\
               .nojekyll|.gitignore|LICENSE|NOTICE)
                 echo "  [KEEP] static file: $item"
                 cp -a "$item" /tmp/preserve/
