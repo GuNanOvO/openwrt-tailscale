@@ -179,8 +179,12 @@ jobs:
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit."
-          else
-            git commit -m "docs: update VitePress pages (${{ steps.meta.outputs.build_date }})"
-            git push origin feed --force
-            echo "Pushed to feed branch."
+            exit 0
           fi
+          git checkout --orphan temp
+          git add -A
+          git commit -m "docs: update VitePress pages (${{ steps.meta.outputs.build_date }})"
+          git branch -D feed
+          git branch -m temp feed
+          git push origin feed --force
+          echo "Pushed to feed branch."
