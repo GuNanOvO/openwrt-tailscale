@@ -55,10 +55,16 @@ jobs:
             [ "$item" = ".git" ] && continue
 
             # Architecture package dirs: any directory containing .ipk or .apk files
-            if [ -d "$item" ] && ls "$item"/*.ipk "$item"/*.apk >/dev/null 2>&1; then
-              echo "  [KEEP] package dir: $item"
-              cp -a "$item" /tmp/preserve/
-              continue
+            if [ -d "$item" ]; then
+              has_pkg=false
+              for f in "$item"/*.ipk "$item"/*.apk; do
+                [ -f "$f" ] && { has_pkg=true; break; }
+              done
+              if $has_pkg; then
+                echo "  [KEEP] package dir: $item"
+                cp -a "$item" /tmp/preserve/
+                continue
+              fi
             fi
 
             # Known static / non-VitePress files to preserve
