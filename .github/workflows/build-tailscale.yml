@@ -8,6 +8,8 @@ on:
 permissions:
   contents: read
 
+# If you are forking this repo, update the env values below to match your fork.
+# See `.github/FORK.md` for the full forking guide, including required repository secrets.
 env:
   SOFTWARE_NAME: "Tailscale"
   REPO: "tailscale/tailscale"
@@ -115,6 +117,9 @@ jobs:
     needs: prepare
     strategy:
       matrix:
+        # If you are forking this repo, you must also update the `env` section above
+        # to match your fork, and set the required repository secrets.
+        # Refer to `.github/FORK.md` for the complete setup guide.
         platform:
           - 'aarch64_cortex-a53'
           - 'aarch64_cortex-a72'
