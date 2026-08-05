@@ -37,13 +37,13 @@ Expand the file list by architecture on the [Packages](/en/packages) page, then 
 For `.ipk` (OPKG):
 
 ```sh
-opkg install tailscale_*.ipk
+opkg install tailscale-upx*.ipk
 ```
 
 For `.apk` (APK):
 
 ```sh
-apk add --allow-untrusted tailscale_*.apk
+apk add --allow-untrusted tailscale-upx*.apk
 ```
 
 

@@ -8,11 +8,15 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=tailscale
+# 包名使用 tailscale-upx，避免与官方 feeds 中同名的 tailscale 包在自编译固件时冲突。
+# 通过 PROVIDES 声明提供 tailscale / tailscaled 虚拟包，仍可满足 luci-app-tailscale 等依赖。
+# 注意：PKG_SOURCE / PKG_BUILD_DIR 显式写 "tailscale-" 前缀，因为 GitHub tarball
+# 内部顶层目录名为 tailscale-$(PKG_VERSION)，与 PKG_NAME 解耦以保证下载/解压行为不变。
+PKG_NAME:=tailscale-upx
 PKG_VERSION:=1.102.2
 PKG_RELEASE:=1
 
-PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE:=tailscale-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/tailscale/tailscale/tar.gz/v$(PKG_VERSION)?
 PKG_HASH:=66c447b5555aa89e0690dc21e0ec59421302ceaa982f3ccc0df686b16f5d5505
 
@@ -37,7 +41,7 @@ endif
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-define Package/tailscale
+define Package/tailscale-upx
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=VPN
@@ -47,18 +51,18 @@ define Package/tailscale
   PROVIDES:=tailscale tailscaled
 endef
 
-define Package/tailscale/description
+define Package/tailscale-upx/description
   A smaller version of Tailscale. Built for OpenWrt.
   It creates a secure network between your servers, computers,
   and cloud instances. Even when separated by firewalls or subnets.
 endef
 
-define Package/tailscale/conffiles
+define Package/tailscale-upx/conffiles
 /etc/config/tailscale
 /etc/tailscale/
 endef
 
-define Package/tailscale/install
+define Package/tailscale-upx/install
 	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config
 	$(INSTALL_BIN) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(1)/usr/sbin
 
@@ -87,4 +91,4 @@ endif
 	$(INSTALL_DATA) ./files/tailscale.conf $(1)/etc/config/tailscale
 endef
 
-$(eval $(call BuildPackage,tailscale))
+$(eval $(call BuildPackage,tailscale-upx))

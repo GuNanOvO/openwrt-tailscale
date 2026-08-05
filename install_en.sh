@@ -283,7 +283,7 @@ get_tailscale_info() {
     fi
 
     TAILSCALE_LATEST_VERSION="$version"
-    TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION}-r1"
+    TAILSCALE_FILE="tailscale-upx-${TAILSCALE_LATEST_VERSION}-r1"
     TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
@@ -396,10 +396,10 @@ remove() {
     if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: Removing persistent installation tailscale package..."
         if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-            opkg remove tailscale
+            opkg remove tailscale tailscale-upx
             echo "[INFO]: opkg package removal complete"
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-            apk del tailscale
+            apk del tailscale tailscale-upx
             echo "[INFO]: apk package removal complete"
         fi
     fi
@@ -578,7 +578,7 @@ persistent_install() {
         echo "[INFO]: Installation attempt $install_attempt/3"
         if [ "$PACKAGE_MANAGER" = "opkg" ]; then
             echo "[INFO]: Removing old tailscale package..."
-            opkg remove tailscale 2>/dev/null || true
+            opkg remove tailscale tailscale-upx 2>/dev/null || true
             echo "[INFO]: Installing tailscale IPK package..."
             if opkg install /tmp/$TAILSCALE_FILE.ipk; then
                 install_success=true
@@ -590,7 +590,7 @@ persistent_install() {
             fi
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
             echo "[INFO]: Removing old tailscale package..."
-            apk del tailscale 2>/dev/null || true
+            apk del tailscale tailscale-upx 2>/dev/null || true
             echo "[INFO]: Installing tailscale APK package..."
             if apk add --allow-untrusted /tmp/$TAILSCALE_FILE.apk; then
                 install_success=true

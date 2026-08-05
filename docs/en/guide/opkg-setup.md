@@ -42,7 +42,7 @@ Replace {your-device-architecture} with your device architecture. Use opkg print
 opkg update
 
 # Install tailscale
-opkg install tailscale
+opkg install tailscale-upx
 ```
 
 #### Web UI:

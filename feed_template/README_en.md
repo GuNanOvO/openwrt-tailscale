@@ -56,18 +56,28 @@ https://gunanovo.github.io/openwrt-tailscale/{your device architecture}/packages
 
 ```sh
 opkg update
-opkg install tailscale
+opkg install tailscale-upx
 ```
 
 ### OpenWrt 25.10 or later (APK)
 
 ```sh
 apk update
-apk add tailscale
+apk add tailscale-upx
 ```
 
 > [!NOTE]
 > The `"failed log upload"` message that may appear during installation is expected and can be safely ignored.
+
+> [!IMPORTANT]
+> **Upgrading from the legacy `tailscale` package**: The package name in this repo is `tailscale-upx` (renamed to avoid colliding with the official feeds `tailscale` when self-building firmware; `PROVIDES` still satisfies dependencies such as `luci-app-tailscale`). If the official or legacy `tailscale` package is already installed, remove it first — otherwise installation fails due to file path conflicts. Config files (`/etc/config/tailscale`, `/etc/tailscale/`) are preserved and compatible; no re-login is required.
+>
+> ```sh
+> # OPKG
+> opkg remove tailscale && opkg install tailscale-upx
+> # APK
+> apk del tailscale && apk add tailscale-upx
+> ```
 
 ---
 

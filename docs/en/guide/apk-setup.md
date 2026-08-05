@@ -39,7 +39,7 @@ Replace {your-device-architecture} with your device architecture. Use cat /etc/a
 apk update
 
 # Install tailscale
-apk add tailscale
+apk add tailscale-upx
 ```
 
 #### Web UI:

@@ -51,8 +51,8 @@ echo "Using $(/builder/go/bin/go version)"
 make package/tailscale/compile -j$(nproc) V=s
 
 # check package build result
-if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk ]; then
-    echo "Build Success: APK Package generated at /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk"
+if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.apk ]; then
+    echo "Build Success: APK Package generated at /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.apk"
     ls -lh /builder/bin/packages/${TARGET_ARCH}/base/
 else
     echo "Error: No build product found at expected location"
@@ -69,7 +69,7 @@ cd /builder/bin/packages/${TARGET_ARCH}/base
     --sign-key /builder/keys/key-build.rsa \
     --keys-dir /builder/keys/ \
     --allow-untrusted \
-    tailscale-${PKG_VERSION}-r1.apk
+    tailscale-upx-${PKG_VERSION}-r1.apk
 
 # check if the index file and signature file is generated
 if [ -f packages.adb ] ; then

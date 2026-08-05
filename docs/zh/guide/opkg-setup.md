@@ -42,7 +42,7 @@ src/gz openwrt-tailscale https://gunanovo.github.io/openwrt-tailscale/{你的设
 opkg update
 
 # 安装tailscale
-opkg install tailscale
+opkg install tailscale-upx
 ```
 
 #### Web 界面方式：

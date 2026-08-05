@@ -36,13 +36,13 @@ opkg print-architecture | awk 'NF==3 && $3~/^[0-9]+$/ {print $2}' | tail -1
 `.ipk` 文件（OPKG）：
 
 ```sh
-opkg install tailscale_*.ipk
+opkg install tailscale-upx*.ipk
 ```
 
 `.apk` 文件（APK）：
 
 ```sh
-apk add --allow-untrusted tailscale_*.apk
+apk add --allow-untrusted tailscale-upx*.apk
 ```
 
 

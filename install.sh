@@ -337,7 +337,7 @@ get_tailscale_info() {
     fi
 
     TAILSCALE_LATEST_VERSION="$version"
-    TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION}-r1"
+    TAILSCALE_FILE="tailscale-upx-${TAILSCALE_LATEST_VERSION}-r1"
     TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then
@@ -448,10 +448,10 @@ remove() {
     if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: 移除持久安装的tailscale包..."
         if [ "$PACKAGE_MANAGER" = "opkg" ]; then
-            opkg remove tailscale
+            opkg remove tailscale tailscale-upx
             echo "[INFO]: opkg包移除完成"
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
-            apk del tailscale
+            apk del tailscale tailscale-upx
             echo "[INFO]: apk包移除完成"
         fi
     fi
@@ -628,7 +628,7 @@ persistent_install() {
         echo "[INFO]: 安装尝试 $install_attempt/3"
         if [ "$PACKAGE_MANAGER" = "opkg" ]; then
             echo "[INFO]: 移除旧的tailscale包..."
-            opkg remove tailscale 2>/dev/null || true
+            opkg remove tailscale tailscale-upx 2>/dev/null || true
             echo "[INFO]: 安装tailscale IPK包..."
             if opkg install /tmp/$TAILSCALE_FILE.ipk; then
                 install_success=true
@@ -640,7 +640,7 @@ persistent_install() {
             fi
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
             echo "[INFO]: 移除旧的tailscale包..."
-            apk del tailscale 2>/dev/null || true
+            apk del tailscale tailscale-upx 2>/dev/null || true
             echo "[INFO]: 安装tailscale APK包..."
             if apk add --allow-untrusted /tmp/$TAILSCALE_FILE.apk; then
                 install_success=true

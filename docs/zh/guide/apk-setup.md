@@ -39,7 +39,7 @@ https://gunanovo.github.io/openwrt-tailscale/{你的设备架构}/packages.adb
 apk update
 
 # 安装tailscale
-apk add tailscale
+apk add tailscale-upx
 ```
 
 #### Web 界面方式：

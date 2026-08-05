@@ -285,7 +285,7 @@ jobs:
 
       - name: Collect Build Artifacts
         env:
-          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk"
+          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.ipk tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.apk"
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"
 
@@ -308,11 +308,11 @@ jobs:
 
           echo "${{ steps.get_build_version.outputs.version }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
 
-          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" ]; then
-            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.ipk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
           fi
-          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" ]; then
-            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/apk.sha256"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.apk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-upx-${{ steps.get_build_version.outputs.version }}-r1.apk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/apk.sha256"
           fi
 
           sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscaled" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.sha256"
@@ -521,11 +521,11 @@ jobs:
             [ -d "$arch_dir" ] || continue
             arch=$(basename "$arch_dir")
 
-            ipk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r1.ipk"
-            apk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r1.apk"
+            ipk_old="$arch_dir/tailscale-upx-${{ env.RELEASE_VERSION }}-r1.ipk"
+            apk_old="$arch_dir/tailscale-upx-${{ env.RELEASE_VERSION }}-r1.apk"
 
-            ipk_new="$arch_dir/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk"
-            apk_new="$arch_dir/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk"
+            ipk_new="$arch_dir/tailscale-upx_${{ env.RELEASE_VERSION }}_${arch}.ipk"
+            apk_new="$arch_dir/tailscale-upx_${{ env.RELEASE_VERSION }}_${arch}.apk"
 
             if [ -f "$ipk_old" ]; then
               mv "$ipk_old" "$ipk_new"
@@ -550,8 +550,8 @@ jobs:
             [ -d "$arch_dir" ] || continue
             arch=$(basename "$arch_dir")
 
-            ipk_file=$(ls "$arch_dir"/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk 2>/dev/null | xargs -n1 basename || echo "none")
-            apk_file=$(ls "$arch_dir"/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk 2>/dev/null | xargs -n1 basename || echo "none")
+            ipk_file=$(ls "$arch_dir"/tailscale-upx_${{ env.RELEASE_VERSION }}_${arch}.ipk 2>/dev/null | xargs -n1 basename || echo "none")
+            apk_file=$(ls "$arch_dir"/tailscale-upx_${{ env.RELEASE_VERSION }}_${arch}.apk 2>/dev/null | xargs -n1 basename || echo "none")
 
             if [ "$ipk_file" != "none" ]; then
               ipk_link="[${ipk_file}](https://github.com/${{ env.REPO_SMALL_OWNER }}/${{ env.REPO_SMALL_NAME }}/releases/download/${{ env.RELEASE_TAG }}/${ipk_file})"

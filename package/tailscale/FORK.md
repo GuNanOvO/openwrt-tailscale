@@ -5,6 +5,9 @@
 部分用户会 fork 本仓库的 `package` 目录，并在 OpenWrt SDK 中自行编译。本文对 Makefile 中的关键配置进行说明，方便理解和按需调整。
 Some users fork the `package` directory from this repository and build it using the OpenWrt SDK. This document explains key parts of the Makefile for better understanding and customization.
 
+> [!IMPORTANT]
+> **关于包名**：本包 `PKG_NAME` 为 `tailscale-upx`（避免与官方 feeds 中同名的 `tailscale` 在自编译固件时冲突），但源码目录仍为 `package/tailscale/`。因此 `make package/tailscale/compile`（按目录路径）与 `CONFIG_PACKAGE_tailscale-upx=y`（按包名）并存，二者均正确，请勿混淆。安装后通过 `PROVIDES:=tailscale tailscaled` 提供虚拟包，可满足 `luci-app-tailscale` 等依赖；若设备已装官方 `tailscale`，需先卸载再安装本包（文件路径相同会冲突）。
+
 ## 0. 自编译 OpenWrt 固件时的 Go 版本问题
 
 如果你是从自己编译的 OpenWrt 固件源码树里直接构建本包，且该 buildroot 使用了官方 packages feed 自带的旧版 Go，那么较新的 Tailscale 源码可能会在编译阶段报错，例如：
@@ -28,7 +31,7 @@ src-git openwrt_tailscale https://github.com/GuNanOvO/openwrt-tailscale.git
 
 ```bash
 ./scripts/feeds update openwrt_tailscale
-./scripts/feeds install tailscale
+./scripts/feeds install tailscale-upx
 ```
 
 之后本包的 Makefile 会出现在 `package/feeds/openwrt_tailscale/tailscale/`。
@@ -64,7 +67,7 @@ make menuconfig
 或直接追加到配置文件：
 
 ```bash
-echo "CONFIG_PACKAGE_tailscale=y" >> .config
+echo "CONFIG_PACKAGE_tailscale-upx=y" >> .config
 make defconfig
 ```
 
