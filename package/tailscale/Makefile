@@ -39,6 +39,9 @@ ifneq ($(filter mips64% riscv64% loongarch64%,$(ARCH)),)
 endif
 
 include $(INCLUDE_DIR)/package.mk
+
+# golang-package.mk is provided by the feeds-installed golang package,
+# always located at feeds/packages/lang/golang/ relative to TOPDIR.
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
 define Package/tailscale-upx
