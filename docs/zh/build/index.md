@@ -23,6 +23,7 @@ description: 自行构建精简版 Tailscale 软件包 — 构建系统、脚本
 | `build_scripts/build_ipk.sh` | 构建 IPK 包 (OpenWrt 24.10) |
 | `build_scripts/build_apk.sh` | 构建 APK 包 (OpenWrt 25.12+) |
 | `build_scripts/prepare_go_for_openwrt.sh` | 为 OpenWrt SDK 准备 Go 工具链 |
+| `build_scripts/build_feed.sh` | 在自编译固件的 buildroot 中一键构建本包（以自定义 feed 方式） |
 
 ## CI/CD 流水线
 
