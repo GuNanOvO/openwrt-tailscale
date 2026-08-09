@@ -51,6 +51,11 @@ fi
 # Select package in .config automatically if requested.
 # Use USE_AS_TAILSCALE=1 to enable CONFIG_PACKAGE_tailscale (replace official package)
 # Otherwise enable our tailscale-upx package by default.
+
+# Remove existing conflicting configuration entries first (safe)
+sed -i '/^CONFIG_PACKAGE_tailscale=/d' .config || true
+sed -i '/^CONFIG_PACKAGE_tailscale-upx=/d' .config || true
+
 if [ "${USE_AS_TAILSCALE:-0}" = "1" ]; then
     echo "Enabling package: tailscale (replace official)"
     echo "CONFIG_PACKAGE_tailscale=y" >> .config
@@ -107,17 +112,22 @@ fi
 
 # remove leftover/older tailscale packages so index generation won't pick the wrong package
 PKG_DIR="/builder/bin/packages/${TARGET_ARCH}/base"
-echo "Cleaning old tailscale packages in $PKG_DIR..."
+echo "Will check for old tailscale packages in $PKG_DIR..."
 if [ -d "$PKG_DIR" ]; then
-    # remove any tailscale_*.ipk or tailscale-*.ipk except the freshly generated tailscale-upx package
-    # If we intentionally replaced the official package (USE_AS_TAILSCALE=1), keep tailscale_*.ipk
-    if [ "${USE_AS_TAILSCALE:-0}" = "1" ]; then
-        # keep tailscale_*.ipk, remove other tailscale-upx-* artifacts
-        find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale-upx_*.ipk' -o -name 'tailscale-upx-*.ipk' \) -print -exec rm -f {} \;
+    echo "Files that match tailscale patterns (will be removed if FORCE_CLEAN=1):"
+    find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' -o -name 'tailscale-upx_*.ipk' -o -name 'tailscale-upx-*.ipk' \) -print || true
+
+    if [ "${FORCE_CLEAN:-0}" = "1" ]; then
+        echo "FORCE_CLEAN=1 detected — removing matching old tailscale files..."
+        if [ "${USE_AS_TAILSCALE:-0}" = "1" ]; then
+            find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale-upx_*.ipk' -o -name 'tailscale-upx-*.ipk' \) -print -exec rm -f {} \;
+        else
+            find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' \) \
+                ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
+                ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
+        fi
     else
-        find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' \) \
-            ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
-            ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
+        echo "FORCE_CLEAN not set — no files removed. Set FORCE_CLEAN=1 to actually delete files."
     fi
 fi
 
