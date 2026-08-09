@@ -67,6 +67,17 @@ echo "Renaming generated IPK package to standard format..."
 mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
 ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
 
+# --- NEW: remove leftover/older tailscale packages so index generation won't pick the wrong package ---
+PKG_DIR="/builder/bin/packages/${TARGET_ARCH}/base"
+echo "Cleaning old tailscale packages in $PKG_DIR..."
+if [ -d "$PKG_DIR" ]; then
+    # remove any tailscale_*.ipk or tailscale-*.ipk except the freshly generated tailscale-upx package
+    find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' \) \
+        ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
+        ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
+fi
+# ---------------------------------------------------------------
+
 cp /builder/keys/key-build.sec ./key-build
 make package/index -j$(nproc) V=s
 
