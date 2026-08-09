@@ -22,12 +22,31 @@ echo "Initializing feeds and installing golang package..."
 mkdir -p /builder/package/lang
 # ln -sf /builder/feeds/packages/lang/golang /builder/package/lang/golang
 
-# remove original tailscale package
-rm -rf /builder/package/tailscale
-mkdir -p /builder/package/tailscale
-# copy optimized tailscale package
-# see https://github.com/GuNanOvO/openwrt-tailscale/tree/main/package/tailscale for details
-cp -r /builder/tailscale/. /builder/package/tailscale/
+# Prefer adding this repository as an OpenWrt feed (src-git) so it can be used by feeds system
+# This avoids copying into package/ and makes it work like a standard feeds package.
+FEED_NAME="openwrt_tailscale"
+FEED_URL="https://github.com/Potterli20/openwrt-tailscale.git"
+FEEDS_CONF_DEFAULT="feeds.conf.default"
+
+# remove any local package/tailscale to avoid conflicts with the feed-provided package
+rm -rf /builder/package/tailscale || true
+
+# add the feed if it's not already present
+if [ -f "$FEEDS_CONF_DEFAULT" ]; then
+    if ! grep -q "^src-git ${FEED_NAME}\b" "$FEEDS_CONF_DEFAULT" 2>/dev/null; then
+        echo "Adding custom feed to $FEEDS_CONF_DEFAULT: src-git ${FEED_NAME} ${FEED_URL}"
+        echo "src-git ${FEED_NAME} ${FEED_URL}" >> "$FEEDS_CONF_DEFAULT"
+    else
+        echo "Feed ${FEED_NAME} already present in $FEEDS_CONF_DEFAULT"
+    fi
+else
+    echo "Creating $FEEDS_CONF_DEFAULT and adding ${FEED_NAME}"
+    echo "src-git ${FEED_NAME} ${FEED_URL}" > "$FEEDS_CONF_DEFAULT"
+fi
+
+# update and install feeds (prefer updating the new feed first)
+./scripts/feeds update ${FEED_NAME} || ./scripts/feeds update -a
+./scripts/feeds install -a
 
 # make defconfig to generate .config with default settings, which is required for go build
 make defconfig > /dev/null 2>&1
@@ -67,7 +86,7 @@ echo "Renaming generated IPK package to standard format..."
 mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
 ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
 
-# --- NEW: remove leftover/older tailscale packages so index generation won't pick the wrong package ---
+# remove leftover/older tailscale packages so index generation won't pick the wrong package
 PKG_DIR="/builder/bin/packages/${TARGET_ARCH}/base"
 echo "Cleaning old tailscale packages in $PKG_DIR..."
 if [ -d "$PKG_DIR" ]; then
@@ -76,7 +95,6 @@ if [ -d "$PKG_DIR" ]; then
         ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
         ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
 fi
-# ---------------------------------------------------------------
 
 cp /builder/keys/key-build.sec ./key-build
 make package/index -j$(nproc) V=s
