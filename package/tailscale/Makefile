@@ -16,6 +16,10 @@ PKG_NAME:=tailscale-upx
 PKG_VERSION:=1.102.2
 PKG_RELEASE:=1
 
+# 控制是否将编译好的 tailscaled 二进制导出到 $(TOPDIR)/bin/packages/.../base
+# 默认关闭，设置 EXPORT_TAILSCALED=1 可启用（可通过环境或 make 参数传入）
+EXPORT_TAILSCALED ?= 0
+
 PKG_SOURCE:=tailscale-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/tailscale/tailscale/tar.gz/v$(PKG_VERSION)?
 PKG_HASH:=66c447b5555aa89e0690dc21e0ec59421302ceaa982f3ccc0df686b16f5d5505
@@ -83,11 +87,12 @@ ifneq ($(DISABLE_UPX),1)
 else
 	echo "==> UPX disabled on ARCH $(ARCH)"
 endif
-	# [Maintainer Note] Save a copy of the binary for the repository.
-    # Feel free to remove the next two lines for local builds.
-	# 可选：以下两行仅用于为本项目仓库保留一份二进制副本，自行使用时可删除
-	# mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
-	# $(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+
+# Optional: export raw binary into bin/packages for convenience. Controlled by EXPORT_TAILSCALED.
+ifneq ($(EXPORT_TAILSCALED),0)
+	mkdir -p $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base
+	$(CP) $(GO_PKG_BUILD_BIN_DIR)/tailscaled $(TOPDIR)/bin/packages/$(ARCH_PACKAGES)/base/tailscaled
+endif
 
 	$(LN) tailscaled $(1)/usr/sbin/tailscale
 	$(INSTALL_BIN) ./files/tailscale.init $(1)/etc/init.d/tailscale
