@@ -48,6 +48,17 @@ fi
 ./scripts/feeds update ${FEED_NAME} || ./scripts/feeds update -a
 ./scripts/feeds install -a
 
+# Select package in .config automatically if requested.
+# Use USE_AS_TAILSCALE=1 to enable CONFIG_PACKAGE_tailscale (replace official package)
+# Otherwise enable our tailscale-upx package by default.
+if [ "${USE_AS_TAILSCALE:-0}" = "1" ]; then
+    echo "Enabling package: tailscale (replace official)"
+    echo "CONFIG_PACKAGE_tailscale=y" >> .config
+else
+    echo "Enabling package: tailscale-upx"
+    echo "CONFIG_PACKAGE_tailscale-upx=y" >> .config
+fi
+
 # make defconfig to generate .config with default settings, which is required for go build
 make defconfig > /dev/null 2>&1
 
@@ -76,24 +87,38 @@ if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r
     echo "Build Success: IPK Package generated at /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk"
     ls -lh /builder/bin/packages/${TARGET_ARCH}/base/
 else
-    echo "Error: No build product found at expected location"
-    echo "Build Failed"
-    exit 1
+    # If we replaced the official package name, check for tailscale_*.ipk
+    if [ "${USE_AS_TAILSCALE:-0}" = "1" ] && ls /builder/bin/packages/${TARGET_ARCH}/base/tailscale_*.ipk >/dev/null 2>&1; then
+        echo "Build Success: IPK Package generated at /builder/bin/packages/${TARGET_ARCH}/base/ (tailscale_*.ipk)"
+        ls -lh /builder/bin/packages/${TARGET_ARCH}/base/ | grep tailscale || true
+    else
+        echo "Error: No build product found at expected location"
+        echo "Build Failed"
+        exit 1
+    fi
 fi
 
-# rename the generated ipk package to standard format: tailscale-upx-${PKG_VERSION}-r1.ipk
+# rename the generated ipk package to standard format: tailscale-upx-${PKG_VERSION}-r1.ipk (if present)
 echo "Renaming generated IPK package to standard format..."
-mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
-ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
+if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk ]; then
+    mv /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
+    ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-upx-${PKG_VERSION}-r1.ipk
+fi
 
 # remove leftover/older tailscale packages so index generation won't pick the wrong package
 PKG_DIR="/builder/bin/packages/${TARGET_ARCH}/base"
 echo "Cleaning old tailscale packages in $PKG_DIR..."
 if [ -d "$PKG_DIR" ]; then
     # remove any tailscale_*.ipk or tailscale-*.ipk except the freshly generated tailscale-upx package
-    find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' \) \
-        ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
-        ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
+    # If we intentionally replaced the official package (USE_AS_TAILSCALE=1), keep tailscale_*.ipk
+    if [ "${USE_AS_TAILSCALE:-0}" = "1" ]; then
+        # keep tailscale_*.ipk, remove other tailscale-upx-* artifacts
+        find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale-upx_*.ipk' -o -name 'tailscale-upx-*.ipk' \) -print -exec rm -f {} \;
+    else
+        find "$PKG_DIR" -maxdepth 1 -type f \( -name 'tailscale_*.ipk' -o -name 'tailscale-*.ipk' \) \
+            ! -name "tailscale-upx-${PKG_VERSION}-r1.ipk" \
+            ! -name "tailscale-upx_${PKG_VERSION}-r1_${TARGET_ARCH}.ipk" -print -exec rm -f {} \;
+    fi
 fi
 
 cp /builder/keys/key-build.sec ./key-build
