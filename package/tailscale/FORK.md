@@ -73,7 +73,7 @@ cp -r /tmp/openwrt-tailscale/package/tailscale ./package/tailscale/
 步骤一：在 buildroot 根目录执行下面的脚本，用上游 Go 版本覆盖当前的 Go 工具链：
 
 ```bash
-bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 ```
 
 步骤二：在菜单中选中 tailscale 包（或者直接写入 `.config`）：
@@ -101,14 +101,14 @@ make -j$(nproc) V=s
 如果你只想要编译出 `.ipk` 包（而非完整固件），则执行：
 
 ```bash
-bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 make package/tailscale/compile -j$(nproc) V=s
 ```
 
 如果你使用的是非 amd64 主机，也可以显式指定 `GO_ARCH`：
 
 ```bash
-GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 ```
 
 ---

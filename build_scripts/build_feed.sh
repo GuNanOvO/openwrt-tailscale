@@ -11,7 +11,7 @@
 #   ./build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale
 #
 #   # With a specific Go version:
-#   ./build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale 1.26.5
+#   ./build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale 1.26.6
 #
 #   # Only compile, no index:
 #   ./build_feed.sh /path/to/openwrt/buildroot --no-index
@@ -26,7 +26,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 BUILDROOT="${1:-}"
 TAILSCALE_SRC="${2:-}"
-GO_VERSION="${3:-1.26.5}"
+GO_VERSION="${3:-1.26.6}"
 BUILD_INDEX="true"
 FEED_NAME="openwrt_tailscale"
 REPO_URL="https://github.com/GuNanOvO/openwrt-tailscale.git"
