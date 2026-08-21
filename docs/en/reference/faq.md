@@ -39,6 +39,16 @@ Yes! Install [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/l
 
 Yes! See the [Build Guide](/en/build/) for Docker-based build instructions.
 
+### How to embed the latest Tailscale into a self-built firmware?
+
+If you compile your own OpenWrt firmware and the official `packages` feed only ships an old tailscale, run the one-shot script from this repo. It replaces the buildroot's Go toolchain, adds this repo as a custom feed, and removes the stale official tailscale:
+
+```sh
+bash /path/to/openwrt-tailscale/build_scripts/build_feed.sh /path/to/openwrt/buildroot
+```
+
+Then build the full firmware (`make -j$(nproc) V=s`). See `package/tailscale/FORK.md` for details.
+
 ### Does UPX affect performance?
 
 UPX decompresses the binary at startup. The decompression is very fast (milliseconds) and the binary runs at native speed afterward. The memory overhead of decompression is negligible.

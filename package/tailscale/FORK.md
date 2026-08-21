@@ -16,7 +16,23 @@ Some users fork the `package` directory from this repository and build it using 
 
 ### 准备工作：把本包加入你的 buildroot
 
-**方法 A：添加为 feed（推荐）**
+**方法 A：一键脚本（推荐）**
+
+直接运行本仓库提供的 `build_feed.sh`：
+
+```bash
+# 远程模式（从 GitHub 拉取本仓库最新代码）
+bash /path/to/openwrt-tailscale/build_scripts/build_feed.sh /path/to/openwrt/buildroot
+
+# 本地模式（调试用，指向本地仓库副本）
+bash /path/to/openwrt-tailscale/build_scripts/build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale
+```
+
+脚本会自动完成：替换 Go 工具链 → 添加本仓库为 feed → 移除其他 feed（如官方 `packages` feed）中的旧 tailscale → 选中并编译。脚本可重复执行；执行 `./scripts/feeds update -a` 后官方旧包会复活，重跑一次脚本即可。
+
+> **为什么保留包名 `tailscale`**：本仓库的定位是"再打包分发"（发布预编译 ipk/apk 供安装），包名即升级标识，改名会导致现有用户无法通过 `opkg upgrade tailscale` 升级。自编译固件时，脚本通过移除官方旧包来实现"替换"，无需改名。
+
+**方法 B：添加为 feed（手动）**
 
 编辑 `feeds.conf.default`，加入一行：
 
@@ -28,12 +44,18 @@ src-git openwrt_tailscale https://github.com/GuNanOvO/openwrt-tailscale.git
 
 ```bash
 ./scripts/feeds update openwrt_tailscale
-./scripts/feeds install tailscale
+./scripts/feeds install -p openwrt_tailscale tailscale
 ```
 
 之后本包的 Makefile 会出现在 `package/feeds/openwrt_tailscale/tailscale/`。
 
-**方法 B：手动复制**
+> **注意**：如果 buildroot 的其他 feed（如官方 `packages` feed）里也提供了 `tailscale` 包，同名包会互相覆盖，可能导致编到旧版本。出现这种情况时，移除其他 feed 中的旧包：
+
+```bash
+rm -rf package/feeds/packages/tailscale
+```
+
+**方法 C：手动复制**
 
 ```bash
 # 先克隆本仓库
@@ -51,7 +73,7 @@ cp -r /tmp/openwrt-tailscale/package/tailscale ./package/tailscale/
 步骤一：在 buildroot 根目录执行下面的脚本，用上游 Go 版本覆盖当前的 Go 工具链：
 
 ```bash
-bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 ```
 
 步骤二：在菜单中选中 tailscale 包（或者直接写入 `.config`）：
@@ -79,14 +101,14 @@ make -j$(nproc) V=s
 如果你只想要编译出 `.ipk` 包（而非完整固件），则执行：
 
 ```bash
-bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 make package/tailscale/compile -j$(nproc) V=s
 ```
 
 如果你使用的是非 amd64 主机，也可以显式指定 `GO_ARCH`：
 
 ```bash
-GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.5
+GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buildroot 1.26.6
 ```
 
 ---

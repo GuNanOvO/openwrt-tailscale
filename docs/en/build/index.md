@@ -23,6 +23,7 @@ The build system uses:
 | `build_scripts/build_ipk.sh` | Build IPK packages (OpenWrt 24.10) |
 | `build_scripts/build_apk.sh` | Build APK packages (OpenWrt 25.12+) |
 | `build_scripts/prepare_go_for_openwrt.sh` | Prepare Go toolchain for OpenWrt SDK |
+| `build_scripts/build_feed.sh` | One-shot script to build this package inside a self-built firmware buildroot (as a custom feed) |
 
 ## CI/CD Pipeline
 
