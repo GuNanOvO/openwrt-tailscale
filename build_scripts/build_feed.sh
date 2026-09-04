@@ -105,7 +105,10 @@ echo "[Step 3] Updating feeds..."
 
 rm -rf "feeds/${FEED_NAME}" 2>/dev/null || true
 ./scripts/feeds update "$FEED_NAME"
-./scripts/feeds install -p "$FEED_NAME"
+# -a is required: bare `feeds install -p <feed>` only marks the feed as
+# preferred and installs nothing (silently), which leaves no symlink under
+# package/feeds/<feed>/. See scripts/feeds install() in OpenWrt 24.10.
+./scripts/feeds install -a -p "$FEED_NAME"
 
 PKG_LINK="package/feeds/${FEED_NAME}/tailscale"
 if [ ! -d "$PKG_LINK" ]; then
