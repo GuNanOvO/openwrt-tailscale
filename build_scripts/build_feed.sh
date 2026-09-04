@@ -16,6 +16,9 @@
 #   # Only compile, no index:
 #   ./build_feed.sh /path/to/openwrt/buildroot --no-index
 #
+#   # One-line online usage (no local checkout needed):
+#   bash <(curl -fsSL https://raw.githubusercontent.com/GuNanOvO/openwrt-tailscale/main/build_scripts/build_feed.sh) /path/to/openwrt/buildroot
+#
 # The script is idempotent: re-running it after `./scripts/feeds update -a` re-removes
 # the official tailscale and rebuilds this repository's version, so the override
 # survives feed refreshes.
@@ -30,6 +33,8 @@ GO_VERSION="${3:-1.26.6}"
 BUILD_INDEX="true"
 FEED_NAME="openwrt_tailscale"
 REPO_URL="https://github.com/GuNanOvO/openwrt-tailscale.git"
+REPO_OWNER="GuNanOvO"
+REPO_NAME="openwrt-tailscale"
 TARGET_ARCH=""
 
 # -- Parse options --
@@ -58,7 +63,17 @@ echo "=== OpenWrt Buildroot: $BUILDROOT ==="
 # Tailscale sources fail with "go.mod requires go >= ...".
 echo ""
 echo "[Step 1] Preparing Go ${GO_VERSION} toolchain..."
-bash "${SCRIPT_DIR}/prepare_go_for_openwrt.sh" "$BUILDROOT" "$GO_VERSION"
+if [ -f "${SCRIPT_DIR}/prepare_go_for_openwrt.sh" ]; then
+    bash "${SCRIPT_DIR}/prepare_go_for_openwrt.sh" "$BUILDROOT" "$GO_VERSION"
+else
+    # Fallback for curl|bash execution: the companion script is not on disk
+    # (SCRIPT_DIR resolves to /dev/fd), download it into a temp dir instead.
+    echo "  Companion script not found locally, downloading it..."
+    PREPARE_TMP="$(mktemp -d)"
+    trap 'rm -rf "$PREPARE_TMP"' EXIT
+    curl -fsSL "https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/build_scripts/prepare_go_for_openwrt.sh" -o "$PREPARE_TMP/prepare_go_for_openwrt.sh"
+    bash "$PREPARE_TMP/prepare_go_for_openwrt.sh" "$BUILDROOT" "$GO_VERSION"
+fi
 
 # -- Step 2: Set up custom feed --
 echo ""
