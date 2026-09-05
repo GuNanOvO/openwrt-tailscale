@@ -10,9 +10,10 @@
 #   # Local mode (development, points the feed at a local checkout):
 #   ./build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale
 #
-#   # With a specific Go version (positional or flag):
+#   # With a specific Go version (positional, flag or env):
 #   ./build_feed.sh /path/to/openwrt/buildroot /path/to/openwrt-tailscale 1.26.6
 #   ./build_feed.sh /path/to/openwrt/buildroot --go-version 1.26.6
+#   GO_VERSION=1.26.6 ./build_feed.sh /path/to/openwrt/buildroot
 #
 #   # Only compile, no index:
 #   ./build_feed.sh /path/to/openwrt/buildroot --no-index
@@ -25,14 +26,19 @@
 #
 # Options:
 #   --no-index           Skip 'make package/index'
-#   --no-compile         Skip compiling; only set up the feed and select the
-#                        package in .config (implies --no-index)
-#   --go-version <ver>   Go toolchain version to install (default: 1.26.6)
+#   --no-compile         Skip compiling; only set up the feed and select it in
+#                        .config (implies --no-index)
+#   --go-version <ver>   Pin a Go toolchain version; by default the latest
+#                        stable release is auto-detected from golang.google.cn
+#                        (fallback: go.dev), with 1.26.6 as the offline fallback
 #   -h, --help           Show help
 #
 # Environment overrides:
 #   REPO_URL             Git URL used in remote mode (useful for mirrors)
 #   JOBS                 Parallel build jobs (default: nproc)
+#   GO_VERSION           Pin a Go version (same as --go-version)
+#   GO_VERSION_API       URL queried for the latest Go version
+#                        (default: https://golang.google.cn/VERSION?m=text)
 #
 # The script is idempotent: re-running it after `./scripts/feeds update -a` re-removes
 # the official tailscale and rebuilds this repository's version, so the override
@@ -52,7 +58,14 @@ REPO_NAME="openwrt-tailscale"
 JOBS="${JOBS:-$(nproc)}"
 BUILD_INDEX="true"
 BUILD_PACKAGE="true"
-GO_VERSION=""
+GO_VERSION="${GO_VERSION:-}"
+# Latest-version endpoints, tried in order. golang.google.cn first: it is the
+# official Google mirror reachable from mainland China without a proxy; go.dev
+# is the international fallback. Both return "goX.Y.Z" on the first line.
+GO_VERSION_APIS=(
+    "${GO_VERSION_API:-https://golang.google.cn/VERSION?m=text}"
+    "https://go.dev/VERSION?m=text"
+)
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 
@@ -60,6 +73,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || true)"
 
 warn() { printf '  [!] %s\n' "$*" >&2; }
 die()  { printf 'Error: %s\n' "$*" >&2; exit 1; }
+
+# Detect the latest stable Go version from the official endpoints.
+# Sets GO_VERSION_DETECTED and GO_VERSION_SOURCE on success; returns non-zero
+# when every endpoint fails or replies with something that does not parse as a
+# version (never trust arbitrary remote content blindly).
+detect_latest_go_version() {
+    local api out ver
+    for api in "${GO_VERSION_APIS[@]}"; do
+        out="$(curl -fsSL --max-time 15 "$api" 2>/dev/null || true)"
+        [ -n "$out" ] || continue
+        ver="${out%%$'\n'*}"        # first line only
+        ver="${ver//[[:space:]]/}"  # strip any whitespace
+        if [[ "$ver" =~ ^go([0-9]+(\.[0-9]+)*)$ ]]; then
+            GO_VERSION_DETECTED="${BASH_REMATCH[1]}"
+            GO_VERSION_SOURCE="$api"
+            return 0
+        fi
+        warn "unrecognized version reply from ${api}: ${ver:0:40}"
+    done
+    return 1
+}
 
 usage() {
     cat <<'EOF'
@@ -72,18 +106,23 @@ Arguments:
   buildroot              OpenWrt buildroot directory (required)
   source                 Local openwrt-tailscale checkout; omit it to use the
                          remote GitHub feed (or $REPO_URL)
-  go_version             Go toolchain version (default: 1.26.6)
+  go_version             Pin a Go toolchain version; by default the latest
+                         stable release is auto-detected from golang.google.cn
+                         (fallback: go.dev)
 
 Options:
   --no-index             Skip 'make package/index'
   --no-compile           Skip compiling; only set up the feed and select the
                          package in .config (implies --no-index)
-  --go-version <ver>     Same as the positional go_version argument
+  --go-version <ver>     Pin the Go toolchain version
   -h, --help             Show this help
 
 Environment:
   REPO_URL               Git URL for remote mode (e.g. a mirror)
   JOBS                   Parallel jobs for make (default: nproc)
+  GO_VERSION             Pin a Go version (same as --go-version)
+  GO_VERSION_API         URL queried for the latest Go version
+                         (default: https://golang.google.cn/VERSION?m=text)
 EOF
 }
 
@@ -116,8 +155,14 @@ done
 
 BUILDROOT="${POSITIONAL[0]:-}"
 TAILSCALE_SRC="${POSITIONAL[1]:-}"
-if [ -z "$GO_VERSION" ]; then
-    GO_VERSION="${POSITIONAL[2]:-$DEFAULT_GO_VERSION}"
+# Precedence: --go-version flag > GO_VERSION env > positional argument;
+# when none is given the latest stable version is auto-detected (Step 0).
+if [ -z "$GO_VERSION" ] && [ -n "${POSITIONAL[2]:-}" ]; then
+    GO_VERSION="${POSITIONAL[2]}"
+fi
+GO_VERSION_SPECIFIED="false"
+if [ -n "$GO_VERSION" ]; then
+    GO_VERSION_SPECIFIED="true"
 fi
 
 # --------------------------------------------------------------- validation ---
@@ -142,6 +187,23 @@ fi
 
 echo "=== OpenWrt Buildroot: $BUILDROOT ==="
 cd "$BUILDROOT"
+
+# -- Step 0: Resolve the Go version --
+if [ "$GO_VERSION_SPECIFIED" = "true" ]; then
+    echo ""
+    echo "[Step 0] Go version pinned by user: ${GO_VERSION}"
+else
+    echo ""
+    echo "[Step 0] Detecting latest Go version..."
+    if detect_latest_go_version; then
+        GO_VERSION="$GO_VERSION_DETECTED"
+        echo "  Latest stable Go: ${GO_VERSION} (from ${GO_VERSION_SOURCE})"
+    else
+        GO_VERSION="$DEFAULT_GO_VERSION"
+        warn "could not detect the latest Go version (offline or endpoints changed);"
+        warn "falling back to pinned default ${GO_VERSION}. Use --go-version to pin one manually."
+    fi
+fi
 
 # -- Step 1: Prepare Go toolchain --
 # Override the buildroot's Go with a recent upstream release, otherwise newer
