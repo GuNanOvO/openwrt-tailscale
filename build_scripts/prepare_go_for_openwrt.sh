@@ -8,6 +8,12 @@
 #
 # Example:
 #   ./build_scripts/prepare_go_for_openwrt.sh /home/user/openwrt 1.26.3
+#
+# Environment:
+#   GO_OS / GO_ARCH   Host platform of the Go tarball (default: detected)
+#   GO_DL_BASE        Preferred download base URL
+#                     (default: https://golang.google.cn/dl, official China mirror;
+#                     https://go.dev/dl is always tried as fallback)
 
 set -euo pipefail
 
@@ -39,8 +45,14 @@ if [ -z "$GO_ARCH" ]; then
   esac
 fi
 
+# golang.google.cn first: official Google mirror, reachable from mainland China
+# without a proxy. go.dev is the international fallback and serves the same files.
+GO_DL_BASES=(
+  "${GO_DL_BASE:-https://golang.google.cn/dl}"
+  "https://go.dev/dl"
+)
+
 GO_TARBALL="go${GO_VERSION}.${GO_OS}-${GO_ARCH}.tar.gz"
-GO_URL="https://go.dev/dl/${GO_TARBALL}"
 GO_INSTALL_DIR="$BUILDROOT_DIR/staging_dir/hostpkg/go"
 GO_BIN_DIR="$BUILDROOT_DIR/staging_dir/hostpkg/bin"
 GO_HOST_BIN_DIR="$BUILDROOT_DIR/staging_dir/host/bin"
@@ -51,8 +63,21 @@ mkdir -p "$DOWNLOAD_DIR" "$GO_BIN_DIR" "$GO_HOST_BIN_DIR" "$GO_CROSS_BIN_DIR"
 
 ARCHIVE_PATH="$DOWNLOAD_DIR/$GO_TARBALL"
 if [ ! -f "$ARCHIVE_PATH" ]; then
-  echo "Downloading Go ${GO_VERSION} from ${GO_URL}"
-  curl -fsSL -o "$ARCHIVE_PATH" "$GO_URL"
+  downloaded="false"
+  for base in "${GO_DL_BASES[@]}"; do
+    GO_URL="${base}/${GO_TARBALL}"
+    echo "Downloading Go ${GO_VERSION} from ${GO_URL}"
+    if curl -fsSL --retry 3 -o "$ARCHIVE_PATH" "$GO_URL"; then
+      downloaded="true"
+      break
+    fi
+    rm -f "$ARCHIVE_PATH"
+    echo "  Download from ${base} failed, trying next mirror..." >&2
+  done
+  if [ "$downloaded" != "true" ]; then
+    echo "Error: failed to download ${GO_TARBALL} from any mirror" >&2
+    exit 1
+  fi
 else
   echo "Using cached Go archive: $ARCHIVE_PATH"
 fi
