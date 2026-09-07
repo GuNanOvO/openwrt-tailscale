@@ -41,13 +41,12 @@ Yes! See the [Build Guide](/en/build/) for Docker-based build instructions.
 
 ### How to embed the latest Tailscale into a self-built firmware?
 
-If you compile your own OpenWrt firmware and the official `packages` feed only ships an old tailscale, run the one-shot script from this repo. It replaces the buildroot's Go toolchain, adds this repo as a custom feed, and removes the stale official tailscale:
+If you compile your own OpenWrt firmware and the official `packages` feed only ships an old tailscale, there are two options:
 
-```sh
-bash /path/to/openwrt-tailscale/build_scripts/build_feed.sh /path/to/openwrt/buildroot
-```
+1. **Install the prebuilt ipk directly** (no compilation): download the ipk for your architecture and `opkg install` it
+2. **One-click script `build_feed.sh`**: replaces the Go toolchain, registers the feed, removes the stale official package, and builds
 
-Then build the full firmware (`make -j$(nproc) V=s`). See `package/tailscale/FORK.md` for details.
+See [Self-Build Firmware](/en/build/self-build) for details.
 
 ### Does UPX affect performance?
 

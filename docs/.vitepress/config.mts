@@ -68,6 +68,7 @@ export default defineConfig({
             { text: 'Overview', link: '/en/build/' },
             { text: 'Build IPK', link: '/en/build/ipk' },
             { text: 'Build APK', link: '/en/build/apk' },
+            { text: 'Self-Build Firmware', link: '/en/build/self-build' },
           ] },
           { text: 'Help', items: [
             { text: 'FAQ', link: '/en/reference/faq' },
@@ -95,6 +96,7 @@ export default defineConfig({
               { text: 'Overview', link: '/en/build/' },
               { text: 'Build IPK (24.10)', link: '/en/build/ipk' },
               { text: 'Build APK (25.12+)', link: '/en/build/apk' },
+              { text: 'Self-Build Firmware', link: '/en/build/self-build' },
             ] }
           ],
           '/en/reference/': [
@@ -137,6 +139,7 @@ export default defineConfig({
             { text: '概览', link: '/zh/build/' },
             { text: '构建 IPK', link: '/zh/build/ipk' },
             { text: '构建 APK', link: '/zh/build/apk' },
+            { text: '自编译固件', link: '/zh/build/self-build' },
           ] },
           { text: '帮助', items: [
             { text: '常见问题', link: '/zh/reference/faq' },
@@ -164,6 +167,7 @@ export default defineConfig({
               { text: '概览', link: '/zh/build/' },
               { text: '构建 IPK (24.10)', link: '/zh/build/ipk' },
               { text: '构建 APK (25.12+)', link: '/zh/build/apk' },
+              { text: '自编译固件', link: '/zh/build/self-build' },
             ] }
           ],
           '/zh/reference/': [
