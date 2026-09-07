@@ -3,6 +3,12 @@
 # The package keeps the official name `tailscale`, so the buildroot's stale official
 # tailscale (e.g. from a frozen openwrt/packages branch) is replaced instead of duplicated.
 #
+# Maintainer: @Potterli20 (https://github.com/Potterli20) - community-contributed,
+#             originally requested in issue #142
+#             (https://github.com/GuNanOvO/openwrt-tailscale/issues/142).
+#             This script is maintained by its contributors; it is not part of the
+#             core package distribution workflow of this repository.
+#
 # Usage:
 #   # Remote mode (GitHub feed, recommended for firmware builds):
 #   ./build_feed.sh /path/to/openwrt/buildroot
