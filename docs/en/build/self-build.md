@@ -14,20 +14,7 @@ Guide to embedding this repository's tailscale into a self-built OpenWrt firmwar
 
 ## Option 1: Install the Prebuilt IPK Directly (No Compilation)
 
-If you just want the latest version on an existing firmware, this is the simplest way — no buildroot needed:
-
-```sh
-# 1. Download the ipk for your architecture (see [Packages](/en/packages))
-wget https://github.com/GuNanOvO/openwrt-tailscale/releases/download/v1.102.3/tailscale_1.102.3_aarch64_cortex-a53.ipk
-
-# 2. Remove the old version and install dependencies
-opkg remove tailscale 2>/dev/null || true
-opkg update
-opkg install kmod-tun ca-bundle
-
-# 3. Install the new version
-opkg install tailscale_1.102.3_aarch64_cortex-a53.ipk
-```
+If you just want the latest version on an existing firmware, install the prebuilt ipk from this repository — the steps are identical to a standard install, see [Manual Install](/en/guide/manual-install). No buildroot needed.
 
 > Note: after a firmware upgrade, preinstalled packages are restored to the firmware's built-in version and need to be reinstalled.
 

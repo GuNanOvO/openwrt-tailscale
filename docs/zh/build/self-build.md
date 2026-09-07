@@ -14,20 +14,7 @@ description: 在自编译 OpenWrt 固件中嵌入本仓库的最新 tailscale �
 
 ## 方式一：预编译 ipk 直接安装（无需编译）
 
-如果只是想让现有固件用上最新版，这是最简单的方式，不需要 buildroot：
-
-```sh
-# 1. 下载对应架构的 ipk（架构列表见 [软件包](/zh/packages)）
-wget https://github.com/GuNanOvO/openwrt-tailscale/releases/download/v1.102.3/tailscale_1.102.3_aarch64_cortex-a53.ipk
-
-# 2. 卸载旧版并安装依赖
-opkg remove tailscale 2>/dev/null || true
-opkg update
-opkg install kmod-tun ca-bundle
-
-# 3. 安装新版
-opkg install tailscale_1.102.3_aarch64_cortex-a53.ipk
-```
+如果只是想让现有固件用上最新版，直接安装本仓库预编译的 ipk 即可——步骤与标准安装完全相同，见[手动下载安装](/zh/guide/manual-install)，无需 buildroot。
 
 > 注意：固件升级后预安装的包会被恢复为固件内置版本，需要重新安装。
 
