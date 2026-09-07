@@ -1,0 +1,1253 @@
+{
+  "buildDate": "2026-08-21 00:02:54 UTC",
+  "version": "1.102.3",
+  "architectures": {
+    "aarch64_cortex-a53": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "42825db681f445af52a9dbd72aca7e792b455804f9d0e1e8e6a0aa6563af359f"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "419.0B",
+          "sha256": "2a3c5d32538ab539e4f3689fecd781bf7f95592e302998e99442e6b39dc581c5"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "6dc9653f0d0d224f18d2d7bf251579421391f0c74c453503f09e3efd53a89012"
+        },
+        {
+          "name": "packages.adb",
+          "size": "802.0B",
+          "sha256": "94beee4447737ce2e935c51590116efc308a55f15ac72252c64ca92b36247d41"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "181ea25bdd891f9004b27b9d4d75783690a44fd8bec339790ec812c5283f69b0"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "6a1151f53485ee9ccb398134e74984e0ba2cc04953b22089d55acc43b51fe9c1"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "cea699a29b85e483e8beda453a9276624f117c41d82df3424a218095344f5d5e"
+        }
+      ]
+    },
+    "aarch64_cortex-a72": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "73776bb727331766ec3c6af03d0b8c426025de112d228c2d8273edd450843f16"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "425.0B",
+          "sha256": "b0943d1ae060a48cee779096c5fabd41244a0c7632dc583dd29b0215dc6d74f3"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "9c344ca9e4ebafb85a9939ca8f8334eab2d7bbb9dc57470b51802049f88987c0"
+        },
+        {
+          "name": "packages.adb",
+          "size": "804.0B",
+          "sha256": "d328c990ac9d1bc54fdb6f2a5174a838e38c24c2c5f6374bc8f458d6c24e0e7a"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "a6366522e3851accf028777b6eed6b0592af5ac46bd7ba71a0286d22b0c2b9ea"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "554404f60c894a75329b8d70f0711c13dacf50aaa224b6b4b93d936fee775126"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "03ab3b98236f664f970cfd1d32e164b3da0e4402c43a20036d709dbcc20d6ca6"
+        }
+      ]
+    },
+    "aarch64_cortex-a76": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "58ba4282b4827aae9ee492609859f68ea9728dba2b774015905f398f9d9bdf67"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "422.0B",
+          "sha256": "966f14558ea54d276e5b221ae5f0bd3448c9e21ea4ca29620c32c2a5e98087ad"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "1a3ac8d5c76b12f986a27332c5fec3471657939d2c861e4ccad64f6f9beb915c"
+        },
+        {
+          "name": "packages.adb",
+          "size": "794.0B",
+          "sha256": "1b9f43e653e37308b19151b32776817d4708fa04be0d6a6850d690f024b1a741"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "fee38c18f911f4edd8dec3467091124cf764e435b6ee50bf4e002f38a20a0791"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "825d70bcc8bfe9bb9ad57a0157a11fc7b7f48794f1d029d4f57f8f51e90a60e1"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "af9c8c9c8c854efb33724d38cc61e399b6a46c43cf15cb895017dde8ea8d247e"
+        }
+      ]
+    },
+    "aarch64_generic": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "590.0B",
+          "sha256": "4559a3d9eec93caf69a6e21b89e3580fa1fdb5548dd6c669cad93680b8f8667b"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "419.0B",
+          "sha256": "58bd43178a3247361606b2b80ea732f0b2a1f64f9fa49de8a725350f93553f46"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "73dc3779d579d7ffb8203d406a75504b021e7807c0a2a8b6ff0d8bf583aa42e0"
+        },
+        {
+          "name": "packages.adb",
+          "size": "793.0B",
+          "sha256": "72a41dc7a9caa4c37a48a22c834161841ee671241d2f5c87e45042a6f3bee1fa"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "40fb4b1e98a49c03029f055a5c9ce805c9a4afe8df12d52ba786921158a55e7f"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "71b2db5bf55420f095ca99f5b6580e4c853036be4c0a7fe8e55f01ca70e40a99"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "9a9937a4321abafc103251588312a14b7c1380694cc1dfe5208d7640891dd47e"
+        }
+      ]
+    },
+    "arm_arm1176jzf-s_vfp": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "595.0B",
+          "sha256": "5df20b7f42572877e515dd1a0153519dd7a2542735d94e34f721785ef2ba1ec1"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "427.0B",
+          "sha256": "ce3fcc07fe92f768fb89d46f6e4ea88d41f6590bb44dc8f24560f694bc225934"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "9f87f50e44b339506ffe1ff11661c6e0faf4f6f7f7d6fa49dff793a9078a86ac"
+        },
+        {
+          "name": "packages.adb",
+          "size": "800.0B",
+          "sha256": "49affba186e9e9f1c976b6fd630f9e3b1336bcacf0ba4ba769a8ac41a98ea19e"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "dbd658da7416c78651ffd3aef75d155478e6834b43914a373bf210fe718be29c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "87263422087b7c3af4ceba901a6415629a72ba33b2d052a52881c6a12fa2c128"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "094cd37da918dfbad8c81cd04bde84420e6f3392aeb731989b0a94e775f4acd0"
+        }
+      ]
+    },
+    "arm_arm926ej-s": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "589.0B",
+          "sha256": "9a604b3d8136894705a949da29c75a059ea067ac3b7c295a78bbe0fc3657f969"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "421.0B",
+          "sha256": "2ae355002a6a7ef8a2a6c9e055bd93514995655bc590f22ece7da90fe63f6478"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "6a77244c9491bfb3087ef1159baf964204188c380c698e249fb2469f4cc88253"
+        },
+        {
+          "name": "packages.adb",
+          "size": "793.0B",
+          "sha256": "c83575307fb15c27d70aff8c49fbb181e503aeced2c3b891fa0caf6e50c876f5"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "b0fc2cc4561a7d047265ce4ca701b7bf41febfbbc66a529e3b1d5e97f9bcff3c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "f0ca844379c1e7b2a421a9444dac7b0fd7ed1656e4e28144c8d6cfa146ffd4fb"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "b9861d15b77a1b136eae3216b1432306494e87c1f60fee8eb651f23851406d5e"
+        }
+      ]
+    },
+    "arm_cortex-a15_neon-vfpv4": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "600.0B",
+          "sha256": "c6aac737f401d9dfb9d53a024a7e94d6d19b2f250e1c1e3745eb05d64c0ba85c"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "428.0B",
+          "sha256": "e5989a9e60aef5e18a2da892f78b3dda79b051dbbe5b59548c01fed5bff28b9d"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "5a76fdf007c640c678e730ebc30e0a4474925d58f4187a13b4240bc847e1ebb6"
+        },
+        {
+          "name": "packages.adb",
+          "size": "804.0B",
+          "sha256": "f3c67017be833a21ecb676f7b7e86852d703cd3995a4243b86a9ce620e4c8bb3"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "4d137b680f3d5c22f237ad897f5e2d098e6488f9207227d7a6d9a5db73a6c2ed"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "b5ede49e86b567c9820073c7cf16de6e027d258351ad53cdc6edc10f7ae7273a"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "7050749386c517933d5cb6b1c758b3a03fd336f1ee3071f459e683ae1558cbd5"
+        }
+      ]
+    },
+    "arm_cortex-a5_vfpv4": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "594.0B",
+          "sha256": "72c107b93b776aa974a5416a252309ae601281486f33e6009e5fccb97d0abc62"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "426.0B",
+          "sha256": "03ee69412c8fc14837a7f32e9d01831ac76f5e32bd1d6d37123972d0dfc0f440"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "b3f2b0e85e9f34c79de247ec5bf5ed63c12487b96355498e9ce96914670dc898"
+        },
+        {
+          "name": "packages.adb",
+          "size": "803.0B",
+          "sha256": "bbb25b42ce71e8db57f449af1f2d116a344e73cc4520571d9fb90ccf53374019"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "bd5f1c8380838566a787b3dd53fa85c16b6249fb2ab1cc26c3d5d5176c0f921b"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "f84cc03af04051978fe09c119232c7bbcc83619b8a18bf4b2c96892727dd15b4"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "7f0e94044dcee2f6beb3d6a92e084262b9ff9e400fd8a80a3e093b393ec2e1ec"
+        }
+      ]
+    },
+    "arm_cortex-a7": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "588.0B",
+          "sha256": "e80977361079e6f4412199e0fb1a50a1bae807634ffb7a234025d9f01b29c3fe"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "419.0B",
+          "sha256": "7b3adbb8801b8aa056a2dd8880f4e434ba87fed908ee6fdcf0e7050a13cd341d"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "1e828bd58eaca33a5b096be95de93fb9e6a5643f5da40d4966d39be2ccff56a6"
+        },
+        {
+          "name": "packages.adb",
+          "size": "798.0B",
+          "sha256": "fbc9b55203bf91e77e3d2ccf4f4e16e75da8bbb1fdd5e8204775a0e47b26a7de"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "cfd32f47e4ea6c113e217cbf0589d116b808e01e614208c5bb75fb3e73bd2f22"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "475dea6a50646ce10d3e264706a078a4a1b0ed01d453700e7177e2cb681c3fa6"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "57ff659eb08c924aa5ac2905f693d996cb0d8a440a9d7f585b25a52a2a84cfd9"
+        }
+      ]
+    },
+    "arm_cortex-a7_neon-vfpv4": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "599.0B",
+          "sha256": "a6ae5ed8715e78b4c2e2cd8a6ec223e111cf81b2cc689d2ccf28f634afcfe89a"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "429.0B",
+          "sha256": "c44ac4297279cc2eb35d2ed003d4dc5683d9e22670689d89da41aa8380e75e74"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "5d9df17973974d68204d3b3dd0d64726b19b0a45762247450faa2ab631db7ae9"
+        },
+        {
+          "name": "packages.adb",
+          "size": "804.0B",
+          "sha256": "278673eb4e957dfa206c1c439a3da6dfc65cdeb5a3a243c7f9333edcb0be8889"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "855db95909e4f8b3c57a443bc0c246b6861e58170f4b5526b7bddd73e9aba00c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "ffa188c4125907c231d2ed675ed4b3f5a834afea237c63ff664b96179110ba90"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "0ad522f24b30aaeedab8b2106484437ac111f5d31d79abd490c938bbc0984bd4"
+        }
+      ]
+    },
+    "arm_cortex-a7_vfpv4": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "594.0B",
+          "sha256": "6196c402ad24e590408214b867581886fb372ecea7b4b271ca06afb1bf46e7e3"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "426.0B",
+          "sha256": "02c470b6b3cd9ab79663e68057a8ae28f3d17c11d6c94a25f963bf20671200bb"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "07705539c701466ed93d96fc37549f149392b1feda6bc632642681109e539977"
+        },
+        {
+          "name": "packages.adb",
+          "size": "797.0B",
+          "sha256": "09506df672f8472077f33b8f705a6766ee3df7507c3dbf950e6e18bdef260c04"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "861e996199dd3341cef40decc48ab17f4441143c34d7d20944183ebf85302ce2"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "8c14185c02c430222f5a22cf7840c27f55e68a6058ba1e524f08c99bb6c73951"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "686e14248c080ff3ee9b2f921890ec5a04b00d2198ea2282b73602bfc6c52e2a"
+        }
+      ]
+    },
+    "arm_cortex-a8_vfpv3": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "594.0B",
+          "sha256": "a801d9b76bb7e51374d82c37ba1122ce147481b860a0d30840dc24565e82d1fc"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "425.0B",
+          "sha256": "11ba67a1bd1bfbb067eb3f9e1e6ab5cb98539c833eb1d63e36510e612562bbc6"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "a51e550b9f057b5d391f376d6ef4a6fa0c270fc755cf8e59ac94b8ab3770e101"
+        },
+        {
+          "name": "packages.adb",
+          "size": "798.0B",
+          "sha256": "c14bc641ad43de1807bf3055701e05ed790d2d34ba1cd010c0533d31111d509e"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "ff6a138b8f14bf39ac16b2bac05f5d559f643bca52bbd544bd0bfeb7a10dfc36"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "a13072e4c2ae239bf5efc714393c9bc8a5d35ecb2c33b0a0823bf2f709aa0b9e"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "4f0182c97d1215b14a954b61ed531f18a0864be2e19864977363f0b91b162b9e"
+        }
+      ]
+    },
+    "arm_cortex-a9": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "588.0B",
+          "sha256": "849fc91ae434bf155a9b2a831e6c61a0d82fdf67e626f5d552bae6867ca1285a"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "420.0B",
+          "sha256": "4e29d9930e1ccd1f6d50f2df85a163a95f8002c0c23581000e4f6f86d8dcb0a1"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "27d45ca34f8b1d17f9a48c1d6bd8a6f4c0cafe4e8ea716658219ba4762df12d0"
+        },
+        {
+          "name": "packages.adb",
+          "size": "795.0B",
+          "sha256": "bc82f50cfa87e9776cdc519a304fda7602a5e05bdec9cd57d193ecb92df14e36"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "309adae6029efe8c41d7a58b0b27ddc7da56536d4c29bbd10f58f5c6ae25fa41"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "b365eb1ff02eaea1aff7e1d17ab79470b9627d2732a24ded06169b150bdd2bc0"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "374f6123b2befad37d611b9e0564ac1db96d99dbfc97f9b248117867f45d0b02"
+        }
+      ]
+    },
+    "arm_cortex-a9_neon": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "c87f6266f8c401d380f023bb56f615e30ee100932284f230fbc4e86e1dd9f83a"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "424.0B",
+          "sha256": "b2cf474e8aa5cde0c31a66aa8e3d3f6274587f65725e30f6baa4468e720f6556"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "63602969ff1c83e58017bbf782262209bf37cd515276f6d0bfed17403376bab2"
+        },
+        {
+          "name": "packages.adb",
+          "size": "803.0B",
+          "sha256": "3f0731b6eb1beeb0e425759d484fd88afbec4515a158a045d4b3d0a188a3eac9"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "686b708200dffeb7b8e9b08a4dc3366cdb9119ee74167909b34deeefcc8b7aa7"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "d7e6df0963e46538a2d8b8766a8594e29e8d2d6b42115c708bbfd4d30a9ee389"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "78ecf8e249714447877dbecf89d5cf71f7943549fde59bc4ddfd04b61133bd9f"
+        }
+      ]
+    },
+    "arm_cortex-a9_vfpv3-d16": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "598.0B",
+          "sha256": "044618ef0acea9eb78159b93002c3ced0d7ce5a9ffde91a5f6e35c515b932c15"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "428.0B",
+          "sha256": "d9168cda642493636864718a00e4316fb2fcadb7aedcbc1b85a3d91bd13b678d"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "de5b9512218293f8f7b03682dbc298152d7ded8f495fbb8539c367be1b5985e4"
+        },
+        {
+          "name": "packages.adb",
+          "size": "805.0B",
+          "sha256": "9c9a803cb27d6b9e9dc4222d0a7cc907564d807d50d02545707c2772d0eb63e7"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "24d99fae9a9bcfe96f0e632e6be3bb3d55bb9de6b8cc7a63a5b8c55b3f3f7949"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "f11f229caaf995b06d435a4ebe9add210a62f8b95d5c017a78ee943fe18770b1"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "fed5bdcf8d84fd56e4a8d547c80e42b3be78b4ae172980966607ffcc3615f02a"
+        }
+      ]
+    },
+    "arm_fa526": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "584.0B",
+          "sha256": "f80b4c4bb26047216b5f7fb982e393ec059b9e9bb6c038601acbe70cd8f77e9a"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "418.0B",
+          "sha256": "ccf31303e4ba801e2b9b383f518abba97fdba6a18467ef4ade7e6f3a28ad5675"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "556a09d2eeb9788ae80a7694977330c41eda5ac0c5b88b6813af22b3eb33d05f"
+        },
+        {
+          "name": "packages.adb",
+          "size": "792.0B",
+          "sha256": "2b79b4bd840fcb86e4c600b56a4697bf13b5dfc26fa9c7e0517107c3a09e03c0"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "bf978635f9b18e062fbf7fc0304c4e02fd4a0055594a6cd09c50884a2554e694"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "20b51f9086e95e4b004ba4fe41ef86a5c92ee77690083523f029e42024f4931c"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "f6c608ccff14359d84d7df511991dee6d98c6ac0795ab6d0cdca89b8cae638b2"
+        }
+      ]
+    },
+    "arm_xscale": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "585.0B",
+          "sha256": "fc334982880e63e84173863f416bc7716e4d2cd3dcb4d8f3483c4e2a3ea98fe5"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "417.0B",
+          "sha256": "65e90000040e4bf2bc5f03b5ebbf3cc268531a8e936722e4755ba8240993d079"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "024f6cb773b540153d9bf6361b2b1e29e47db766e19df555961b2e58790ae4ae"
+        },
+        {
+          "name": "packages.adb",
+          "size": "787.0B",
+          "sha256": "6ec4ac22e75122f99af47c7b6aabf15f8b7beaa71826a4def2a1707065be798c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.4M",
+          "sha256": "087e95cc355b77a944cf1ea6732b3c9fa1439b428ce82800668bb0b25a6289a7"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.4M",
+          "sha256": "d1f78f4c9818b57c93675ef04da398bad39153945a99a14ce3fd7b47c46677ac"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.4M",
+          "sha256": "724f02b9517bbe676d4ed0011ed1eed013b1f02a91431b757ab01d9220eb6330"
+        }
+      ]
+    },
+    "i386_pentium-mmx": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "591.0B",
+          "sha256": "fdd934801eae86774d474749a9a24ea6b6c5e64a522bf5997d81e95f475a62a5"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "425.0B",
+          "sha256": "b2557ca2d8a37233ca64bec40e41d1e0d87d7743c06ce054fdf38702681cb565"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "8e7d8cd9ae159625e07247c287fc2a2c3974029f0019ed55451a7f4b01a01692"
+        },
+        {
+          "name": "packages.adb",
+          "size": "796.0B",
+          "sha256": "32492fbeabd54c86d5e4061ac574c17862ead77cb976df86de4b94998aae28b0"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "7.3M",
+          "sha256": "8d5f7eb8933eab51d37e2e2ced115025f0bd224a4053e3751f0f6e37b84c2ec9"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "7.3M",
+          "sha256": "1f5871773a8b55d64845498b0c63c62c9858e1bee11c20a02198dd02a5269b80"
+        },
+        {
+          "name": "tailscaled",
+          "size": "7.3M",
+          "sha256": "21399b245d926251c6fdf6042d5fe6d443a3cd93c6a92956b31e0fc91b39ae57"
+        }
+      ]
+    },
+    "i386_pentium4": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "588.0B",
+          "sha256": "a5bfc39101dd40822a793d7b9b66a4971932064e6ba7a9a28c680ef16d751e14"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "420.0B",
+          "sha256": "1444696c7fc13194f6bbb015c6e68f6cf084e507e23809ae6353d28c14678bba"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "1bfda63adbd6fee86b69f0115de3702470df31c55e76f10754a8010a25aa327a"
+        },
+        {
+          "name": "packages.adb",
+          "size": "794.0B",
+          "sha256": "6039c03e6fbde24cb1e663fcec97aa37344fc02ce95f8d86f22001be10139cf5"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "7.3M",
+          "sha256": "4e8268d92bcb45819c8276c37509e47393e0d452680393852dd9f9ef27523e2b"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "7.3M",
+          "sha256": "6fdf18d4c8578d16976e434848fee11cb0c4a6b2a2573a0badea4807ffc291c7"
+        },
+        {
+          "name": "tailscaled",
+          "size": "7.3M",
+          "sha256": "c890876a51e3cd79f7b42686dba0a4109a1cec4666a641b97a2afe530c77bbab"
+        }
+      ]
+    },
+    "loongarch64_generic": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "596.0B",
+          "sha256": "481abe599bc2d7bc41c99d48c07d54c72f894829e7070a040d23193f0b86accb"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "426.0B",
+          "sha256": "733328bcbc3c672250a264f0f3fc6c549a34994de66b3b2feebc2d0d6df67dd9"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "ee1e192c0fd9313f14b28bf4b32e6e78744a7430d2089343dc4ff919e9c1b2b9"
+        },
+        {
+          "name": "packages.adb",
+          "size": "794.0B",
+          "sha256": "1b57a07b1f064342ac87e2b74a9ff0a13d1cf73284a65cc47119be9ca90d2774"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "10.0M",
+          "sha256": "dac5b3b50557785c7113364a06b7e599e1acce3b8500c69923b0b0cc4a41368c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "10.0M",
+          "sha256": "ec5b4ec73902c4c295c29a969775d507b4df783d4bb5188d5f14e35b85940e13"
+        },
+        {
+          "name": "tailscaled",
+          "size": "26.8M",
+          "sha256": "9d1b0c6e3adf7dfa82da87e9c262375ac1ad8d1ba83426ba2a680444d823d448"
+        }
+      ]
+    },
+    "mips64_mips64r2": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "591.0B",
+          "sha256": "6f41d7680cfded886fa4fe6a4211f94f781dcdc6923f3804356cd0d6aec23768"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "421.0B",
+          "sha256": "3ac158f11ab796040090bf2c962de32779fdea90ac1626080f18cc3ab6673283"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "8debaeddbe287aba11476e2e19747ffdbf1bf8dbef7cb2c93b9285deef8e5f59"
+        },
+        {
+          "name": "packages.adb",
+          "size": "789.0B",
+          "sha256": "f438308d8c09e35be4e575af39f1d92dc76e88ddb17ad09a0970f717911e090a"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "9.2M",
+          "sha256": "2d1838d97131ad35b2823e51588252ea615dcf9305cddaff34a7d186a6831b81"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "9.4M",
+          "sha256": "e691d4640d013a308bdb179d0f9a793f7bca28f65454a315098e614ee964045a"
+        },
+        {
+          "name": "tailscaled",
+          "size": "30.0M",
+          "sha256": "f0e913ab5b4d3c047e333713d2a8546245f04faee82a1522ca346b6f2e2950f4"
+        }
+      ]
+    },
+    "mips64_octeonplus": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "55a32fc15f339b37389424e8be5d2a1d9b23c10598d590ffdcdc0cbc15dbcb66"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "423.0B",
+          "sha256": "24f96bd621f2dd2ce30e00836aee1efe5276704ea5f7a58f20d65f0cc445ac06"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "7f9d123cdbd4c654013450bfefbc4881f6e0c0e356dd324ac538e64b08165d2a"
+        },
+        {
+          "name": "packages.adb",
+          "size": "793.0B",
+          "sha256": "bea2b5fc04b8174c09ef7ee11991fdb8fcac95ca00aa0b25912db61593aa2c62"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "9.2M",
+          "sha256": "3e02e4942a3921019bd4d6e94b4b38f9736db12003e812bb028926e196e97fcd"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "9.4M",
+          "sha256": "bada5f0162ee9563d62bf0bf7db4265e887776a1da8ca80c915e73303801b6e5"
+        },
+        {
+          "name": "tailscaled",
+          "size": "30.0M",
+          "sha256": "4582b89d0acd0efeed4917f1aaa769a1853db3b05f89a6d9f7dace79d4f4182d"
+        }
+      ]
+    },
+    "mips64el_mips64r2": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "593.0B",
+          "sha256": "328b3dbe1ed26e7b6ba5d3416e473446e9258fa1d21e23194207305bbbbb5399"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "423.0B",
+          "sha256": "91575115a2b542d9a8e78e2d23096d2b923cfc71c9bd0e0d05d4a5519747f699"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "86c8b71c81aafae067aeceecc4dd8f07650a570600570ae31dbb0a2d2266a460"
+        },
+        {
+          "name": "packages.adb",
+          "size": "796.0B",
+          "sha256": "641203f16150835bc41e4267da56a76b4a6f56cbf223a60d36a5d9006dbbfc1a"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "9.1M",
+          "sha256": "89aaa7bec2ce68508fe8866eccff043a713264f8bb6c8976ae37be708505fa45"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "9.2M",
+          "sha256": "367ff85bc792534ad060a6bc8faa8879f41d42011a15607eb7ab8869cf878de7"
+        },
+        {
+          "name": "tailscaled",
+          "size": "30.0M",
+          "sha256": "6e594c485b8623d1c8d45f63a9cdb0105154db6da3f798b575a16c566b48f596"
+        }
+      ]
+    },
+    "mips_24kc": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "584.0B",
+          "sha256": "f9a2dda4ddb1b4b9dba8a76b79762c02245c94de9087fa8316dd11c1bd92a5ef"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "416.0B",
+          "sha256": "007435e5e5b06132aa5c3c15e8b766af99080e1e0e76da1942da6e39778c8a45"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "3e2d79a1fe4047f97f5ae0aa6b2ceea97a9b77bee38dcefb96479a70f9664088"
+        },
+        {
+          "name": "packages.adb",
+          "size": "788.0B",
+          "sha256": "018cda1902c6302d88bfa0580f59758617f85fe85629d05bd392608f4fbbf69d"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.1M",
+          "sha256": "6148a48cf172021981541dd70129041f950091919a37de8ef0332ac947f554e0"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.1M",
+          "sha256": "2e825063d71c5a9b0e5a3cae01a4cb17a898dc3abb7063d224f3244a32003310"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.1M",
+          "sha256": "7ba15df342a577d31d049dc90ac07e91394097a52214bb9e7b18bfdb2b64d5e6"
+        }
+      ]
+    },
+    "mips_4kec": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "584.0B",
+          "sha256": "80fc3e7dd15df9bccb8089ece70b823ed09d70b032405137d3e12fe7ef43f79f"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "417.0B",
+          "sha256": "2c430ac78bf99492c04622d487261b0700f876f87c057d561df7adfbd8afb64d"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "7a5879e4485b407eeaa2dbeb4a7d37ca62504dda9429d11a8ec433721e196056"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.1M",
+          "sha256": "2dcf014b436e2f32712e6dde05bfaf5a3068958f927dbada51be7a5e2c17831e"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.1M",
+          "sha256": "a49e781e8d775c67779c45552d502d381383a7bcba1dc5c882da8092a6257bce"
+        }
+      ]
+    },
+    "mips_mips32": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "586.0B",
+          "sha256": "56975f9f8c7fe9f405a98df4956489ec4279d64548bd0e0a706d694926518608"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "419.0B",
+          "sha256": "a3f446f0289c525ba228e9112b450f643f66b9b7bbdf599c08b1f6713c0d6cee"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "162657ed750e0a8dc39a12389297a6010e100fa57fd7aa9484940f566919afde"
+        },
+        {
+          "name": "packages.adb",
+          "size": "789.0B",
+          "sha256": "aacd52738f3c2ebcbeeee1fd10b9cecec121f22ce4b8a7bdaf58672921aa3b02"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.1M",
+          "sha256": "c7e9fd7d346046665705e203dfb3601055b8a2ed965c66a6a3fa4468761bee2d"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.2M",
+          "sha256": "33e3826f1fca0a7875907bd3366cdea668532164f749b55c31c92680f0b1f89c"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.1M",
+          "sha256": "6afb2f05ae6bc1654d6110a52f4ac1bf8b7a05c2557282994c7a66284e2975a6"
+        }
+      ]
+    },
+    "mipsel_24kc": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "586.0B",
+          "sha256": "3f7764e329d3f6b8246f86525b4d8c62bb629bd7b953613341f3661ae0742f35"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "420.0B",
+          "sha256": "fef55f26bec19b58ba93dc7c092c76708fc527b310b63d9061d23d56279306af"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "57c299695378bb6675d9b10b2992fc17dd324a4e522009f6f3f468ea853c3784"
+        },
+        {
+          "name": "packages.adb",
+          "size": "787.0B",
+          "sha256": "f877da2f660690791a64e063d23b017e1a9007ced68750f816f88db24cd7dad8"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.3M",
+          "sha256": "d9692f87689d937a40c4c18a7e73141d3351ad0c036b9c1562042a4c335ff92b"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.3M",
+          "sha256": "a14477401112b5f2f251933cc12868f852c3a6cea78501720bd7d849ee04cfe1"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.3M",
+          "sha256": "35d2247e1184dd06a8c79ba906528cc9dac465966cc59ba9ac0405077b8aad14"
+        }
+      ]
+    },
+    "mipsel_24kc_24kf": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "591.0B",
+          "sha256": "a9097fba46fff3db2a99415d849e08d56e964cfd8189744496b44572918ace0a"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "421.0B",
+          "sha256": "446538b3d18f09a271cd5ceac6a156a6cccf573192a270431a18bdec0f782695"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "0eaf33bbbb56b3d48900d7aa628d8b7c8ab43cc07e21fcb2cb9523721a903051"
+        },
+        {
+          "name": "packages.adb",
+          "size": "794.0B",
+          "sha256": "67f98516762eaf5f17ef95869e64d17022f9efe0dd346b446df9834ffd359fd7"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.3M",
+          "sha256": "695bbfc80cec8bb799bec174807b238b574d7aaf3f8357fc4d2972ee4ce98ed8"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.3M",
+          "sha256": "89d6141b90251ce9604cc74f6941cfe01a98a080bda24a956bd78b08058830eb"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.3M",
+          "sha256": "13792547cdee71be9e7349f83453eea9e9e7d6c0f6c7914bd235477e1969b17c"
+        }
+      ]
+    },
+    "mipsel_74kc": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "586.0B",
+          "sha256": "773490fd07152c0f21825b789ea1c498ef984b92cd0d015a7d9c7e0035058f98"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "420.0B",
+          "sha256": "bc79c0a02a72aecaae6fe09717de5a55ef51517a32af907423d0c3ced6471b22"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "d7744bfc34721661a682f10f80dd5f99d5493de690fe487fe5b8212a37c0ecec"
+        },
+        {
+          "name": "packages.adb",
+          "size": "786.0B",
+          "sha256": "ad205b04a2833f657ae381144ad5eaea0b50512b853ebdc44fb9c4f5f04fc072"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.3M",
+          "sha256": "0fc8b2c0f816cfab44aba903d5c14d505d4278466944347b2cb19e13d495dacc"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.3M",
+          "sha256": "f3cfe02dd1c41c8b60187059577b9214088670d81394cb753951004f1d9c64e6"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.3M",
+          "sha256": "cb1863575db5ee9c96a81a375f5716f321739048cb836cb87d7819afd7e53300"
+        }
+      ]
+    },
+    "mipsel_mips32": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "588.0B",
+          "sha256": "bccd26f1b92ec79486d56600b47113461250d533f355cdea93f3adc07f4c210b"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "419.0B",
+          "sha256": "0c35a9ce5377388831f84a5bb1a19b7572e639e3d109520b611c8491a84793c0"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "ed13c15776a369494282a5c9d0ac9ca4de038ee4cea8e1db5334b2184ee51f68"
+        },
+        {
+          "name": "packages.adb",
+          "size": "789.0B",
+          "sha256": "97af4faec7a0142870153c8a8eacd2bd97206fb602d291ca78a16dc8a3c1fb31"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "6.3M",
+          "sha256": "f72e6dad14266dceea892dd27e4478776659afc50c7006100b42f390a3e765b1"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "6.3M",
+          "sha256": "282e840601fdfd67e3c81077a1582e4bad99b0ef07fec20fbb8011991d0c99bb"
+        },
+        {
+          "name": "tailscaled",
+          "size": "6.3M",
+          "sha256": "8d0ad27fdd36a5a9d34fa424c3963b205d7b1e0134ad7b86c53b45f67aaf4e1c"
+        }
+      ]
+    },
+    "riscv64_generic": {
+      "files": [
+        {
+          "name": "packages.adb",
+          "size": "792.0B",
+          "sha256": "0ed6cf0ca36f88235a1f5ef7b476bf52a46b1a448562a700363fc956eb43238d"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "9.9M",
+          "sha256": "3736c89f51ec4da87d160085f799512c674572ff5b8275878dac4c1cca6082f0"
+        },
+        {
+          "name": "tailscaled",
+          "size": "24.3M",
+          "sha256": "353f9d707c7c24ac206300107acdcb84aeac42b39e53139d141a0f5e908693a8"
+        }
+      ]
+    },
+    "riscv64_riscv64": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "592.0B",
+          "sha256": "f440067eb173ff327502c7321d6c9fd5cc6fcdd8daa7d5fe3ee7031b1adf5b0e"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "420.0B",
+          "sha256": "6a790b467d281c22ca0e5c0e2d2d5026715a7ddc592efaa560a093a9f0ffaa05"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "9624b592499b0a64de37abbfbee576d0248632b9e4635b71537126e77527ca28"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "10.0M",
+          "sha256": "e2ac88831234ba18a7a630627cc3615f6d7e1d184d50d8cec82fe0e81a114f0c"
+        },
+        {
+          "name": "tailscaled",
+          "size": "24.3M",
+          "sha256": "475ee667bb37a8a3dae4b0dbdb136d49496d1229f78ce9621c9db51ed3a415ea"
+        }
+      ]
+    },
+    "x86_64": {
+      "files": [
+        {
+          "name": "Packages",
+          "size": "581.0B",
+          "sha256": "5534f2c9e66ca4f221c1e7e9839b1b1a364fc878c8c6d68fca9400942782283e"
+        },
+        {
+          "name": "Packages.gz",
+          "size": "418.0B",
+          "sha256": "4240eff84d11bd12329abefdb7e44ca41e731f7b57d1b384d0b4a38f1477a701"
+        },
+        {
+          "name": "Packages.sig",
+          "size": "151.0B",
+          "sha256": "9a5f7d07f8c5da58a57864708623490b2930e1a10193470b7403c1a34bda152f"
+        },
+        {
+          "name": "packages.adb",
+          "size": "787.0B",
+          "sha256": "63e1172ce36e3d1f67be3adde7d152794926514702d287f422e0fc61a11f5c8c"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.apk",
+          "size": "7.8M",
+          "sha256": "602fe10a0f388f76eeb9b2e89fd6b8a28b3709e38cb6d03c2eb6820128d2ba54"
+        },
+        {
+          "name": "tailscale-1.102.3-r1.ipk",
+          "size": "7.8M",
+          "sha256": "484d966828de60dae6473d748a81efeb9f4a6312a8c62bad1711ed9405814bba"
+        },
+        {
+          "name": "tailscaled",
+          "size": "7.8M",
+          "sha256": "f34c92153666516bc8e0a84e184604a20fe335c20b038de71540fd8713ee7da2"
+        }
+      ]
+    }
+  }
+}
