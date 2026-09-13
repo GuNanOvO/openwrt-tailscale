@@ -118,7 +118,7 @@ GO_ARCH=arm64 bash build_scripts/prepare_go_for_openwrt.sh /path/to/openwrt/buil
 ## 1. Build Tags (Size Reduction)
 
 ```makefile
-GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_relayserver,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
+GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
 ```
 
 该配置用于裁剪 Tailscale 的功能模块，从而减小最终二进制体积。
@@ -130,6 +130,8 @@ These `GO_PKG_TAGS` strip unnecessary modules from Tailscale to reduce binary si
 说明：
 Note:
 
+* `ts_omit_relayserver` **不在**裁剪列表内：该 tag 会移除 Relay server（Peer Relay）功能，为保留此功能而刻意不加（参见 issue [#161](https://github.com/GuNanOvO/openwrt-tailscale/issues/161)）
+  `ts_omit_relayserver` is intentionally **not** in this list: the tag removes the Relay server (Peer Relay) feature
 * 若需要完整功能，可移除部分 `ts_omit_*` 参数
   Remove some `ts_omit_*` flags if full functionality is required
 * 功能越完整，体积越大
