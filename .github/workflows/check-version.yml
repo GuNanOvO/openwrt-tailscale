@@ -250,6 +250,7 @@ jobs:
           echo "New Hash: $NEW_HASH"
 
           sed -i "s/^PKG_VERSION:=.*/PKG_VERSION:=$NEW_VER/" package/tailscale/Makefile
+          sed -i "s/^PKG_RELEASE:=.*/PKG_RELEASE:=1/" package/tailscale/Makefile
           sed -i "s/^PKG_HASH:=.*/PKG_HASH:=$NEW_HASH/" package/tailscale/Makefile
           sed -i "s/PKG_COMMIT:=.*/PKG_COMMIT:=$NEW_COMMIT/" package/tailscale/Makefile
 
