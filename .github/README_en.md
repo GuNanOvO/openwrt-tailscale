@@ -100,7 +100,7 @@ For easier usage with minimal CLI interaction, you may optionally use the commun
 The following build options are used to minimize Tailscale.
 See [Makefile](../package/tailscale/Makefile) for details:
 
-* **[TAGS](../package/tailscale/Makefile#L31)**:
+* **[TAGS](../package/tailscale/Makefile#L33)**:
 
 ```
 ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient

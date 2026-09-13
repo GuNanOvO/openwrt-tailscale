@@ -130,6 +130,8 @@ These `GO_PKG_TAGS` strip unnecessary modules from Tailscale to reduce binary si
 说明：
 Note:
 
+* `ts_omit_relayserver` **不在**裁剪列表内：该 tag 会移除 Relay server（Peer Relay）功能，为保留此功能而刻意不加（参见 issue [#161](https://github.com/GuNanOvO/openwrt-tailscale/issues/161)）
+  `ts_omit_relayserver` is intentionally **not** in this list: the tag removes the Relay server (Peer Relay) feature
 * 若需要完整功能，可移除部分 `ts_omit_*` 参数
   Remove some `ts_omit_*` flags if full functionality is required
 * 功能越完整，体积越大
