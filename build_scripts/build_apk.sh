@@ -50,14 +50,19 @@ echo "Using $(/builder/go/bin/go version)"
 # build tailscale package
 make package/tailscale/compile -j$(nproc) V=s
 
-# check package build result
-if [ -f /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk ]; then
-    echo "Build Success: APK Package generated at /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk"
+# check package build result (match any -rN, PKG_RELEASE may change)
+SDK_APK=$(ls /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r*.apk 2>/dev/null | head -n1)
+if [ -n "$SDK_APK" ]; then
+    echo "Build Success: APK Package generated at ${SDK_APK}"
     ls -lh /builder/bin/packages/${TARGET_ARCH}/base/
 else
     echo "Error: No build product found at expected location"
     exit 1
 fi
+
+# rename to the intermediate name expected by the release workflow
+mv "$SDK_APK" /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk
+ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk
 
 # change to package directory for index generation and signing
 echo "Making index and signing index..."
