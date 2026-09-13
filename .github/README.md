@@ -112,7 +112,7 @@ wget -O /usr/bin/install.sh https://ghfast.top/https://raw.githubusercontent.com
 
 使用了下列编译参数，精简了tailscale，详见[Makefile](../package/tailscale/Makefile)：
 
-* **[TAGS](../package/tailscale/Makefile#L33)**:  
+* **[TAGS](../package/tailscale/Makefile#L31)**:  
 
 ``` text
 ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient
@@ -124,7 +124,7 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 -s -w
 ```
 
-使用了[UPX](https://upx.github.io/)二进制文件压缩技术，并使用了以下参数，详见[Makefile](../package/tailscale/Makefile#L67-L76)：
+使用了[UPX](https://upx.github.io/)二进制文件压缩技术，并使用了以下参数，详见[Makefile](../package/tailscale/Makefile#L65-L74)：
 
 ``` text
 --best --lzma
