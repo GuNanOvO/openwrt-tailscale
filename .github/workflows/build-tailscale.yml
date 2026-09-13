@@ -170,11 +170,12 @@ jobs:
         id: get_build_version
         run: |
           VERSION=$(sed -n 's/^PKG_VERSION:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
+          RELEASE=$(sed -n 's/^PKG_RELEASE:=\(.*\)/\1/p' repo/package/tailscale/Makefile | tr -d '[:space:]')
 
           echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "release=$RELEASE" >> $GITHUB_OUTPUT
 
-
-          echo "Parsed version: $VERSION"
+          echo "Parsed version: $VERSION (release r$RELEASE)"
 
           echo "Directories prepared:"
           ls -la
@@ -306,7 +307,7 @@ jobs:
 
           du -b "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"/tailscaled | cut -f1 > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.size"
 
-          echo "${{ steps.get_build_version.outputs.version }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
+          echo "${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
 
           if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" ]; then
             sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
