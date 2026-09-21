@@ -343,9 +343,12 @@ get_tailscale_info() {
     fi
 
     TAILSCALE_LATEST_VERSION="$version"
-    # version file may carry a release suffix (e.g. 1.102.4-r2); the package
-    # file name convention only uses the upstream version (tailscale-<ver>-r1)
-    TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION%-r*}-r1"
+    # package files are named tailscale-<version>-r<release> (e.g. tailscale-1.102.4-r2);
+    # fall back to r1 for older feeds whose version file carries no release suffix
+    case "$TAILSCALE_LATEST_VERSION" in
+        *-r*) TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION}" ;;
+        *)    TAILSCALE_FILE="tailscale-${TAILSCALE_LATEST_VERSION}-r1" ;;
+    esac
     TAILSCALE_FILE_SIZE=$((file_size / 1024 / 1024))
 
     if [ "$DEVICE_STORAGE_AVAILABLE" -gt "$TAILSCALE_FILE_SIZE" ]; then

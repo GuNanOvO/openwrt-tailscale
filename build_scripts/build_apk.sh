@@ -60,9 +60,8 @@ else
     exit 1
 fi
 
-# rename to the intermediate name expected by the release workflow
-mv "$SDK_APK" /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk
-ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.apk
+# The SDK artifact name (tailscale-<version>-r<release>.apk) is already the
+# name apk clients construct from the index, so no renaming is needed.
 
 # change to package directory for index generation and signing
 echo "Making index and signing index..."
@@ -74,7 +73,7 @@ cd /builder/bin/packages/${TARGET_ARCH}/base
     --sign-key /builder/keys/key-build.rsa \
     --keys-dir /builder/keys/ \
     --allow-untrusted \
-    tailscale-${PKG_VERSION}-r1.apk
+    "$(basename "$SDK_APK")"
 
 # check if the index file and signature file is generated
 if [ -f packages.adb ] ; then
