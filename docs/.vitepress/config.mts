@@ -18,6 +18,10 @@ export default defineConfig({
 
   lastUpdated: true,
 
+  sitemap: {
+    hostname: 'https://gunanovo.github.io/openwrt-tailscale/'
+  },
+
   themeConfig: {
     siteTitle: 'Tailscale for OpenWrt',
     search: { provider: 'local' },
