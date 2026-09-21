@@ -65,8 +65,9 @@ fi
 
 # rename the generated ipk package to the intermediate name expected by the release workflow
 echo "Renaming generated IPK package to standard format..."
-mv "$SDK_IPK" /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.ipk
-ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r1.ipk
+PKG_RELEASE=$(basename "$SDK_IPK" | sed -E 's/^tailscale_.*-r([0-9]+)_.*\.ipk$/\1/')
+mv "$SDK_IPK" /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r${PKG_RELEASE}.ipk
+ls -lh /builder/bin/packages/${TARGET_ARCH}/base/tailscale-${PKG_VERSION}-r${PKG_RELEASE}.ipk
 
 cp /builder/keys/key-build.sec ./key-build
 make package/index -j$(nproc) V=s

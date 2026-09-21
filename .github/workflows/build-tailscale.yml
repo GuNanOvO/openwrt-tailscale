@@ -113,6 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.get_build_version.outputs.version }}
+      release: ${{ steps.get_build_version.outputs.release }}
       date: ${{ steps.get_build_date.outputs.date }}
     needs: prepare
     strategy:
@@ -286,7 +287,7 @@ jobs:
 
       - name: Collect Build Artifacts
         env:
-          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk"
+          artifacts: "Packages Packages.gz Packages.sig packages.adb tailscaled tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.ipk tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.apk"
         run: |
           mkdir -p "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}"
 
@@ -309,11 +310,11 @@ jobs:
 
           echo "${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}" > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/version"
 
-          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" ]; then
-            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.ipk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.ipk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/ipk.sha256"
           fi
-          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" ]; then
-            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r1.apk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/apk.sha256"
+          if [ -f "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.apk" ]; then
+            sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscale-${{ steps.get_build_version.outputs.version }}-r${{ steps.get_build_version.outputs.release }}.apk" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/apk.sha256"
           fi
 
           sha256sum "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/tailscaled" | awk '{print $1}' > "${{ env.ARTIFACT_DIR }}/${{ matrix.platform }}/bin.sha256"
@@ -496,6 +497,7 @@ jobs:
     env:
       RELEASE_TAG: v${{ needs.build.outputs.version }}
       RELEASE_VERSION: ${{ needs.build.outputs.version }}
+      RELEASE: ${{ needs.build.outputs.release }}
       BUILD_DATE: ${{ needs.build.outputs.date }}
     steps:
 
@@ -522,8 +524,8 @@ jobs:
             [ -d "$arch_dir" ] || continue
             arch=$(basename "$arch_dir")
 
-            ipk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r1.ipk"
-            apk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r1.apk"
+            ipk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r${{ env.RELEASE }}.ipk"
+            apk_old="$arch_dir/tailscale-${{ env.RELEASE_VERSION }}-r${{ env.RELEASE }}.apk"
 
             ipk_new="$arch_dir/tailscale_${{ env.RELEASE_VERSION }}_${arch}.ipk"
             apk_new="$arch_dir/tailscale_${{ env.RELEASE_VERSION }}_${arch}.apk"
