@@ -1,0 +1,17 @@
+Package: tailscale
+Version: 1.104.1-r1
+Depends: libc, ca-bundle, kmod-tun
+Provides: tailscaled
+License: BSD-3-Clause
+Section: net
+URL: https://github.com/GuNanOvO/openwrt-tailscale
+CPE-ID: cpe:/a:tailscale:tailscale
+Architecture: arm_fa526
+Installed-Size: 6912000
+Filename: tailscale-1.104.1-r1.ipk
+Size: 6904390
+SHA256sum: 357fa3c8354915220889fac9bcc75edf7ac6558aead1bd6e0a95928e9f41dca0
+Description:  A smaller version of Tailscale. Built for OpenWrt.
+ It creates a secure network between your servers, computers,
+ and cloud instances. Even when separated by firewalls or subnets.
+
