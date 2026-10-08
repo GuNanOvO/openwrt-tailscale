@@ -565,6 +565,23 @@ clean_old_installation() {
 }
 
 # Function: Persistent Installation
+# Cancel a guarded install: terminate the whole background process group
+# (including wget/opkg children) and make sure it actually stopped
+guard_cancel() {
+    # setsid makes the background task its own process-group leader, so the
+    # negative PID reaches every child process
+    kill -TERM -"$guard_pid" 2>/dev/null
+    kill -TERM "$guard_pid" 2>/dev/null
+    local n=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+    kill -KILL -"$guard_pid" 2>/dev/null
+    kill -KILL "$guard_pid" 2>/dev/null
+    exit 130
+}
+
 # Re-run the install body in a detached session so a dropped SSH (especially a
 # Tailscale connection) cannot terminate the script and leave a half-finished
 # install. Args: mode (persistent|temp|binary), optional install path, optional
@@ -611,9 +628,10 @@ guarded_install() {
     GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" \
         setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
     local guard_pid=$!
-    # On Ctrl-C/TERM terminate the background task before exiting, so "cancel"
-    # does not leave an install running
-    trap 'kill -TERM "$guard_pid" 2>/dev/null; exit 130' INT TERM
+    # On Ctrl-C/TERM terminate the whole background process group (including
+    # wget/opkg children) and confirm it stopped, so "cancel" does not leave
+    # an install running
+    trap 'guard_cancel' INT TERM
     echo "[INFO]: Background task started (PID: $guard_pid), running..."
     echo ""
     local guard_waited=0
@@ -940,6 +958,18 @@ temp_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: Dependency package installation attempt $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating opkg package list..."
                 opkg update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -956,6 +986,18 @@ temp_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating apk package list..."
                 apk update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -1277,6 +1319,18 @@ binary_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: Dependency package installation attempt $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating opkg package list..."
                 opkg update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -1293,6 +1347,18 @@ binary_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating apk package list..."
                 apk update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"

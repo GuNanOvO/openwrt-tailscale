@@ -621,6 +621,21 @@ clean_old_installation() {
 }
 
 # 函数：持久安装
+# 函数：取消守护安装——终止整个后台进程组（含 wget/opkg 等子进程）并确认结束
+guard_cancel() {
+    # setsid 让后台任务成为独立进程组组长, 负 PID 可覆盖其全部子进程
+    kill -TERM -"$guard_pid" 2>/dev/null
+    kill -TERM "$guard_pid" 2>/dev/null
+    local n=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+    kill -KILL -"$guard_pid" 2>/dev/null
+    kill -KILL "$guard_pid" 2>/dev/null
+    exit 130
+}
+
 # 函数：以独立会话（后台守护）重新执行安装，避免通过 SSH（尤其 Tailscale 连接）
 # 操作时断线导致脚本被终止、安装中断。
 # 参数：模式(persistent|temp|binary)、可选安装路径、可选"模式切换"标记
@@ -665,8 +680,9 @@ guarded_install() {
     GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
         setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
     local guard_pid=$!
-    # Ctrl-C/TERM 时结束后台任务再退出, 避免"看似取消实则继续安装"
-    trap 'kill -TERM "$guard_pid" 2>/dev/null; exit 130' INT TERM
+    # Ctrl-C/TERM 时终止整个后台进程组（含 wget/opkg 等子进程）并确认退出,
+    # 避免"看似取消实则继续安装"
+    trap 'guard_cancel' INT TERM
     echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
     echo ""
     local guard_waited=0
@@ -981,6 +997,17 @@ temp_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新opkg包列表..."
                 opkg update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -997,6 +1024,17 @@ temp_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新apk包列表..."
                 apk update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -1317,6 +1355,17 @@ binary_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新opkg包列表..."
                 opkg update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -1333,6 +1382,17 @@ binary_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新apk包列表..."
                 apk update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
