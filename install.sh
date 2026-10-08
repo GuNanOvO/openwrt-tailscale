@@ -831,16 +831,19 @@ temp_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="/tmp/tailscaled"
+    # 先下载到临时文件、校验通过后再原子替换目标：
+    # 直接写入正在运行的二进制会因 Text file busy 失败，失败清理还会破坏正在运行的服务
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: 下载尝试 $attempt_times/3"
         echo "[INFO]: 下载tailscaled二进制文件..."
-        if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
-                sleep 3
-                init
+                echo "[ERROR]: 请检查网络连接后重试"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
@@ -852,24 +855,23 @@ temp_install() {
         wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf "  $tmp_path\n" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: 请检查网络后重试"
+                exit 1
             fi
+            echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+            sleep 3
         else
             echo "[INFO]: tailscaled 文件校验通过!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
@@ -1131,17 +1133,18 @@ binary_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="${install_path}/tailscaled"
+    # 先下载到临时文件、校验通过后再原子替换目标（同 temp 模式的原因）
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: 下载尝试 $attempt_times/3"
         echo "[INFO]: 下载tailscaled二进制文件..."
-        if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
-                sleep 3
-                rm -f "$file_path"
-                init
+                echo "[ERROR]: 请检查网络连接后重试"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
@@ -1153,24 +1156,23 @@ binary_install() {
         wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf "  $tmp_path\n" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: 请检查网络后重试"
+                exit 1
             fi
+            echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+            sleep 3
         else
             echo "[INFO]: tailscaled 文件校验通过!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done

@@ -783,16 +783,20 @@ temp_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="/tmp/tailscaled"
+    # Download to a temp file and atomically replace after verification:
+    # writing to a running binary fails with "Text file busy", and the old
+    # failure cleanup used to delete the running binary and break the service
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: Download attempt $attempt_times/3"
         echo "[INFO]: Downloading tailscaled binary file..."
-        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
-                sleep 3
-                init
+                echo "[ERROR]: Please check the network connection and retry"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
@@ -804,24 +808,23 @@ temp_install() {
         wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf "  $tmp_path\n" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: Please check the network and retry"
+                exit 1
             fi
+            echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
+            sleep 3
         else
             echo "[INFO]: Tailscale file verification passed!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
@@ -1080,17 +1083,19 @@ binary_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="${install_path}/tailscaled"
+    # Download to a temp file and atomically replace after verification (same
+    # reason as the temp install: avoid ETXTBSY and never delete a running binary)
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: Download attempt $attempt_times/3"
         echo "[INFO]: Downloading tailscaled binary file..."
-        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
-                sleep 3
-                rm -f "$file_path"
-                init
+                echo "[ERROR]: Please check the network connection and retry"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
@@ -1102,24 +1107,23 @@ binary_install() {
         wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
         printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf "  $tmp_path\n" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: Please check the network and retry"
+                exit 1
             fi
+            echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
+            sleep 3
         else
             echo "[INFO]: Tailscale file verification passed!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
