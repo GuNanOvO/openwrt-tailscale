@@ -22,10 +22,12 @@ TMP_TAILSCALE='#!/bin/sh
 TMP_TAILSCALED='#!/bin/sh
                 set -e
                 if [ -f "/tmp/tailscaled" ]; then
-                    /tmp/tailscaled "$@"
+                    exec /tmp/tailscaled "$@"
                 else
-                    /usr/sbin/install.sh --tempinstall
-                    /tmp/tailscaled "$@"
+                    # /tmp was cleared (e.g. after reboot): download files only,
+                    # the outer init starts/stops the service
+                    /usr/sbin/install.sh --tempinstall --download-only
+                    exec /tmp/tailscaled "$@"
                 fi'
 
 TAILSCALE_LATEST_VERSION="" # Set by get_tailscale_info
@@ -90,6 +92,26 @@ check_package_manager() {
         echo "[WARNING]: Cannot determine the device architecture, all install modes are unavailable"
         echo "[WARNING]: Please install opkg or apk and retry"
     fi
+}
+
+# Function: drop the tailscale entry from the package manager (mode conversion).
+# Removing files but keeping the DB entry makes a same-version reinstall a
+# no-op with no binaries; the config is backed up and restored
+pkg_remove_tailscale() {
+    local cfg_backup=""
+    if [ -f "/etc/config/tailscale" ]; then
+        cfg_backup="/tmp/tailscale.conf.convert-backup"
+        cp "/etc/config/tailscale" "$cfg_backup" 2>/dev/null || cfg_backup=""
+    fi
+    if [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk del tailscale >/dev/null 2>&1 || true
+    elif [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg remove tailscale >/dev/null 2>&1 || true
+    fi
+    if [ -n "$cfg_backup" ] && [ -f "$cfg_backup" ] && [ ! -f "/etc/config/tailscale" ]; then
+        mv "$cfg_backup" "/etc/config/tailscale" 2>/dev/null || true
+    fi
+    rm -f "/tmp/tailscale.conf.convert-backup" 2>/dev/null || true
 }
 
 # Function: Get Device Architecture
@@ -728,6 +750,9 @@ persistent_install() {
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: Temporary file cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -780,6 +805,16 @@ persistent_install() {
         exit 1
     fi
 
+    # Modified /etc files are protected by the package manager: the new version
+    # stays as .apk-new/.opkg-new and must be promoted, or the init script still
+    # points at the old custom path
+    for pending in /etc/init.d/tailscale.apk-new /etc/init.d/tailscale.opkg-new; do
+        if [ -f "$pending" ]; then
+            mv -f "$pending" "/etc/init.d/tailscale" 2>/dev/null || true
+            chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    done
+
     echo "[INFO]: Verifying installation status..."
     check_tailscale_install_status
 
@@ -831,6 +866,50 @@ temp_to_persistent() {
 }
 
 # Function: Temporary Installation
+# Function: download/restore temp install files only (called by the boot wrapper
+# when /tmp was cleared). Does not touch config, dependencies or service state;
+# the outer init starts/stops the service
+temp_download_only() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="/tmp/tailscaled"
+    local tmp_path="${file_path}.new"
+
+    echo "[INFO]: Restoring temp install files (download only)..."
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: Download attempt $attempt_times/3"
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
+
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file verification failed"
+                exit 1
+            fi
+            sleep 3
+        else
+            rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
+            ln -sf /tmp/tailscaled /tmp/tailscale
+            echo "[INFO]: Temp install files restored"
+            return 0
+        fi
+    done
+}
+
 temp_install() {
     local confirm2temp_install=$1
     local silent_install=$2
@@ -881,6 +960,9 @@ temp_install() {
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: Persistent installation file cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -912,8 +994,13 @@ temp_install() {
 
         echo "[INFO]: Downloading configuration files and init scripts..."
         wget -cO "$sha_file" --timeout="$attempt_timeout"  "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+        # Preserve existing config: only write the default on first install
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init script has no checksum: download it in full; -c resume could
+        # append corrupt bytes to an existing file
+        wget -O  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -1210,12 +1297,19 @@ binary_install() {
     fi
 
     echo ""
-    clean_old_installation
+    # Same-mode updates keep the old binary until the verified atomic replace;
+    # a failed download leaves the previous program working (cleanup only on switch)
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        clean_old_installation
+    fi
 
     if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Cleaning old installation files..."
         rm -rf /tmp/tailscale /tmp/tailscaled
         echo "[INFO]: Cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -1270,8 +1364,13 @@ binary_install() {
 
         echo "[INFO]: Downloading configuration files and init scripts..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+        # Preserve existing config: only write the default on first install
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init script has no checksum: download it in full; -c resume could
+        # append corrupt bytes to an existing file
+        wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -2134,6 +2233,7 @@ show_help() {
     echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
+    echo "      --download-only           Only download/restore temp files (internal, boot wrapper)"
     echo ""
     echo "  Examples:"
     echo "      $0 --bin-install                          # Binary mode, default path"
@@ -2153,6 +2253,7 @@ show_help() {
 
 # Read Parameters
 BIN_INSTALL="false"
+DOWNLOAD_ONLY="false"
 PERSISTENT_INSTALL="false"
 UPDATE_MODE="false"
 UNINSTALL_MODE="false"
@@ -2173,6 +2274,9 @@ for arg in "$@"; do
         ;;
     --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --download-only)
+        DOWNLOAD_ONLY="true"
         ;;
     --persistent-install)
         PERSISTENT_INSTALL="true"
@@ -2262,12 +2366,25 @@ if [ "$_mode_count" -gt 1 ]; then
     exit 1
 fi
 
+if [ "$DOWNLOAD_ONLY" = "true" ]; then
+    check_package_manager
+    check_device_target
+    get_tailscale_info
+    temp_download_only
+    exit $?
+fi
+
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
     check_tailscale_install_status
     get_tailscale_info
-    temp_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        temp_install "true" "true"
+    else
+        temp_install "" "true"
+    fi
     exit $?
 fi
 
@@ -2276,7 +2393,12 @@ if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_device_target
     check_tailscale_install_status
     get_tailscale_info
-    persistent_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        persistent_install "true" "true"
+    else
+        persistent_install "" "true"
+    fi
     exit $?
 fi
 
@@ -2285,7 +2407,12 @@ if [ "$BIN_INSTALL" = "true" ]; then
     check_device_target
     check_tailscale_install_status
     get_tailscale_info
-    binary_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        binary_install "true" "true"
+    else
+        binary_install "" "true"
+    fi
     exit $?
 fi
 

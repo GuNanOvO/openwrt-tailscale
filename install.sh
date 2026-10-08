@@ -34,10 +34,11 @@ TMP_TAILSCALE='#!/bin/sh
 TMP_TAILSCALED='#!/bin/sh
                 set -e
                 if [ -f "/tmp/tailscaled" ]; then
-                    /tmp/tailscaled "$@"
+                    exec /tmp/tailscaled "$@"
                 else
-                    /usr/sbin/install.sh --tempinstall
-                    /tmp/tailscaled "$@"
+                    # /tmp 被清空(如重启后): 只下载恢复文件, 服务由外层 init 统一启停
+                    /usr/sbin/install.sh --tempinstall --download-only
+                    exec /tmp/tailscaled "$@"
                 fi'
 
 TAILSCALE_LATEST_VERSION="" # 由get_tailscale_info设置
@@ -110,6 +111,25 @@ check_package_manager() {
         echo "[WARNING]: 无法识别设备架构, 持久/临时/二进制安装均不可用"
         echo "[WARNING]: 请先安装 opkg 或 apk 后重试"
     fi
+}
+
+# 函数：移除包管理器中的 tailscale 记录（模式转换时调用）
+# 只删旧文件不删记录会导致同版本重装被跳过、文件缺失; 配置先备份后恢复
+pkg_remove_tailscale() {
+    local cfg_backup=""
+    if [ -f "/etc/config/tailscale" ]; then
+        cfg_backup="/tmp/tailscale.conf.convert-backup"
+        cp "/etc/config/tailscale" "$cfg_backup" 2>/dev/null || cfg_backup=""
+    fi
+    if [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk del tailscale >/dev/null 2>&1 || true
+    elif [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg remove tailscale >/dev/null 2>&1 || true
+    fi
+    if [ -n "$cfg_backup" ] && [ -f "$cfg_backup" ] && [ ! -f "/etc/config/tailscale" ]; then
+        mv "$cfg_backup" "/etc/config/tailscale" 2>/dev/null || true
+    fi
+    rm -f "/tmp/tailscale.conf.convert-backup" 2>/dev/null || true
 }
 
 # 函数：获取设备架构
@@ -775,6 +795,8 @@ persistent_install() {
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: 临时文件清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -824,6 +846,15 @@ persistent_install() {
         /etc/init.d/tailscale start 2>/dev/null || true
         exit 1
     fi
+
+    # 被修改过的 /etc 文件会被包管理器保护: 新版本留在 .apk-new/.opkg-new,
+    # 需提升为正式文件, 否则 init 脚本仍指向旧的自定义路径
+    for pending in /etc/init.d/tailscale.apk-new /etc/init.d/tailscale.opkg-new; do
+        if [ -f "$pending" ]; then
+            mv -f "$pending" "/etc/init.d/tailscale" 2>/dev/null || true
+            chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    done
 
     echo "[INFO]: 验证安装状态..."
     check_tailscale_install_status
@@ -876,6 +907,49 @@ temp_to_persistent() {
 }
 
 # 函数：临时安装
+# 函数：仅下载/恢复临时安装文件（开机后 /tmp 被清空时由 wrapper 调用）
+# 不触碰配置、依赖与服务状态, 服务由外层 init 统一启停
+temp_download_only() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="/tmp/tailscaled"
+    local tmp_path="${file_path}.new"
+
+    echo "[INFO]: 正在恢复临时安装文件 (仅下载)..."
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3"
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 三次下载均失败"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
+
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 校验失败"
+                exit 1
+            fi
+            sleep 3
+        else
+            rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
+            ln -sf /tmp/tailscaled /tmp/tailscale
+            echo "[INFO]: 临时安装文件恢复完成"
+            return 0
+        fi
+    done
+}
+
 temp_install() {
     local confirm2temp_install=$1
     local silent_install=$2
@@ -922,6 +996,8 @@ temp_install() {
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: 持久安装文件清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -952,8 +1028,12 @@ temp_install() {
 
         echo "[INFO]: 下载配置文件和初始化脚本..."
         wget -cO "$sha_file" --timeout="$attempt_timeout"  "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+        # 已有配置保留: 仅在首次安装时写入默认配置, 避免覆盖用户自定义设置
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init 脚本无校验: 全量覆盖下载, 避免 -c 续传在已有文件上追加损坏内容
+        wget -O  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -1247,12 +1327,18 @@ binary_install() {
     fi
 
     echo ""
-    clean_old_installation
+    # 同模式更新不预先删除旧二进制: 下载校验成功后由 mv 原子替换接管,
+    # 下载失败时旧程序仍可继续服务 (仅切换模式时清理旧安装)
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        clean_old_installation
+    fi
 
     if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 清理旧安装文件..."
         rm -rf /tmp/tailscale /tmp/tailscaled
         echo "[INFO]: 清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -1306,8 +1392,12 @@ binary_install() {
 
         echo "[INFO]: 下载配置文件和初始化脚本..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+        # 已有配置保留: 仅在首次安装时写入默认配置, 避免覆盖用户自定义设置
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init 脚本无校验: 全量覆盖下载, 避免 -c 续传在已有文件上追加损坏内容
+        wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -2198,6 +2288,7 @@ show_help() {
     echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
+    echo "      --download-only           Only download/restore temp files (internal, boot wrapper)"
     echo ""
     echo "  Examples:"
     echo "      $0 --bin-install                          # Binary mode, default path"
@@ -2217,6 +2308,7 @@ show_help() {
 
 # 读取参数
 BIN_INSTALL="false"
+DOWNLOAD_ONLY="false"
 PERSISTENT_INSTALL="false"
 UPDATE_MODE="false"
 UNINSTALL_MODE="false"
@@ -2236,6 +2328,9 @@ for arg in "$@"; do
         ;;
     --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --download-only)
+        DOWNLOAD_ONLY="true"
         ;;
     --persistent-install)
         PERSISTENT_INSTALL="true"
@@ -2356,13 +2451,27 @@ if [ "$_mode_count" -gt 1 ]; then
     exit 1
 fi
 
+if [ "$DOWNLOAD_ONLY" = "true" ]; then
+    check_package_manager
+    check_device_target
+    test_proxy
+    get_tailscale_info
+    temp_download_only
+    exit $?
+fi
+
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
     check_tailscale_install_status
     test_proxy
     get_tailscale_info
-    temp_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        temp_install "true" "true"
+    else
+        temp_install "" "true"
+    fi
     exit $?
 fi
 
@@ -2372,7 +2481,12 @@ if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_tailscale_install_status
     test_proxy
     get_tailscale_info
-    persistent_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        persistent_install "true" "true"
+    else
+        persistent_install "" "true"
+    fi
     exit $?
 fi
 
@@ -2382,7 +2496,12 @@ if [ "$BIN_INSTALL" = "true" ]; then
     check_tailscale_install_status
     test_proxy
     get_tailscale_info
-    binary_install "" "true"
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        binary_install "true" "true"
+    else
+        binary_install "" "true"
+    fi
     exit $?
 fi
 
