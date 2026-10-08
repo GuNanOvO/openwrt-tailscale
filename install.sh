@@ -647,9 +647,14 @@ guarded_install() {
     fi
 
     local guard_log="/tmp/tailscale-install.log"
-    # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件
+    # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件。
+    # 无法创建安全替代文件时禁用日志输出，绝不回退到已知危险的路径
     if [ -L "$guard_log" ]; then
-        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null)"
+        if [ -z "$guard_log" ]; then
+            guard_log="/dev/null"
+            echo "[WARNING]: 日志路径为符号链接且无法创建安全日志文件, 已禁用日志输出"
+        fi
     fi
     : >"$guard_log" 2>/dev/null || true
 
@@ -1118,8 +1123,9 @@ binary_install() {
 
     # 确定安装路径
     local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
-    # 如果 CUSTOM_INSTALL_PATH 未设置但存在标记文件，从标记文件恢复路径
-    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+    # 仅当 CUSTOM_INSTALL_PATH 与 GUARD_INSTALL_PATH 都未设置时才从标记文件恢复路径：
+    # 守护子进程通过 GUARD_INSTALL_PATH 显式携带新路径，不能被旧标记覆盖
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -z "$GUARD_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
         marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
         if [ -n "$marker_path" ]; then

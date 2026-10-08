@@ -593,9 +593,14 @@ guarded_install() {
 
     local guard_log="/tmp/tailscale-install.log"
     # Guard against symlink attacks: a pre-placed symlink would make root
-    # truncate an arbitrary file
+    # truncate an arbitrary file. If no safe replacement can be created,
+    # disable logging rather than fall back to the suspicious path
     if [ -L "$guard_log" ]; then
-        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null)"
+        if [ -z "$guard_log" ]; then
+            guard_log="/dev/null"
+            echo "[WARNING]: Log path is a symlink and no safe log file could be created, logging disabled"
+        fi
     fi
     : >"$guard_log" 2>/dev/null || true
 
@@ -1067,8 +1072,10 @@ binary_install() {
 
     # Determine install path
     local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
-    # If CUSTOM_INSTALL_PATH not set but marker exists, restore path from marker
-    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+    # Restore the path from the marker only when neither CUSTOM_INSTALL_PATH nor
+    # GUARD_INSTALL_PATH is set: a guard child carries the new path explicitly
+    # and must not be overridden by the old marker
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -z "$GUARD_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
         marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
         if [ -n "$marker_path" ]; then
