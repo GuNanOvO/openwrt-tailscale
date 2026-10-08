@@ -1261,6 +1261,99 @@ validate_install_path() {
 }
 
 # 函数：二进制安装
+# 函数：紧凑替换 binary 二进制（目标空间不足 2 倍时使用）
+# 流程: /tmp 暂存下载并校验 -> 备份旧程序(尽力) -> 停服务 -> 删旧释放空间
+#       -> 落盘并校验 -> 成功清理; 失败时回滚旧程序并退出
+binary_tight_replace() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local file_path="${install_path}/tailscaled"
+    local stage="/tmp/tailscaled.stage"
+    local rollback="/tmp/tailscaled.rollback"
+    local sha_file="/tmp/tailscaled.stage.sha256"
+    local final_tmp="${file_path}.new"
+    local expected_sha=""
+    local got=0
+
+    rm -f "$stage" "$sha_file"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3 (暂存到 /tmp)"
+        if ! wget -cO "$stage" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$stage"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
+                echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
+        expected_sha=$(cat "$sha_file" 2>/dev/null | tr -d '\n\r')
+        printf '%s' "$expected_sha" > "$sha_file"
+        printf '  %s\n' "$stage" >> "$sha_file"
+
+        if [ -z "$expected_sha" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$stage" "$sha_file"
+            expected_sha=""
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 文件校验失败"
+                echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+                exit 1
+            fi
+            sleep 3
+        else
+            echo "[INFO]: 暂存文件校验通过"
+            break
+        fi
+    done
+    rm -f "$sha_file"
+
+    # 备份旧程序用于失败回滚 (尽力而为; /tmp 空间不足时跳过)
+    if [ -f "$file_path" ] && cp "$file_path" "$rollback" 2>/dev/null; then
+        echo "[INFO]: 已备份旧程序用于回滚"
+    else
+        rm -f "$rollback"
+        echo "[WARNING]: 无法备份旧程序, 替换失败时将重试落盘"
+    fi
+
+    echo "[INFO]: 停止服务并替换二进制 (请勿断电)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+    sleep 1
+    rm -f "$file_path"
+
+    for attempt_times in $attempt_range; do
+        if cp "$stage" "$final_tmp" 2>/dev/null \
+            && [ "$(sha256sum "$final_tmp" 2>/dev/null | awk '{print $1}')" = "$expected_sha" ]; then
+            mv -f "$final_tmp" "$file_path" 2>/dev/null && got=1 && break
+        fi
+        echo "[WARNING]: 落盘失败或校验不一致, 重试 $attempt_times/3"
+        rm -f "$final_tmp"
+        sleep 1
+    done
+
+    if [ "$got" = "1" ]; then
+        chmod +x "$file_path" 2>/dev/null || true
+        rm -f "$stage" "$rollback"
+        echo "[INFO]: 紧凑替换完成"
+        return 0
+    fi
+
+    echo "[ERROR]: 新二进制落盘失败"
+    if [ -f "$rollback" ]; then
+        echo "[INFO]: 正在回滚旧程序..."
+        if cp "$rollback" "$file_path" 2>/dev/null; then
+            chmod +x "$file_path" 2>/dev/null || true
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: 已回滚旧程序并恢复服务"
+        fi
+    else
+        echo "[WARNING]: 无回滚副本; 已验证的新程序仍在 $stage, 可手动复制到 $file_path"
+    fi
+    exit 1
+}
+
 binary_install() {
     local confirm2binary_install=$1
     local silent_install=$2
@@ -1294,7 +1387,7 @@ binary_install() {
         echo "│ 二进制安装模式将直接下载 tailscaled 可执行文件到指定路径"
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ 安装路径: ${install_path}"
-            echo "│ 请确保该路径所在设备有足够空间(至少 ${TAILSCALE_FILE_SIZE}M)"
+            echo "│ 请确保该路径所在设备有足够空间(约 2 倍 ${TAILSCALE_FILE_SIZE}M; 不足时将自动使用紧凑替换)"
         fi
         echo "│ 此模式不使用 opkg/apk 包管理器进行安装"
         echo "│ 但仍会尝试通过包管理器安装依赖库"
@@ -1310,6 +1403,43 @@ binary_install() {
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
             echo "[INFO]: 取消二进制安装"
             return
+        fi
+    fi
+
+    # 创建安装目录
+    mkdir -p "${install_path}" 2>/dev/null || {
+        echo "[ERROR]: 无法创建安装目录 ${install_path}"
+        echo "[ERROR]: 请检查路径权限"
+        exit 1
+    }
+
+    # 检查目标路径可用空间 (在进入后台守护前完成, 保证交互用户能看到警告)
+    # 安全替换 (下载到 .new 校验后原子替换) 需要旧+新两份二进制同时存在,
+    # 即约 2 倍空间; 不足时若 /tmp 可暂存, 则使用紧凑替换方案
+    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    local tight_replace="false"
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 2 * 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M 的 2 倍 (安全替换需要旧+新两份)"
+        echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
+        local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+        local old_kb=0
+        if [ -f "${install_path}/tailscaled" ]; then
+            old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+        fi
+        local target_dev tmp_dev tmp_avail
+        target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+        if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + 2048))" ] 2>/dev/null \
+            && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
+            tight_replace="true"
+            echo "[WARNING]: 将使用紧凑替换方案 (先经 /tmp 暂存校验, 再删除旧程序并落盘)"
+            echo "[WARNING]: 更新期间请勿断电或强制重启, 否则 tailscale 可能无法启动"
+        else
+            echo "[ERROR]: 目标空间不足以安全替换, 且 /tmp 无法用于暂存 (需与目标为不同文件系统且有足够空间)"
+            echo "[ERROR]: 请释放目标路径空间 (或改用 USB 存储) 后重试"
+            exit 1
         fi
     fi
 
@@ -1345,29 +1475,6 @@ binary_install() {
     echo "[INFO]: 正在二进制安装..."
     echo "[INFO]: 安装路径: ${install_path}"
 
-    # 创建安装目录
-    mkdir -p "${install_path}" 2>/dev/null || {
-        echo "[ERROR]: 无法创建安装目录 ${install_path}"
-        echo "[ERROR]: 请检查路径权限"
-        exit 1
-    }
-
-    # 检查目标路径可用空间
-    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M"
-        echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
-        if [ "$silent_install" != "true" ] && [ "$YES_MODE" != "true" ]; then
-            read -n 1 -p "是否继续? (y/N): " space_choice
-            if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
-                echo "[INFO]: 取消安装"
-                return
-            fi
-        else
-            echo "[INFO]: 非交互模式, 继续安装"
-        fi
-    fi
-
     local attempt_range="1 2 3"
     local attempt_timeout=20
 
@@ -1376,6 +1483,10 @@ binary_install() {
     # 先下载到临时文件、校验通过后再原子替换目标（同 temp 模式的原因）
     local tmp_path="${file_path}.new"
 
+    if [ "$tight_replace" = "true" ]; then
+        # 目标空间不足 2 倍: 紧凑替换 (经 /tmp 暂存, 内部处理失败回滚)
+        binary_tight_replace
+    else
     for attempt_times in $attempt_range; do
         echo "[INFO]: 下载尝试 $attempt_times/3"
         echo "[INFO]: 下载tailscaled二进制文件..."
@@ -1420,6 +1531,7 @@ binary_install() {
             break
         fi
     done
+    fi
 
     # 设置可执行权限
     chmod +x "$file_path" 2>/dev/null

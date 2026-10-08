@@ -1226,6 +1226,100 @@ validate_install_path() {
 }
 
 # Function: Binary Installation
+# Function: tight replacement of the binary when the target has less than 2x
+# space. Flow: stage+verify in /tmp -> best-effort backup of the old binary ->
+# stop service -> delete old (frees space) -> place+verify -> cleanup; on
+# failure restore the old binary and exit
+binary_tight_replace() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local file_path="${install_path}/tailscaled"
+    local stage="/tmp/tailscaled.stage"
+    local rollback="/tmp/tailscaled.rollback"
+    local sha_file="/tmp/tailscaled.stage.sha256"
+    local final_tmp="${file_path}.new"
+    local expected_sha=""
+    local got=0
+
+    rm -f "$stage" "$sha_file"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: Download attempt $attempt_times/3 (staging to /tmp)"
+        if ! wget -cO "$stage" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$stage"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
+                echo "[ERROR]: The old program is untouched and the service keeps running"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
+        expected_sha=$(cat "$sha_file" 2>/dev/null | tr -d '\n\r')
+        printf '%s' "$expected_sha" > "$sha_file"
+        printf '  %s\n' "$stage" >> "$sha_file"
+
+        if [ -z "$expected_sha" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$stage" "$sha_file"
+            expected_sha=""
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file verification failed"
+                echo "[ERROR]: The old program is untouched and the service keeps running"
+                exit 1
+            fi
+            sleep 3
+        else
+            echo "[INFO]: Staged file verification passed"
+            break
+        fi
+    done
+    rm -f "$sha_file"
+
+    # Best-effort backup of the old binary for rollback (/tmp space may be short)
+    if [ -f "$file_path" ] && cp "$file_path" "$rollback" 2>/dev/null; then
+        echo "[INFO]: Old program backed up for rollback"
+    else
+        rm -f "$rollback"
+        echo "[WARNING]: Could not back up the old program, will retry placement on failure"
+    fi
+
+    echo "[INFO]: Stopping the service and replacing the binary (do not power off)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+    sleep 1
+    rm -f "$file_path"
+
+    for attempt_times in $attempt_range; do
+        if cp "$stage" "$final_tmp" 2>/dev/null \
+            && [ "$(sha256sum "$final_tmp" 2>/dev/null | awk '{print $1}')" = "$expected_sha" ]; then
+            mv -f "$final_tmp" "$file_path" 2>/dev/null && got=1 && break
+        fi
+        echo "[WARNING]: Placement failed or checksum mismatch, retry $attempt_times/3"
+        rm -f "$final_tmp"
+        sleep 1
+    done
+
+    if [ "$got" = "1" ]; then
+        chmod +x "$file_path" 2>/dev/null || true
+        rm -f "$stage" "$rollback"
+        echo "[INFO]: Tight replacement complete"
+        return 0
+    fi
+
+    echo "[ERROR]: Placing the new binary failed"
+    if [ -f "$rollback" ]; then
+        echo "[INFO]: Rolling back the old program..."
+        if cp "$rollback" "$file_path" 2>/dev/null; then
+            chmod +x "$file_path" 2>/dev/null || true
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: Old program restored and service restart attempted"
+        fi
+    else
+        echo "[WARNING]: No rollback copy; the verified new file is still at $stage and can be copied manually"
+    fi
+    exit 1
+}
+
 binary_install() {
     local confirm2binary_install=$1
     local silent_install=$2
@@ -1261,7 +1355,7 @@ binary_install() {
         echo "│ executable directly to the specified path."
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ Install path: ${install_path}"
-            echo "│ Please ensure the target device has enough space (at least ${TAILSCALE_FILE_SIZE}M)"
+            echo "│ Please ensure the target device has enough space (about 2x ${TAILSCALE_FILE_SIZE}M; tight replacement is used otherwise)"
         fi
         echo "│ This mode does NOT use opkg/apk package manager."
         echo "│ It will still try to install dependencies via package"
@@ -1279,6 +1373,45 @@ binary_install() {
         if [ "$choice" != "Y" ] && [ "$choice" != "y" ]; then
             echo "[INFO]: Cancel binary installation"
             return
+        fi
+    fi
+
+    # Create install directory
+    mkdir -p "${install_path}" 2>/dev/null || {
+        echo "[ERROR]: Cannot create install directory ${install_path}"
+        echo "[ERROR]: Please check path permissions"
+        exit 1
+    }
+
+    # Check target path available space (before entering the guard, so an
+    # interactive user actually sees the warning)
+    # A safe replacement (download to .new, verify, atomic rename) needs both
+    # the old and the new binary at once (~2x); if that does not fit but /tmp
+    # can stage the download, use the tight replacement path
+    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+    local tight_replace="false"
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 2 * 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: Target path ${install_path} has less than 2x ${TAILSCALE_FILE_SIZE}M free (safe replace needs old+new)"
+        echo "[WARNING]: Currently available: $((target_avail / 1024))M"
+        local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+        local old_kb=0
+        if [ -f "${install_path}/tailscaled" ]; then
+            old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+        fi
+        local target_dev tmp_dev tmp_avail
+        target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+        if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + 2048))" ] 2>/dev/null \
+            && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
+            tight_replace="true"
+            echo "[WARNING]: Using the tight replacement path (stage via /tmp, delete old, then place)"
+            echo "[WARNING]: Do not power off or force-reboot during the update, or tailscale may not start"
+        else
+            echo "[ERROR]: Not enough space for a safe replacement and /tmp cannot stage it (needs a different filesystem with enough room)"
+            echo "[ERROR]: Free space on the target path (or use USB storage) and retry"
+            exit 1
         fi
     fi
 
@@ -1316,29 +1449,6 @@ binary_install() {
     echo "[INFO]: Binary installation in progress..."
     echo "[INFO]: Install path: ${install_path}"
 
-    # Create install directory
-    mkdir -p "${install_path}" 2>/dev/null || {
-        echo "[ERROR]: Cannot create install directory ${install_path}"
-        echo "[ERROR]: Please check path permissions"
-        exit 1
-    }
-
-    # Check target path available space
-    local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: Target path ${install_path} has insufficient space (need ${TAILSCALE_FILE_SIZE}M)"
-        echo "[WARNING]: Currently available: $((target_avail / 1024))M"
-        if [ "$silent_install" != "true" ] && [ "$YES_MODE" != "true" ]; then
-            read -n 1 -p "Continue anyway? (y/N): " space_choice
-            if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
-                echo "[INFO]: Cancel installation"
-                return
-            fi
-        else
-            echo "[INFO]: Non-interactive mode, continuing installation"
-        fi
-    fi
-
     local attempt_range="1 2 3"
     local attempt_timeout=20
 
@@ -1348,6 +1458,10 @@ binary_install() {
     # reason as the temp install: avoid ETXTBSY and never delete a running binary)
     local tmp_path="${file_path}.new"
 
+    if [ "$tight_replace" = "true" ]; then
+        # Less than 2x space: tight replacement (stage via /tmp, rollback on failure)
+        binary_tight_replace
+    else
     for attempt_times in $attempt_range; do
         echo "[INFO]: Download attempt $attempt_times/3"
         echo "[INFO]: Downloading tailscaled binary file..."
@@ -1393,6 +1507,7 @@ binary_install() {
             break
         fi
     done
+    fi
 
     # Set executable permissions
     chmod +x "$file_path" 2>/dev/null
