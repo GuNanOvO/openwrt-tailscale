@@ -87,7 +87,8 @@ check_package_manager() {
     else
         PACKAGE_MANAGER=""
         echo "[WARNING]: No package manager (opkg/apk) found"
-        echo "[WARNING]: Persistent and temporary install not available, use --bin-install for binary install"
+        echo "[WARNING]: Cannot determine the device architecture, all install modes are unavailable"
+        echo "[WARNING]: Please install opkg or apk and retry"
     fi
 }
 
@@ -106,7 +107,7 @@ check_device_target() {
     fi
 
     if [ -z "$raw_target" ]; then
-        echo "[ERROR]: Unable to get device architecture, script exiting."
+        echo "[ERROR]: Unable to get device architecture (requires opkg/apk), script exiting."
         exit 1
     fi
 
@@ -689,12 +690,17 @@ persistent_install() {
         return "$guard_result"
     fi
 
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
         echo "[INFO]: Cleaning temporary files..."
         rm -rf /tmp/tailscale
         rm -rf /tmp/tailscaled
@@ -839,12 +845,17 @@ temp_install() {
         return "$guard_result"
     fi
 
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
         echo "[INFO]: Cleaning persistent installation files..."
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
@@ -910,7 +921,9 @@ temp_install() {
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
 
-    if [ "$TMP_INSTALL" != "true" ]; then
+    # Dependency packages (kmod-tun etc.) are required for temp installs too;
+    # keep CLI and menu installs consistent
+    if [ "$PACKAGE_MANAGER" = "opkg" ] || [ "$PACKAGE_MANAGER" = "apk" ]; then
         echo "[INFO]: Installing dependency packages..."
         local pkg_install_success=false
         local pkg_attempt_range="1 2 3"
@@ -1025,6 +1038,15 @@ validate_install_path() {
         return 1
     fi
 
+    # Only safe characters, so marker parsing/sed substitution/command building
+    # cannot be broken by special characters
+    case "$path" in
+        *[!A-Za-z0-9_./-]*)
+            echo "[ERROR]: Install path may only contain letters/digits/._- : ${path}"
+            return 1
+            ;;
+    esac
+
     local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
     for bp in $blocked_paths; do
         if [ "$path" = "$bp" ] || [ "$path" = "${bp}/" ]; then
@@ -1129,12 +1151,17 @@ binary_install() {
         return "$guard_result"
     fi
 
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
         echo "[INFO]: Cleaning old installation files..."
         rm -rf /tmp/tailscale /tmp/tailscaled
         echo "[INFO]: Cleanup complete"
@@ -1403,7 +1430,10 @@ cron_check_update() {
 
         # Safety check: skip update if tailscale has active peers
         local active_peers=0
-        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        # Only count genuinely active peers (idle is not "in use"); grep -c prints
+        # 0 and exits non-zero when nothing matches, guard against a "0\n0" value
+        active_peers=$(tailscale status 2>/dev/null | grep -cw 'active' || true)
+        [ -z "$active_peers" ] && active_peers=0
         if [ "$active_peers" -gt 0 ] 2>/dev/null; then
             echo "[$(date)] TAILSCALE_CRON: ${active_peers} active peers, skipping update to avoid disconnection" >> "$CRON_LOG"
             return 0
@@ -1663,9 +1693,10 @@ downloader() {
         if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: $target_file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
+                echo "[ERROR]: Please check the network connection and run the script again"
                 sleep 3
-                init
+                rm -f "$file_path" "$sha_file"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
@@ -1686,10 +1717,10 @@ downloader() {
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscale file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
+                echo "[ERROR]: Please check the network and run the script again"
                 sleep 3
                 rm -f "$file_path" "$sha_file"
-                init
+                exit 1
             else
                 echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
                 rm -f "$file_path" "$sha_file"
@@ -1734,6 +1765,10 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout 2>/dev/null || true
         echo "[INFO]: Disabling tailscale auto-start..."
         /etc/init.d/tailscale disable 2>/dev/null || true
+    else
+        echo "[INFO]: Unknown installation state, trying to stop the running service..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        killall tailscaled 2>/dev/null || true
     fi
     echo "[INFO]: Tailscale service stop complete"
     echo ""

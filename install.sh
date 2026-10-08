@@ -107,7 +107,8 @@ check_package_manager() {
     else
         PACKAGE_MANAGER=""
         echo "[WARNING]: 未找到包管理器(opkg/apk)"
-        echo "[WARNING]: 持久安装和临时安装不可用，可使用 --bin-install 进行二进制安装"
+        echo "[WARNING]: 无法识别设备架构, 持久/临时/二进制安装均不可用"
+        echo "[WARNING]: 请先安装 opkg 或 apk 后重试"
     fi
 }
 
@@ -126,7 +127,7 @@ check_device_target() {
     fi
 
     if [ -z "$raw_target" ]; then
-        echo "[ERROR]: 无法获取设备架构，脚本退出。"
+        echo "[ERROR]: 无法获取设备架构（需要 opkg/apk 查询），脚本退出。"
         exit 1
     fi
 
@@ -740,12 +741,16 @@ persistent_install() {
         return "$guard_result"
     fi
 
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
         echo "[INFO]: 清理临时文件..."
         rm -rf /tmp/tailscale
         rm -rf /tmp/tailscaled
@@ -885,12 +890,16 @@ temp_install() {
         return "$guard_result"
     fi
 
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
         echo "[INFO]: 清理持久安装文件..."
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
@@ -955,7 +964,8 @@ temp_install() {
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
 
-    if [ "$TMP_INSTALL" != "true" ]; then
+    # 依赖包(kmod-tun 等)对临时安装同样必需, CLI 与菜单安装保持一致
+    if [ "$PACKAGE_MANAGER" = "opkg" ] || [ "$PACKAGE_MANAGER" = "apk" ]; then
         echo "[INFO]: 安装依赖包..."
         local pkg_install_success=false
         local pkg_attempt_range="1 2 3"
@@ -1071,6 +1081,14 @@ validate_install_path() {
         return 1
     fi
 
+    # 仅允许安全字符, 避免特殊字符破坏标记解析/sed 替换/命令拼接
+    case "$path" in
+        *[!A-Za-z0-9_./-]*)
+            echo "[ERROR]: 安装路径仅允许字母/数字/._- 字符: ${path}"
+            return 1
+            ;;
+    esac
+
     # 系统关键目录白名单 - 禁止安装到这些目录
     local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
     for bp in $blocked_paths; do
@@ -1176,12 +1194,16 @@ binary_install() {
         return "$guard_result"
     fi
 
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
     if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
         echo "[INFO]: 清理旧安装文件..."
         rm -rf /tmp/tailscale /tmp/tailscaled
         echo "[INFO]: 清理完成"
@@ -1449,7 +1471,10 @@ cron_check_update() {
 
         # 安全检测: 如果 tailscale 正在活跃使用, 跳过本次更新
         local active_peers=0
-        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        # 仅统计真正 active 的对端（idle 不代表正在使用）；grep -c 计数为 0 时
+        # 会输出 0 并返回非零, 加 || true 避免拼出 "0\n0" 畸形值
+        active_peers=$(tailscale status 2>/dev/null | grep -cw 'active' || true)
+        [ -z "$active_peers" ] && active_peers=0
         if [ "$active_peers" -gt 0 ] 2>/dev/null; then
             echo "[$(date)] TAILSCALE_CRON: 有 ${active_peers} 个活跃对端, 跳过更新以避免断网" >> "$CRON_LOG"
             return 0
@@ -1662,9 +1687,10 @@ downloader() {
         if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: $target_file 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
+                echo "[ERROR]: 请检查网络连接后重新运行本脚本"
                 sleep 3
-                init
+                rm -f "$file_path" "$sha_file"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
@@ -1684,10 +1710,10 @@ downloader() {
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscale 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
+                echo "[ERROR]: 请检查网络后重新运行本脚本"
                 sleep 3
                 rm -f "$file_path" "$sha_file"
-                init
+                exit 1
             else
                 echo "[INFO]: tailscale 文件校验不通过，正在尝试重新下载..."
                 rm -f "$file_path" "$sha_file"
@@ -1732,6 +1758,10 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout 2>/dev/null || true
         echo "[INFO]: 禁用tailscale开机启动..."
         /etc/init.d/tailscale disable 2>/dev/null || true
+    else
+        echo "[INFO]: 未识别的安装状态, 尝试停止运行中的服务..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        killall tailscaled 2>/dev/null || true
     fi
     echo "[INFO]: tailscale服务停止完成"
     echo ""
