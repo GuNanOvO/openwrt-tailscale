@@ -549,6 +549,92 @@ clean_old_installation() {
 }
 
 # Function: Persistent Installation
+# Re-run the install body in a detached session so a dropped SSH (especially a
+# Tailscale connection) cannot terminate the script and leave a half-finished
+# install. Args: mode (persistent|temp|binary), optional install path, optional
+# "mode switch" flag. Returns the guard task's exit code; 2 means "cannot guard"
+# (caller continues in the foreground).
+guarded_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local guard_cmd=""
+
+    case "$mode" in
+        persistent) guard_cmd="--persistent-install" ;;
+        temp) guard_cmd="--temp-install" ;;
+        binary) guard_cmd="--bin-install" ;;
+        *) return 2 ;;
+    esac
+
+    if [ ! -f "$0" ]; then
+        echo ""
+        echo "[WARNING]: Cannot determine the script path, skipping the background guard mode"
+        echo "[WARNING]: Consider running this script with nohup or tmux to survive a dropped connection"
+        return 2
+    fi
+
+    local guard_log="/tmp/tailscale-install.log"
+    # Guard against symlink attacks: a pre-placed symlink would make root
+    # truncate an arbitrary file
+    if [ -L "$guard_log" ]; then
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+    fi
+    : >"$guard_log" 2>/dev/null || true
+
+    echo ""
+    echo "[INFO]: Installation/update will continue in a background session"
+    echo "[INFO]: When operating over Tailscale or SSH, a dropped connection will not interrupt the install"
+    echo "[INFO]: Log file: $guard_log"
+
+    GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" \
+        setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
+    local guard_pid=$!
+    echo "[INFO]: Background task started (PID: $guard_pid), running..."
+    echo ""
+    local guard_waited=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+        sleep 3
+        guard_waited=$((guard_waited + 3))
+    done
+    if kill -0 "$guard_pid" 2>/dev/null; then
+        echo ""
+        echo "[WARNING]: Background task is still running (over 15 minutes), possibly slow network or retries"
+        echo "[WARNING]: Please reconnect later and check the log: $guard_log"
+        return 1
+    fi
+    local guard_rc=0
+    wait "$guard_pid" 2>/dev/null
+    guard_rc=$?
+    echo ""
+    echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
+    echo "----------------------------------------------------------"
+    tail -n 20 "$guard_log" 2>/dev/null
+    echo "----------------------------------------------------------"
+    return "$guard_rc"
+}
+
+# Guard the install on demand (called by each install function after confirmation).
+# Returns 2 = continue in the foreground (already guarded / cron env / cannot guard);
+# other values = installation result.
+maybe_guard_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local grc
+
+    if [ "${TS_GUARDED_RUN:-false}" = "true" ] || [ "${TS_NO_DAEMON:-false}" = "true" ]; then
+        return 2
+    fi
+
+    guarded_install "$mode" "$ipath" "$from_mode"
+    grc=$?
+    if [ "$grc" = "2" ]; then
+        return 2
+    fi
+    return "$grc"
+}
+
 persistent_install() {
     local confirm2persistent_install=$1
     local silent_install=$2
@@ -575,55 +661,16 @@ persistent_install() {
     # When operating over SSH (especially a Tailscale connection), the install/update
     # briefly interrupts the network. Run the install body in a separate session so a
     # dropped connection cannot terminate the script and leave a half-finished install.
-    if [ "${TS_GUARDED_RUN:-false}" != "true" ] && [ "${TS_NO_DAEMON:-false}" != "true" ]; then
-        if [ ! -f "$0" ]; then
-            echo ""
-            echo "[WARNING]: Cannot determine the script path, skipping the background guard mode"
-            echo "[WARNING]: Consider running this script with nohup or tmux to survive a dropped connection"
-        else
-            local guard_log="/tmp/tailscale-install.log"
-            # Guard against symlink attacks: a pre-placed symlink would make root
-            # truncate an arbitrary file
-            if [ -L "$guard_log" ]; then
-                guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
-            fi
-            : >"$guard_log" 2>/dev/null || true
-            echo ""
-            echo "[INFO]: Installation/update will continue in a background session"
-            echo "[INFO]: When operating over Tailscale or SSH, a dropped connection will not interrupt the install"
-            echo "[INFO]: Log file: $guard_log"
-            TS_GUARDED_RUN=true TS_FROM_TEMP="$confirm2persistent_install" \
-                setsid sh "$0" --persistent-install --yes >>"$guard_log" 2>&1 </dev/null &
-            local guard_pid=$!
-            echo "[INFO]: Background task started (PID: $guard_pid), running..."
-            echo ""
-            local guard_waited=0
-            while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
-                sleep 3
-                guard_waited=$((guard_waited + 3))
-            done
-            if kill -0 "$guard_pid" 2>/dev/null; then
-                echo ""
-                echo "[WARNING]: Background task is still running (over 15 minutes), possibly slow network or retries"
-                echo "[WARNING]: Please reconnect later and check the log: $guard_log"
-                exit 1
-            fi
-            local guard_rc=0
-            wait "$guard_pid" 2>/dev/null
-            guard_rc=$?
-            echo ""
-            echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
-            echo "----------------------------------------------------------"
-            tail -n 20 "$guard_log" 2>/dev/null
-            echo "----------------------------------------------------------"
-            return "$guard_rc"
-        fi
+    maybe_guard_install persistent "" "$confirm2persistent_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
     fi
 
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_TEMP:-false}" = "true" ]; then
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Stopping existing tailscale service..."
         tailscale_stoper
         echo "[INFO]: Cleaning temporary files..."
@@ -763,10 +810,17 @@ temp_install() {
         fi
     fi
 
+    # The install body runs in a detached session to survive a dropped SSH connection
+    maybe_guard_install temp "" "$confirm2temp_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2temp_install" = "true" ]; then
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Stopping existing tailscale service..."
         tailscale_stoper
         echo "[INFO]: Cleaning persistent installation files..."
@@ -995,7 +1049,7 @@ binary_install() {
     local silent_install=$2
 
     # Determine install path
-    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
     # If CUSTOM_INSTALL_PATH not set but marker exists, restore path from marker
     if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
@@ -1044,10 +1098,17 @@ binary_install() {
         fi
     fi
 
+    # The install body runs in a detached session to survive a dropped SSH connection
+    maybe_guard_install binary "$install_path" "$confirm2binary_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2binary_install" = "true" ]; then
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Stopping existing tailscale service..."
         tailscale_stoper
         echo "[INFO]: Cleaning old installation files..."

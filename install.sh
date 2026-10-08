@@ -605,6 +605,89 @@ clean_old_installation() {
 }
 
 # 函数：持久安装
+# 函数：以独立会话（后台守护）重新执行安装，避免通过 SSH（尤其 Tailscale 连接）
+# 操作时断线导致脚本被终止、安装中断。
+# 参数：模式(persistent|temp|binary)、可选安装路径、可选"模式切换"标记
+# 返回：守护任务退出码；2 表示无法守护（调用方继续前台执行）
+guarded_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local guard_cmd=""
+
+    case "$mode" in
+        persistent) guard_cmd="--persistent-install" ;;
+        temp) guard_cmd="--temp-install" ;;
+        binary) guard_cmd="--bin-install" ;;
+        *) return 2 ;;
+    esac
+
+    if [ ! -f "$0" ]; then
+        echo ""
+        echo "[WARNING]: 无法确定脚本文件路径，跳过后台守护模式"
+        echo "[WARNING]: 建议使用 nohup 或 tmux 运行本脚本，避免连接断开导致安装中断"
+        return 2
+    fi
+
+    local guard_log="/tmp/tailscale-install.log"
+    # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件
+    if [ -L "$guard_log" ]; then
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+    fi
+    : >"$guard_log" 2>/dev/null || true
+
+    echo ""
+    echo "[INFO]: 安装/更新过程将在后台独立会话中继续执行"
+    echo "[INFO]: 通过 Tailscale 或 SSH 连接操作时, 中途断网不会中断安装"
+    echo "[INFO]: 日志文件: $guard_log"
+
+    GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
+        setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
+    local guard_pid=$!
+    echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
+    echo ""
+    local guard_waited=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+        sleep 3
+        guard_waited=$((guard_waited + 3))
+    done
+    if kill -0 "$guard_pid" 2>/dev/null; then
+        echo ""
+        echo "[WARNING]: 后台任务仍在运行（超过 15 分钟），可能在处理较慢的网络或重试"
+        echo "[WARNING]: 请稍后重新连接设备，查看日志: $guard_log"
+        return 1
+    fi
+    local guard_rc=0
+    wait "$guard_pid" 2>/dev/null
+    guard_rc=$?
+    echo ""
+    echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
+    echo "----------------------------------------------------------"
+    tail -n 20 "$guard_log" 2>/dev/null
+    echo "----------------------------------------------------------"
+    return "$guard_rc"
+}
+
+# 函数：按需把安装主体转为后台守护执行（供各安装函数在确认后调用）
+# 返回：2 = 继续前台执行（已处于守护模式/cron 环境/无法守护）；其他 = 安装结果
+maybe_guard_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local grc
+
+    if [ "${TS_GUARDED_RUN:-false}" = "true" ] || [ "${TS_NO_DAEMON:-false}" = "true" ]; then
+        return 2
+    fi
+
+    guarded_install "$mode" "$ipath" "$from_mode"
+    grc=$?
+    if [ "$grc" = "2" ]; then
+        return 2
+    fi
+    return "$grc"
+}
+
 persistent_install() {
     local confirm2persistent_install=$1
     local silent_install=$2
@@ -629,54 +712,16 @@ persistent_install() {
 
     # 通过 SSH（尤其是 Tailscale 连接）操作时，安装/更新过程会短暂断开网络。
     # 将安装主体放入独立会话执行，避免连接断开导致脚本被终止、安装中断。
-    if [ "${TS_GUARDED_RUN:-false}" != "true" ] && [ "${TS_NO_DAEMON:-false}" != "true" ]; then
-        if [ ! -f "$0" ]; then
-            echo ""
-            echo "[WARNING]: 无法确定脚本文件路径，跳过后台守护模式"
-            echo "[WARNING]: 建议使用 nohup 或 tmux 运行本脚本，避免连接断开导致安装中断"
-        else
-            local guard_log="/tmp/tailscale-install.log"
-            # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件
-            if [ -L "$guard_log" ]; then
-                guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
-            fi
-            : >"$guard_log" 2>/dev/null || true
-            echo ""
-            echo "[INFO]: 安装/更新过程将在后台独立会话中继续执行"
-            echo "[INFO]: 通过 Tailscale 或 SSH 连接操作时, 中途断网不会中断安装"
-            echo "[INFO]: 日志文件: $guard_log"
-            TS_GUARDED_RUN=true TS_FROM_TEMP="$confirm2persistent_install" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
-                setsid sh "$0" --persistent-install --yes >>"$guard_log" 2>&1 </dev/null &
-            local guard_pid=$!
-            echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
-            echo ""
-            local guard_waited=0
-            while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
-                sleep 3
-                guard_waited=$((guard_waited + 3))
-            done
-            if kill -0 "$guard_pid" 2>/dev/null; then
-                echo ""
-                echo "[WARNING]: 后台任务仍在运行（超过 15 分钟），可能在处理较慢的网络或重试"
-                echo "[WARNING]: 请稍后重新连接设备，查看日志: $guard_log"
-                exit 1
-            fi
-            local guard_rc=0
-            wait "$guard_pid" 2>/dev/null
-            guard_rc=$?
-            echo ""
-            echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
-            echo "----------------------------------------------------------"
-            tail -n 20 "$guard_log" 2>/dev/null
-            echo "----------------------------------------------------------"
-            return "$guard_rc"
-        fi
+    maybe_guard_install persistent "" "$confirm2persistent_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
     fi
 
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_TEMP:-false}" = "true" ]; then
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
         echo "[INFO]: 清理临时文件..."
@@ -811,10 +856,17 @@ temp_install() {
         fi
     fi
 
+    # 通过 SSH（尤其 Tailscale 连接）操作时网络会短暂中断，安装主体放入独立会话执行
+    maybe_guard_install temp "" "$confirm2temp_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2temp_install" = "true" ]; then
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
         echo "[INFO]: 清理持久安装文件..."
@@ -1048,7 +1100,7 @@ binary_install() {
     local silent_install=$2
 
     # 确定安装路径
-    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
+    local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
     # 如果 CUSTOM_INSTALL_PATH 未设置但存在标记文件，从标记文件恢复路径
     if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
@@ -1094,10 +1146,17 @@ binary_install() {
         fi
     fi
 
+    # 通过 SSH（尤其 Tailscale 连接）操作时网络会短暂中断，安装主体放入独立会话执行
+    maybe_guard_install binary "$install_path" "$confirm2binary_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2binary_install" = "true" ]; then
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
         echo "[INFO]: 清理旧安装文件..."
