@@ -263,6 +263,15 @@ check_device_storage() {
 get_tailscale_info() {
     local version
     local file_size
+    # Argument-driven paths (e.g. --persistent-install) may not have run the
+    # device checks; make sure the dependencies are populated so the arithmetic
+    # comparisons below never see empty values ("out of range")
+    if [ -z "$DEVICE_MEM_FREE" ]; then
+        check_device_memory
+    fi
+    if [ -z "$DEVICE_STORAGE_AVAILABLE" ]; then
+        check_device_storage
+    fi
     # Try 3 times
     local attempt_range="1 2 3"
     # Timeout (seconds)
@@ -563,10 +572,53 @@ persistent_install() {
         fi
     fi
 
+    # When operating over SSH (especially a Tailscale connection), the install/update
+    # briefly interrupts the network. Run the install body in a separate session so a
+    # dropped connection cannot terminate the script and leave a half-finished install.
+    if [ "${TS_GUARDED_RUN:-false}" != "true" ] && [ "${TS_NO_DAEMON:-false}" != "true" ]; then
+        if [ ! -f "$0" ]; then
+            echo ""
+            echo "[WARNING]: Cannot determine the script path, skipping the background guard mode"
+            echo "[WARNING]: Consider running this script with nohup or tmux to survive a dropped connection"
+        else
+            local guard_log="/tmp/tailscale-install.log"
+            : >"$guard_log" 2>/dev/null || true
+            echo ""
+            echo "[INFO]: Installation/update will continue in a background session"
+            echo "[INFO]: When operating over Tailscale or SSH, a dropped connection will not interrupt the install"
+            echo "[INFO]: Log file: $guard_log"
+            TS_GUARDED_RUN=true TS_FROM_TEMP="$confirm2persistent_install" \
+                setsid sh "$0" --persistent-install --yes >>"$guard_log" 2>&1 </dev/null &
+            local guard_pid=$!
+            echo "[INFO]: Background task started (PID: $guard_pid), running..."
+            echo ""
+            local guard_waited=0
+            while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+                sleep 3
+                guard_waited=$((guard_waited + 3))
+            done
+            if kill -0 "$guard_pid" 2>/dev/null; then
+                echo ""
+                echo "[WARNING]: Background task is still running (over 15 minutes), possibly slow network or retries"
+                echo "[WARNING]: Please reconnect later and check the log: $guard_log"
+                exit 1
+            fi
+            local guard_rc=0
+            wait "$guard_pid" 2>/dev/null
+            guard_rc=$?
+            echo ""
+            echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
+            echo "----------------------------------------------------------"
+            tail -n 20 "$guard_log" 2>/dev/null
+            echo "----------------------------------------------------------"
+            exit "$guard_rc"
+        fi
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ]; then
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_TEMP:-false}" = "true" ]; then
         echo "[INFO]: Stopping existing tailscale service..."
         tailscale_stoper
         echo "[INFO]: Cleaning temporary files..."
@@ -581,6 +633,12 @@ persistent_install() {
     echo "[INFO]: Persistent installation in progress..."
     echo "[INFO]: Starting tailscale file download..."
     downloader
+
+    # Stop the service before installing: the post-install start would otherwise run
+    # --cleanup against the running daemon, wiping its addresses and firewall rules
+    # (procd does not restart the instance when the instance data is unchanged).
+    echo "[INFO]: Stopping tailscale service before installation (network briefly interrupted)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
 
     local install_success=false
     local install_attempt_range="1 2 3"
@@ -614,6 +672,10 @@ persistent_install() {
         echo "[ERROR]: Package installation failed after 3 retries, possible causes: insufficient device storage space, network connection issues, or unknown errors"
         echo "[ERROR]: Please check device storage space and network connection, then retry"
         rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+        # Try to restore the previous tailscale service so the device does not stay
+        # unreachable and can be retried remotely
+        echo "[INFO]: Attempting to restart tailscale service (previous version)..."
+        /etc/init.d/tailscale start 2>/dev/null || true
         exit 1
     fi
 
@@ -623,8 +685,24 @@ persistent_install() {
     if [ "$TAILSCALE_INSTALL_STATUS" == "persistent" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
         echo "[INFO]: Persistent installation complete!"
         echo "[INFO]: Starting tailscale service..."
-
-        tailscaled up &>/dev/null &
+        # Start only when the service is not already running: when the package was really
+        # installed, postinst may have started it; starting again would run --cleanup
+        # against the live daemon and wipe its addresses and firewall rules
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            echo "[WARNING]: Tailscale service did not start, trying again..."
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if pidof tailscaled >/dev/null 2>&1; then
+            echo "[INFO]: Tailscale service started"
+        else
+            echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale start"
+            exit 1
+        fi
 
         if [ "$silent_install" != "true" ]; then
             echo ""
@@ -807,11 +885,18 @@ temp_install() {
     echo "[INFO]: Starting tailscale service..."
 
     /etc/init.d/tailscale enable
-    /etc/init.d/tailscale start
+    # Full restart: on update this stops the old process before starting the new binary,
+    # avoiding --cleanup against a running daemon (which wipes addresses and firewall rules)
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: Tailscale service started"
+    else
+        echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale restart"
+        exit 1
+    fi
 
     sleep 2
     check_tailscale_install_status
@@ -1125,13 +1210,17 @@ binary_install() {
     echo "[INFO]: Starting tailscale service..."
 
     /etc/init.d/tailscale enable 2>/dev/null || true
-    /etc/init.d/tailscale start 2>/dev/null || true
+    # Full restart: on update this stops the old process before starting the new binary,
+    # avoiding --cleanup against a running daemon (which wipes addresses and firewall rules)
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    # Try to start tailscaled
-    if [ -f "${install_path}/tailscaled" ]; then
-        ${install_path}/tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: Tailscale service started"
+    else
+        echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale restart"
+        exit 1
     fi
 
     sleep 2
@@ -1223,6 +1312,8 @@ cron_check_update() {
         fi
 
         echo "[$(date)] TAILSCALE_CRON: auto-updating..." >> "$CRON_LOG"
+        # cron has no interactive SSH session; no background guard needed
+        export TS_NO_DAEMON=true
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
                 temp_install "" "true" 2>&1 >> "$CRON_LOG"
@@ -1919,6 +2010,7 @@ main() {
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     get_tailscale_info
     temp_install "" "true"
     exit 0
@@ -1927,6 +2019,7 @@ fi
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     get_tailscale_info
     persistent_install "" "true"
     exit 0
@@ -1935,6 +2028,7 @@ fi
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     get_tailscale_info
     binary_install "" "true"
     exit 0

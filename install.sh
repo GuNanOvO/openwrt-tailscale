@@ -286,6 +286,12 @@ test_proxy() {
     local attempt_timeout=10
     local version
 
+    # 后台守护模式下沿用前台已选定（含自定义代理）的地址，避免配置丢失
+    if [ -n "${TS_PROXY_URL:-}" ]; then
+        AVAILABLE_URL_HEAD="$TS_PROXY_URL"
+        return 0
+    fi
+
     for attempt_times in $attempt_range; do
         for attempt_proxy in $PROXYS; do
             attempt_url="$attempt_proxy/${DEVICE_TARGET}/version"
@@ -317,6 +323,14 @@ test_proxy() {
 get_tailscale_info() {
     local version
     local file_size
+    # 参数调用路径（如 --persistent-install）可能未执行设备信息检查，
+    # 这里补齐依赖，避免空值参与算术比较（out of range）
+    if [ -z "$DEVICE_MEM_FREE" ]; then
+        check_device_memory
+    fi
+    if [ -z "$DEVICE_STORAGE_AVAILABLE" ]; then
+        check_device_storage
+    fi
     # 尝试3次
     local attempt_range="1 2 3"
     # 超时时间（秒）
@@ -613,10 +627,52 @@ persistent_install() {
         fi
     fi
 
+    # 通过 SSH（尤其是 Tailscale 连接）操作时，安装/更新过程会短暂断开网络。
+    # 将安装主体放入独立会话执行，避免连接断开导致脚本被终止、安装中断。
+    if [ "${TS_GUARDED_RUN:-false}" != "true" ] && [ "${TS_NO_DAEMON:-false}" != "true" ]; then
+        if [ ! -f "$0" ]; then
+            echo ""
+            echo "[WARNING]: 无法确定脚本文件路径，跳过后台守护模式"
+            echo "[WARNING]: 建议使用 nohup 或 tmux 运行本脚本，避免连接断开导致安装中断"
+        else
+            local guard_log="/tmp/tailscale-install.log"
+            : >"$guard_log" 2>/dev/null || true
+            echo ""
+            echo "[INFO]: 安装/更新过程将在后台独立会话中继续执行"
+            echo "[INFO]: 通过 Tailscale 或 SSH 连接操作时, 中途断网不会中断安装"
+            echo "[INFO]: 日志文件: $guard_log"
+            TS_GUARDED_RUN=true TS_FROM_TEMP="$confirm2persistent_install" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
+                setsid sh "$0" --persistent-install --yes >>"$guard_log" 2>&1 </dev/null &
+            local guard_pid=$!
+            echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
+            echo ""
+            local guard_waited=0
+            while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+                sleep 3
+                guard_waited=$((guard_waited + 3))
+            done
+            if kill -0 "$guard_pid" 2>/dev/null; then
+                echo ""
+                echo "[WARNING]: 后台任务仍在运行（超过 15 分钟），可能在处理较慢的网络或重试"
+                echo "[WARNING]: 请稍后重新连接设备，查看日志: $guard_log"
+                exit 1
+            fi
+            local guard_rc=0
+            wait "$guard_pid" 2>/dev/null
+            guard_rc=$?
+            echo ""
+            echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
+            echo "----------------------------------------------------------"
+            tail -n 20 "$guard_log" 2>/dev/null
+            echo "----------------------------------------------------------"
+            exit "$guard_rc"
+        fi
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ]; then
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_TEMP:-false}" = "true" ]; then
         echo "[INFO]: 停止现有tailscale服务..."
         tailscale_stoper
         echo "[INFO]: 清理临时文件..."
@@ -631,6 +687,11 @@ persistent_install() {
     echo "[INFO]: 正在持久安装..."
     echo "[INFO]: 开始下载tailscale文件..."
     downloader
+
+    # 安装前停止服务：避免安装触发的 start 对运行中的 daemon 执行清理，
+    # 导致地址与防火墙规则丢失（运行中的 daemon 不会因实例数据未变而被 procd 重启）
+    echo "[INFO]: 安装前停止 tailscale 服务（网络会短暂中断）..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
 
     local install_success=false
     local install_attempt_range="1 2 3"
@@ -664,6 +725,9 @@ persistent_install() {
         echo "[ERROR]: 包安装失败，已重试3次，可能原因：设备存储空间不足、网络连接异常或未知错误"
         echo "[ERROR]: 请检查设备存储空间、网络连接后重试"
         rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+        # 安装失败时尝试恢复原有的 tailscale 服务，避免设备失去连接、无法远程重试
+        echo "[INFO]: 正在尝试恢复 tailscale 服务（使用原有版本）..."
+        /etc/init.d/tailscale start 2>/dev/null || true
         exit 1
     fi
 
@@ -673,8 +737,23 @@ persistent_install() {
     if [ "$TAILSCALE_INSTALL_STATUS" == "persistent" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
         echo "[INFO]: 持久安装完成!"
         echo "[INFO]: 正在启动tailscale服务..."
-
-        tailscaled up &>/dev/null &
+        # 仅在服务未运行时启动：包实际安装后 postinst 可能已经启动过服务，
+        # 再次 start 会对运行中的 daemon 执行 cleanup，清掉地址与防火墙规则
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            echo "[WARNING]: tailscale服务未能启动, 尝试再次启动..."
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if pidof tailscaled >/dev/null 2>&1; then
+            echo "[INFO]: tailscale服务已启动"
+        else
+            echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale start"
+            exit 1
+        fi
 
         if [ "$silent_install" != "true" ]; then
             echo ""
@@ -855,11 +934,18 @@ temp_install() {
     echo "[INFO]: 正在启动tailscale服务..."
 
     /etc/init.d/tailscale enable
-    /etc/init.d/tailscale start
+    # 完整重启：更新场景下先停止旧进程再启动新二进制，
+    # 避免对运行中的 daemon 执行 cleanup（清掉地址与防火墙规则）
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: tailscale服务已启动"
+    else
+        echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale restart"
+        exit 1
+    fi
 
     sleep 2
     check_tailscale_install_status
@@ -1176,13 +1262,17 @@ binary_install() {
     echo "[INFO]: 正在启动tailscale服务..."
 
     /etc/init.d/tailscale enable 2>/dev/null || true
-    /etc/init.d/tailscale start 2>/dev/null || true
+    # 完整重启：更新场景下先停止旧进程再启动新二进制，
+    # 避免对运行中的 daemon 执行 cleanup（清掉地址与防火墙规则）
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    # 尝试启动 tailscaled
-    if [ -f "${install_path}/tailscaled" ]; then
-        ${install_path}/tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: tailscale服务已启动"
+    else
+        echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale restart"
+        exit 1
     fi
 
     sleep 2
@@ -1274,6 +1364,8 @@ cron_check_update() {
         fi
 
         echo "[$(date)] TAILSCALE_CRON: 开始自动更新..." >> "$CRON_LOG"
+        # cron 环境没有交互式 SSH 连接，无需后台守护
+        export TS_NO_DAEMON=true
         # 根据当前安装模式自动选择更新方式
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
@@ -2034,6 +2126,7 @@ main() {
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     test_proxy
     get_tailscale_info
     temp_install "" "true"
@@ -2043,6 +2136,7 @@ fi
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     test_proxy
     get_tailscale_info
     persistent_install "" "true"
@@ -2052,6 +2146,7 @@ fi
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     test_proxy
     get_tailscale_info
     binary_install "" "true"
