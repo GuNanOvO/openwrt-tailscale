@@ -356,6 +356,23 @@ get_tailscale_info() {
         exit 1
     fi
 
+    # 校验版本号与文件大小格式：代理/门户返回的 HTML 等内容参与算术运算
+    # 或拼接下载地址会导致脚本异常，这里提前拦截
+    case "$version" in
+        ''|*[!0-9A-Za-z.-]*)
+            echo "[ERROR]: 获取到的版本号无效: $version"
+            echo "[ERROR]: 请检查网络或代理设置后重试"
+            exit 1
+            ;;
+    esac
+    case "$file_size" in
+        ''|*[!0-9]*)
+            echo "[ERROR]: 获取到的文件大小无效: $file_size"
+            echo "[ERROR]: 请检查网络或代理设置后重试"
+            exit 1
+            ;;
+    esac
+
     TAILSCALE_LATEST_VERSION="$version"
     # package files are named tailscale-<version>-r<release> (e.g. tailscale-1.102.4-r2);
     # fall back to r1 for older feeds whose version file carries no release suffix
@@ -1180,10 +1197,14 @@ binary_install() {
     if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
         echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M"
         echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
-        read -n 1 -p "是否继续? (y/N): " space_choice
-        if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
-            echo "[INFO]: 取消安装"
-            return
+        if [ "$silent_install" != "true" ] && [ "$YES_MODE" != "true" ]; then
+            read -n 1 -p "是否继续? (y/N): " space_choice
+            if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
+                echo "[INFO]: 取消安装"
+                return
+            fi
+        else
+            echo "[INFO]: 非交互模式, 继续安装"
         fi
     fi
 
@@ -1454,9 +1475,9 @@ generate_cron_script() {
 # Tailscale 自动更新检查脚本 - 由 install.sh 生成
 # 此脚本被 crond 定时调用
 
-# 获取脚本路径 (install.sh 可能在不同位置)
-SCRIPT_CANDIDATES="/usr/sbin/install.sh /tmp/install.sh /mnt/install.sh
-$(dirname "$0")/install.sh"
+# 获取脚本路径 (仅信任 root 专属路径; /tmp、/mnt 等世界可写目录中的
+# 同名脚本可能被本地用户替换后由 root 通过 crond 执行)
+SCRIPT_CANDIDATES="/usr/sbin/tailscale-install.sh /usr/sbin/install.sh"
 
 for script in $SCRIPT_CANDIDATES; do
     if [ -f "$script" ]; then
@@ -1482,6 +1503,12 @@ cron_setup() {
 
     # 生成检查脚本
     generate_cron_script
+
+    # 将当前脚本固化到 root 专属路径, 供 cron 使用:
+    # 世界可写目录中的脚本可能被本地用户替换后由 root 执行
+    if [ -f "$0" ] && cp "$0" /usr/sbin/tailscale-install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/tailscale-install.sh 2>/dev/null || true
+    fi
 
     # 解析时间参数
     local cron_time=""
@@ -1556,7 +1583,7 @@ cron_remove() {
     else
         echo "[INFO]: 未找到 cron 自动更新条目"
     fi
-    rm -f "$CRON_SCRIPT" 2>/dev/null || true
+    rm -f "$CRON_SCRIPT" /usr/sbin/tailscale-install.sh 2>/dev/null || true
 }
 
 # 函数：显示 cron 状态
