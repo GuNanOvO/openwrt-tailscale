@@ -636,6 +636,10 @@ persistent_install() {
             echo "[WARNING]: 建议使用 nohup 或 tmux 运行本脚本，避免连接断开导致安装中断"
         else
             local guard_log="/tmp/tailscale-install.log"
+            # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件
+            if [ -L "$guard_log" ]; then
+                guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+            fi
             : >"$guard_log" 2>/dev/null || true
             echo ""
             echo "[INFO]: 安装/更新过程将在后台独立会话中继续执行"
@@ -665,7 +669,7 @@ persistent_install() {
             echo "----------------------------------------------------------"
             tail -n 20 "$guard_log" 2>/dev/null
             echo "----------------------------------------------------------"
-            exit "$guard_rc"
+            return "$guard_rc"
         fi
     fi
 
@@ -2140,7 +2144,7 @@ if [ "$PERSISTENT_INSTALL" = "true" ]; then
     test_proxy
     get_tailscale_info
     persistent_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$BIN_INSTALL" = "true" ]; then

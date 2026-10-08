@@ -582,6 +582,11 @@ persistent_install() {
             echo "[WARNING]: Consider running this script with nohup or tmux to survive a dropped connection"
         else
             local guard_log="/tmp/tailscale-install.log"
+            # Guard against symlink attacks: a pre-placed symlink would make root
+            # truncate an arbitrary file
+            if [ -L "$guard_log" ]; then
+                guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null || echo /tmp/tailscale-install.log)"
+            fi
             : >"$guard_log" 2>/dev/null || true
             echo ""
             echo "[INFO]: Installation/update will continue in a background session"
@@ -611,7 +616,7 @@ persistent_install() {
             echo "----------------------------------------------------------"
             tail -n 20 "$guard_log" 2>/dev/null
             echo "----------------------------------------------------------"
-            exit "$guard_rc"
+            return "$guard_rc"
         fi
     fi
 
@@ -2022,7 +2027,7 @@ if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     persistent_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$BIN_INSTALL" = "true" ]; then
