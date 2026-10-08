@@ -1465,7 +1465,9 @@ cron_setup() {
             ;;
     esac
 
-    local cron_line="${cron_time} ${CRON_ID} ${CRON_SCRIPT} >/dev/null 2>&1"
+    # The marker must follow the command: BusyBox crond treats everything after
+    # an inline '#' as a comment, so a marker in front would blank the command
+    local cron_line="${cron_time} ${CRON_SCRIPT} >/dev/null 2>&1 ${CRON_ID}"
 
     if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
         sed -i "/$CRON_ID/d" /etc/crontabs/root 2>/dev/null

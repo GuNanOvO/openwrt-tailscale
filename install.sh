@@ -1522,7 +1522,9 @@ cron_setup() {
     esac
 
     # 写入 crontab
-    local cron_line="${cron_time} ${CRON_ID} ${CRON_SCRIPT} >/dev/null 2>&1"
+    # 注意：标记必须放在命令之后——BusyBox crond 将行内 '#' 之后视为注释，
+    # 放在命令前会导致整条命令为空（cron 静默不执行）
+    local cron_line="${cron_time} ${CRON_SCRIPT} >/dev/null 2>&1 ${CRON_ID}"
 
     # 检查是否已存在
     if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
