@@ -367,10 +367,8 @@ update() {
 
     # Skip restart confirmation if --yes mode
     if [ "$YES_MODE" = "true" ]; then
-        echo "[INFO]: --yes mode, auto-restarting tailscale service..."
-        /etc/init.d/tailscale stop 2>/dev/null || true
-        /etc/init.d/tailscale start 2>/dev/null || true
-        echo "[INFO]: Tailscale service restart complete"
+        # The install already restarted the service as needed; do not restart twice
+        echo "[INFO]: --yes mode: service restart already handled by the install"
         init "" "false"
         return
     fi
@@ -613,6 +611,9 @@ guarded_install() {
     GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" \
         setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
     local guard_pid=$!
+    # On Ctrl-C/TERM terminate the background task before exiting, so "cancel"
+    # does not leave an install running
+    trap 'kill -TERM "$guard_pid" 2>/dev/null; exit 130' INT TERM
     echo "[INFO]: Background task started (PID: $guard_pid), running..."
     echo ""
     local guard_waited=0
@@ -624,11 +625,13 @@ guarded_install() {
         echo ""
         echo "[WARNING]: Background task is still running (over 15 minutes), possibly slow network or retries"
         echo "[WARNING]: Please reconnect later and check the log: $guard_log"
+        trap - INT TERM
         return 1
     fi
     local guard_rc=0
     wait "$guard_pid" 2>/dev/null
     guard_rc=$?
+    trap - INT TERM
     echo ""
     echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
     echo "----------------------------------------------------------"
@@ -920,6 +923,12 @@ temp_install() {
     echo "$TMP_TAILSCALE" > /usr/sbin/tailscale
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
+
+    # Pin the installer to a root-owned path: after /tmp is cleared, the
+    # /usr/sbin/tailscaled wrapper calls /usr/sbin/install.sh to re-download
+    if [ -f "$0" ] && cp "$0" /usr/sbin/install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/install.sh 2>/dev/null || true
+    fi
 
     # Dependency packages (kmod-tun etc.) are required for temp installs too;
     # keep CLI and menu installs consistent
@@ -2176,6 +2185,16 @@ main() {
     script_info
     option_menu
 }
+
+# Install modes are mutually exclusive
+_mode_count=0
+[ "$TMP_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$PERSISTENT_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$BIN_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+if [ "$_mode_count" -gt 1 ]; then
+    echo "[ERROR]: Install modes are mutually exclusive, pick one: --temp-install / --persistent-install / --bin-install"
+    exit 1
+fi
 
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager

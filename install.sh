@@ -426,10 +426,8 @@ update() {
 
     # 如果更新已经重新安装了tailscale, 跳过重启确认
     if [ "$YES_MODE" = "true" ]; then
-        echo "[INFO]: --yes 模式, 自动重启tailscale服务..."
-        /etc/init.d/tailscale stop 2>/dev/null || true
-        /etc/init.d/tailscale start 2>/dev/null || true
-        echo "[INFO]: tailscale服务重启完成"
+        # 安装流程已按需重启服务, 此处不再重复 stop/start
+        echo "[INFO]: --yes 模式: 安装流程已完成服务重启"
         init "" "false"
         return
     fi
@@ -667,6 +665,8 @@ guarded_install() {
     GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
         setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
     local guard_pid=$!
+    # Ctrl-C/TERM 时结束后台任务再退出, 避免"看似取消实则继续安装"
+    trap 'kill -TERM "$guard_pid" 2>/dev/null; exit 130' INT TERM
     echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
     echo ""
     local guard_waited=0
@@ -678,11 +678,13 @@ guarded_install() {
         echo ""
         echo "[WARNING]: 后台任务仍在运行（超过 15 分钟），可能在处理较慢的网络或重试"
         echo "[WARNING]: 请稍后重新连接设备，查看日志: $guard_log"
+        trap - INT TERM
         return 1
     fi
     local guard_rc=0
     wait "$guard_pid" 2>/dev/null
     guard_rc=$?
+    trap - INT TERM
     echo ""
     echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
     echo "----------------------------------------------------------"
@@ -963,6 +965,12 @@ temp_install() {
     echo "$TMP_TAILSCALE" > /usr/sbin/tailscale
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
+
+    # 固化当前脚本到 root 专属路径: /tmp 被清空后 /usr/sbin/tailscaled
+    # 包装脚本会调用 /usr/sbin/install.sh 自动重下
+    if [ -f "$0" ] && cp "$0" /usr/sbin/install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/install.sh 2>/dev/null || true
+    fi
 
     # 依赖包(kmod-tun 等)对临时安装同样必需, CLI 与菜单安装保持一致
     if [ "$PACKAGE_MANAGER" = "opkg" ] || [ "$PACKAGE_MANAGER" = "apk" ]; then
@@ -2277,6 +2285,16 @@ main() {
     script_info
     option_menu
 }
+
+# 安装模式互斥检查
+_mode_count=0
+[ "$TMP_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$PERSISTENT_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$BIN_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+if [ "$_mode_count" -gt 1 ]; then
+    echo "[ERROR]: 安装模式互斥, 请只指定一种: --temp-install / --persistent-install / --bin-install"
+    exit 1
+fi
 
 if [ "$TMP_INSTALL" = "true" ]; then
     check_package_manager
