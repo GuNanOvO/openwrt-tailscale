@@ -923,8 +923,8 @@ temp_install() {
         wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
         wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $tmp_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1235,8 +1235,8 @@ binary_install() {
         wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
         wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $tmp_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1517,7 +1517,26 @@ cron_setup() {
         daily)     cron_time="0 4 * * *" ;;
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
-        */minutes) cron_time="*/$interval * * * *" ;;
+        *h)
+            # 小时间隔, 如 6h -> 0 */6 * * * (不能写成 */360, 分钟字段无此语义)
+            local hours="${interval%h}"
+            if echo "$hours" | grep -q '^[0-9]\+$' && [ "$hours" -ge 1 ] && [ "$hours" -le 23 ] 2>/dev/null; then
+                cron_time="0 */${hours} * * *"
+            else
+                echo "[WARNING]: 无效的小时间隔 '$interval', 使用默认 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
+        *min)
+            # 分钟间隔, 如 30min -> */30 * * * *
+            local mins="${interval%min}"
+            if echo "$mins" | grep -q '^[0-9]\+$' && [ "$mins" -ge 1 ] && [ "$mins" -le 59 ] 2>/dev/null; then
+                cron_time="*/${mins} * * * *"
+            else
+                echo "[WARNING]: 无效的分钟间隔 '$interval', 使用默认 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *:*)
             # 支持 HH:MM 或 H:MM 格式（如 05:00 或 5:00）
             local hour="${interval%%:*}"
@@ -1538,8 +1557,8 @@ cron_setup() {
             fi
             ;;
         *)
-            # 尝试作为分钟数解析
-            if echo "$interval" | grep -q '^[0-9]\+$'; then
+            # 纯数字按分钟处理
+            if echo "$interval" | grep -q '^[0-9]\+$' && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ] 2>/dev/null; then
                 cron_time="*/${interval} * * * *"
             else
                 echo "[ERROR]: 未知间隔 '$interval', 使用 daily"
@@ -1646,8 +1665,8 @@ downloader() {
             wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/apk.sha256"
         fi
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$file_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1852,7 +1871,7 @@ show_info() {
 
 # Cron 菜单快捷函数
 cron_setup_6h() {
-    cron_setup "360"
+    cron_setup "6h"
 }
 cron_setup_daily() {
     cron_setup "daily"
@@ -2024,8 +2043,8 @@ option_menu() {
         echo ""
         echo ""
 
-        # 判断输入是否合法
-        if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
+        # 判断输入是否合法（先校验为单个数字, 避免空输入/字母触发 test 报错）
+        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
             operation_index=1
             for operation in $menu_operations; do
                 if [ "$operation_index" = "$choice" ]; then
@@ -2037,7 +2056,7 @@ option_menu() {
         else
             echo "[WARNING]: 无效选项，请重试！"
             echo ""
-            break
+            continue
         fi
     done
 }
@@ -2066,7 +2085,7 @@ show_help() {
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
     echo ""

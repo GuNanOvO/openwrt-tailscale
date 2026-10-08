@@ -878,8 +878,8 @@ temp_install() {
         wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
         wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $tmp_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1188,8 +1188,8 @@ binary_install() {
         wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
         wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $tmp_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1465,6 +1465,27 @@ cron_setup() {
         daily)     cron_time="0 4 * * *" ;;
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
+        *h)
+            # Hour interval, e.g. 6h -> 0 */6 * * * (never */360: the minute
+            # field has no such semantics)
+            local hours="${interval%h}"
+            if echo "$hours" | grep -q '^[0-9]\+$' && [ "$hours" -ge 1 ] && [ "$hours" -le 23 ] 2>/dev/null; then
+                cron_time="0 */${hours} * * *"
+            else
+                echo "[WARNING]: Invalid hour interval '$interval', using default 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
+        *min)
+            # Minute interval, e.g. 30min -> */30 * * * *
+            local mins="${interval%min}"
+            if echo "$mins" | grep -q '^[0-9]\+$' && [ "$mins" -ge 1 ] && [ "$mins" -le 59 ] 2>/dev/null; then
+                cron_time="*/${mins} * * * *"
+            else
+                echo "[WARNING]: Invalid minute interval '$interval', using default 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *:*)
             local hour="${interval%%:*}"
             local min="${interval##*:}"
@@ -1484,7 +1505,8 @@ cron_setup() {
             fi
             ;;
         *)
-            if echo "$interval" | grep -q '^[0-9]\+$'; then
+            # Plain number: treat as minutes
+            if echo "$interval" | grep -q '^[0-9]\+$' && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ] 2>/dev/null; then
                 cron_time="*/${interval} * * * *"
             else
                 echo "[ERROR]: unknown interval '$interval', using daily"
@@ -1551,7 +1573,7 @@ cron_status() {
 
 # Cron menu helper functions
 cron_setup_6h() {
-    cron_setup "360"
+    cron_setup "6h"
 }
 cron_setup_daily() {
     cron_setup "daily"
@@ -1643,9 +1665,9 @@ downloader() {
             wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/apk.sha256"
         fi
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
 
-        printf "  $file_path\n" >> "$sha_file"
+        printf '  %s\n' "$file_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
@@ -1944,8 +1966,9 @@ option_menu() {
         echo ""
         echo ""
 
-        # Determine if input is legal
-        if [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
+        # Determine if input is legal (require a single digit first so an empty
+        # or letter input cannot trigger a test error)
+        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
             operation_index=1
             for operation in $menu_operations; do
                 if [ "$operation_index" = "$choice" ]; then
@@ -1957,7 +1980,7 @@ option_menu() {
         else
             echo "[WARNING]: Invalid option, please try again!"
             echo ""
-            break
+            continue
         fi
     done
 }
@@ -1981,12 +2004,11 @@ show_help() {
     echo ""
     echo "  Install options:"
     echo "      --install-path <path>     Custom install path for binary mode"
-    echo "      --custom-proxy            Use a custom GitHub proxy"
     echo ""
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
     echo ""
