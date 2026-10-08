@@ -355,13 +355,13 @@ update() {
     echo "[INFO]: Updating..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
         echo "[INFO]: Detected temporary installation mode, executing temporary installation update..."
-        temp_install "" "true"
+        temp_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: Detected persistent installation mode, executing persistent installation update..."
-        persistent_install "" "true"
+        persistent_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         echo "[INFO]: Detected binary installation mode, executing binary installation update..."
-        binary_install "" "true"
+        binary_install "" "true" || return $?
     fi
 
     # Skip restart confirmation if --yes mode
@@ -1405,18 +1405,24 @@ cron_check_update() {
         echo "[$(date)] TAILSCALE_CRON: auto-updating..." >> "$CRON_LOG"
         # cron has no interactive SSH session; no background guard needed
         export TS_NO_DAEMON=true
+        local update_rc=0
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
-                temp_install "" "true" 2>&1 >> "$CRON_LOG"
+                temp_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             persistent)
-                persistent_install "" "true" 2>&1 >> "$CRON_LOG"
+                persistent_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             binary)
-                binary_install "" "true" 2>&1 >> "$CRON_LOG"
+                binary_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
         esac
-        echo "[$(date)] TAILSCALE_CRON: update complete (mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        if [ "$update_rc" = "0" ]; then
+            echo "[$(date)] TAILSCALE_CRON: update complete (mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        else
+            echo "[$(date)] TAILSCALE_CRON: update failed (rc=$update_rc, mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        fi
+        return "$update_rc"
     fi
 }
 
@@ -2135,7 +2141,7 @@ if [ "$TMP_INSTALL" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     temp_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
@@ -2153,7 +2159,7 @@ if [ "$BIN_INSTALL" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     binary_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$UPDATE_MODE" = "true" ]; then
@@ -2162,7 +2168,7 @@ if [ "$UPDATE_MODE" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     update
-    exit 0
+    exit $?
 fi
 
 if [ "$UNINSTALL_MODE" = "true" ]; then
@@ -2183,12 +2189,12 @@ if [ "$CRON_CHECK" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     cron_check_update
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_SETUP" = "true" ]; then
     cron_setup "$CRON_SETUP_INTERVAL"
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_REMOVE" = "true" ]; then

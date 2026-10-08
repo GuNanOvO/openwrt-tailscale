@@ -414,13 +414,13 @@ update() {
     echo "[INFO]: 正在更新..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
         echo "[INFO]: 检测到临时安装模式，执行临时安装更新..."
-        temp_install "" "true"
+        temp_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: 检测到持久安装模式，执行持久安装更新..."
-        persistent_install "" "true"
+        persistent_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         echo "[INFO]: 检测到二进制安装模式，执行二进制安装更新..."
-        binary_install "" "true"
+        binary_install "" "true" || return $?
     fi
 
     # 如果更新已经重新安装了tailscale, 跳过重启确认
@@ -1453,18 +1453,24 @@ cron_check_update() {
         # cron 环境没有交互式 SSH 连接，无需后台守护
         export TS_NO_DAEMON=true
         # 根据当前安装模式自动选择更新方式
+        local update_rc=0
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
-                temp_install "" "true" 2>&1 >> "$CRON_LOG"
+                temp_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             persistent)
-                persistent_install "" "true" 2>&1 >> "$CRON_LOG"
+                persistent_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             binary)
-                binary_install "" "true" 2>&1 >> "$CRON_LOG"
+                binary_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
         esac
-        echo "[$(date)] TAILSCALE_CRON: 更新完成(模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        if [ "$update_rc" = "0" ]; then
+            echo "[$(date)] TAILSCALE_CRON: 更新完成(模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        else
+            echo "[$(date)] TAILSCALE_CRON: 更新失败(rc=$update_rc, 模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        fi
+        return "$update_rc"
     fi
 }
 
@@ -1487,7 +1493,7 @@ for script in $SCRIPT_CANDIDATES; do
     fi
 done
 
-# 如果找不到 install.sh, 尝试直接下载版本信息并记录
+# 如果找不到受信任的 install.sh, 记录错误并退出
 LOG="/var/log/tailscale-update.log"
 echo "[$(date)] TAILSCALE_CRON: 错误 - 找不到 install.sh" >> "$LOG"
 exit 1
@@ -2039,12 +2045,12 @@ option_menu() {
         done
         echo ""
 
-        read -n 1 -p "│ 请输入选项(0 ~ $option_index): " choice
+        read -n 1 -p "│ 请输入选项(1 ~ $option_index): " choice
         echo ""
         echo ""
 
         # 判断输入是否合法（先校验为单个数字, 避免空输入/字母触发 test 报错）
-        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
+        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
             operation_index=1
             for operation in $menu_operations; do
                 if [ "$operation_index" = "$choice" ]; then
@@ -2168,7 +2174,7 @@ for arg in "$@"; do
             echo "║ "$REPO_URL"/issues  ║"
             echo "║                                                       ║"
             echo "╚═══════════════════════════════════════════════════════╝"
-            read -p "请输入您想要使用的代理并按回车: " custom_proxy
+            read -r -p "请输入您想要使用的代理并按回车: " custom_proxy
             while true; do
                 echo "[INFO]: 您自定义的代理是: $custom_proxy"
                 read -n 1 -p "您确定使用该代理吗? (y/N): " choise
@@ -2243,7 +2249,7 @@ if [ "$TMP_INSTALL" = "true" ]; then
     test_proxy
     get_tailscale_info
     temp_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
@@ -2263,7 +2269,7 @@ if [ "$BIN_INSTALL" = "true" ]; then
     test_proxy
     get_tailscale_info
     binary_install "" "true"
-    exit 0
+    exit $?
 fi
 
 if [ "$UPDATE_MODE" = "true" ]; then
@@ -2273,7 +2279,7 @@ if [ "$UPDATE_MODE" = "true" ]; then
     test_proxy
     get_tailscale_info
     update
-    exit 0
+    exit $?
 fi
 
 if [ "$UNINSTALL_MODE" = "true" ]; then
@@ -2295,12 +2301,12 @@ if [ "$CRON_CHECK" = "true" ]; then
     test_proxy
     get_tailscale_info
     cron_check_update
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_SETUP" = "true" ]; then
     cron_setup "$CRON_SETUP_INTERVAL"
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_REMOVE" = "true" ]; then
