@@ -769,6 +769,20 @@ persistent_install() {
     echo "[INFO]: Stopping tailscale service before installation (network briefly interrupted)..."
     /etc/init.d/tailscale stop 2>/dev/null || true
 
+    # The package manager still lists tailscale but the binary is missing
+    # (leftover from an older conversion or an interrupted install): clear the
+    # entry first, or a same-version install is skipped as "already installed"
+    # and the post-install verification always fails
+    if [ ! -f "/usr/sbin/tailscaled" ]; then
+        if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+            echo "[INFO]: Stale package-manager entry found but files are missing, clearing it..."
+            pkg_remove_tailscale
+        elif [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+            echo "[INFO]: Stale package-manager entry found but files are missing, clearing it..."
+            pkg_remove_tailscale
+        fi
+    fi
+
     local install_success=false
     local install_attempt_range="1 2 3"
 

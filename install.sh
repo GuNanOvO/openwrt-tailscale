@@ -811,6 +811,18 @@ persistent_install() {
     echo "[INFO]: 安装前停止 tailscale 服务（网络会短暂中断）..."
     /etc/init.d/tailscale stop 2>/dev/null || true
 
+    # 包管理器已记录 tailscale 但二进制缺失 (旧版本转换残留/安装中断):
+    # 先清除记录, 否则同版本安装会被视为"已安装"跳过, 安装后验证必然失败
+    if [ ! -f "/usr/sbin/tailscaled" ]; then
+        if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+            echo "[INFO]: 检测到包管理器残留记录但文件缺失, 正在清除残留记录..."
+            pkg_remove_tailscale
+        elif [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+            echo "[INFO]: 检测到包管理器残留记录但文件缺失, 正在清除残留记录..."
+            pkg_remove_tailscale
+        fi
+    fi
+
     local install_success=false
     local install_attempt_range="1 2 3"
 
