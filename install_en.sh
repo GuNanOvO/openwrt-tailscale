@@ -800,7 +800,10 @@ persistent_install() {
             fi
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
             echo "[INFO]: Installing/updating tailscale APK package..."
-            if apk add --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
+            # --force-reinstall: force a reinstall even when the same version is
+            # registered (e.g. a dependency like luci-app-tailscale-community
+            # prevents apk del from clearing it), so the install is not skipped
+            if apk add --force-reinstall --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
                 install_success=true
                 echo "[INFO]: APK package installation successful"
                 rm -f "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
