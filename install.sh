@@ -34,10 +34,11 @@ TMP_TAILSCALE='#!/bin/sh
 TMP_TAILSCALED='#!/bin/sh
                 set -e
                 if [ -f "/tmp/tailscaled" ]; then
-                    /tmp/tailscaled "$@"
+                    exec /tmp/tailscaled "$@"
                 else
-                    /usr/sbin/install.sh --tempinstall
-                    /tmp/tailscaled "$@"
+                    # /tmp 被清空(如重启后): 只下载恢复文件, 服务由外层 init 统一启停
+                    /usr/sbin/install.sh --tempinstall --download-only
+                    exec /tmp/tailscaled "$@"
                 fi'
 
 TAILSCALE_LATEST_VERSION="" # 由get_tailscale_info设置
@@ -107,8 +108,28 @@ check_package_manager() {
     else
         PACKAGE_MANAGER=""
         echo "[WARNING]: 未找到包管理器(opkg/apk)"
-        echo "[WARNING]: 持久安装和临时安装不可用，可使用 --bin-install 进行二进制安装"
+        echo "[WARNING]: 无法识别设备架构, 持久/临时/二进制安装均不可用"
+        echo "[WARNING]: 请先安装 opkg 或 apk 后重试"
     fi
+}
+
+# 函数：移除包管理器中的 tailscale 记录（模式转换时调用）
+# 只删旧文件不删记录会导致同版本重装被跳过、文件缺失; 配置先备份后恢复
+pkg_remove_tailscale() {
+    local cfg_backup=""
+    if [ -f "/etc/config/tailscale" ]; then
+        cfg_backup="/tmp/tailscale.conf.convert-backup"
+        cp "/etc/config/tailscale" "$cfg_backup" 2>/dev/null || cfg_backup=""
+    fi
+    if [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk del tailscale >/dev/null 2>&1 || true
+    elif [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg remove tailscale >/dev/null 2>&1 || true
+    fi
+    if [ -n "$cfg_backup" ] && [ -f "$cfg_backup" ] && [ ! -f "/etc/config/tailscale" ]; then
+        mv "$cfg_backup" "/etc/config/tailscale" 2>/dev/null || true
+    fi
+    rm -f "/tmp/tailscale.conf.convert-backup" 2>/dev/null || true
 }
 
 # 函数：获取设备架构
@@ -126,7 +147,7 @@ check_device_target() {
     fi
 
     if [ -z "$raw_target" ]; then
-        echo "[ERROR]: 无法获取设备架构，脚本退出。"
+        echo "[ERROR]: 无法获取设备架构（需要 opkg/apk 查询），脚本退出。"
         exit 1
     fi
 
@@ -286,6 +307,12 @@ test_proxy() {
     local attempt_timeout=10
     local version
 
+    # 后台守护模式下沿用前台已选定（含自定义代理）的地址，避免配置丢失
+    if [ -n "${TS_PROXY_URL:-}" ]; then
+        AVAILABLE_URL_HEAD="$TS_PROXY_URL"
+        return 0
+    fi
+
     for attempt_times in $attempt_range; do
         for attempt_proxy in $PROXYS; do
             attempt_url="$attempt_proxy/${DEVICE_TARGET}/version"
@@ -317,6 +344,14 @@ test_proxy() {
 get_tailscale_info() {
     local version
     local file_size
+    # 参数调用路径（如 --persistent-install）可能未执行设备信息检查，
+    # 这里补齐依赖，避免空值参与算术比较（out of range）
+    if [ -z "$DEVICE_MEM_FREE" ]; then
+        check_device_memory
+    fi
+    if [ -z "$DEVICE_STORAGE_AVAILABLE" ]; then
+        check_device_storage
+    fi
     # 尝试3次
     local attempt_range="1 2 3"
     # 超时时间（秒）
@@ -341,6 +376,23 @@ get_tailscale_info() {
         echo "3. 报告开发者"
         exit 1
     fi
+
+    # 校验版本号与文件大小格式：代理/门户返回的 HTML 等内容参与算术运算
+    # 或拼接下载地址会导致脚本异常，这里提前拦截
+    case "$version" in
+        ''|*[!0-9A-Za-z.-]*)
+            echo "[ERROR]: 获取到的版本号无效: $version"
+            echo "[ERROR]: 请检查网络或代理设置后重试"
+            exit 1
+            ;;
+    esac
+    case "$file_size" in
+        ''|*[!0-9]*)
+            echo "[ERROR]: 获取到的文件大小无效: $file_size"
+            echo "[ERROR]: 请检查网络或代理设置后重试"
+            exit 1
+            ;;
+    esac
 
     TAILSCALE_LATEST_VERSION="$version"
     # package files are named tailscale-<version>-r<release> (e.g. tailscale-1.102.4-r2);
@@ -383,21 +435,19 @@ update() {
     echo "[INFO]: 正在更新..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
         echo "[INFO]: 检测到临时安装模式，执行临时安装更新..."
-        temp_install "" "true"
+        temp_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: 检测到持久安装模式，执行持久安装更新..."
-        persistent_install "" "true"
+        persistent_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         echo "[INFO]: 检测到二进制安装模式，执行二进制安装更新..."
-        binary_install "" "true"
+        binary_install "" "true" || return $?
     fi
 
     # 如果更新已经重新安装了tailscale, 跳过重启确认
     if [ "$YES_MODE" = "true" ]; then
-        echo "[INFO]: --yes 模式, 自动重启tailscale服务..."
-        /etc/init.d/tailscale stop 2>/dev/null || true
-        /etc/init.d/tailscale start 2>/dev/null || true
-        echo "[INFO]: tailscale服务重启完成"
+        # 安装流程已按需重启服务, 此处不再重复 stop/start
+        echo "[INFO]: --yes 模式: 安装流程已完成服务重启"
         init "" "false"
         return
     fi
@@ -465,6 +515,21 @@ remove() {
             apk del tailscale
             echo "[INFO]: apk包移除完成"
         fi
+    fi
+
+    # 包管理器仍登记 tailscale 说明删除被依赖阻止 (如 luci-app-tailscale-community);
+    # 继续删除文件会破坏依赖它的包, 因此中止卸载并恢复服务
+    if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+        echo "[ERROR]: tailscale 仍被包管理器登记 (可能被其他包依赖), 已中止卸载"
+        echo "[ERROR]: 请先卸载依赖 tailscale 的包 (如 luci-app-tailscale-community) 后重试"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+    if [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+        echo "[ERROR]: tailscale 仍被包管理器登记 (可能被其他包依赖), 已中止卸载"
+        echo "[ERROR]: 请先卸载依赖 tailscale 的包 (如 luci-app-tailscale-community) 后重试"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
     fi
 
     # 如果是二进制安装模式，清理二进制安装路径下的文件
@@ -591,6 +656,116 @@ clean_old_installation() {
 }
 
 # 函数：持久安装
+# 函数：取消守护安装——终止整个后台进程组（含 wget/opkg 等子进程）并确认结束
+guard_cancel() {
+    # setsid 让后台任务成为独立进程组组长, 负 PID 可覆盖其全部子进程
+    kill -TERM -"$guard_pid" 2>/dev/null
+    kill -TERM "$guard_pid" 2>/dev/null
+    local n=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 10 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+    kill -KILL -"$guard_pid" 2>/dev/null
+    kill -KILL "$guard_pid" 2>/dev/null
+    exit 130
+}
+
+# 函数：以独立会话（后台守护）重新执行安装，避免通过 SSH（尤其 Tailscale 连接）
+# 操作时断线导致脚本被终止、安装中断。
+# 参数：模式(persistent|temp|binary)、可选安装路径、可选"模式切换"标记
+# 返回：守护任务退出码；2 表示无法守护（调用方继续前台执行）
+guarded_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local guard_cmd=""
+
+    case "$mode" in
+        persistent) guard_cmd="--persistent-install" ;;
+        temp) guard_cmd="--temp-install" ;;
+        binary) guard_cmd="--bin-install" ;;
+        *) return 2 ;;
+    esac
+
+    if [ ! -f "$0" ]; then
+        echo ""
+        echo "[WARNING]: 无法确定脚本文件路径，跳过后台守护模式"
+        echo "[WARNING]: 建议使用 nohup 或 tmux 运行本脚本，避免连接断开导致安装中断"
+        return 2
+    fi
+
+    local guard_log="/tmp/tailscale-install.log"
+    # 防止符号链接攻击：预置的符号链接会让 root 截断任意文件。
+    # 无法创建安全替代文件时禁用日志输出，绝不回退到已知危险的路径
+    if [ -L "$guard_log" ]; then
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null)"
+        if [ -z "$guard_log" ]; then
+            guard_log="/dev/null"
+            echo "[WARNING]: 日志路径为符号链接且无法创建安全日志文件, 已禁用日志输出"
+        fi
+    fi
+    : >"$guard_log" 2>/dev/null || true
+
+    echo ""
+    echo "[INFO]: 安装/更新过程将在后台独立会话中继续执行"
+    echo "[INFO]: 通过 Tailscale 或 SSH 连接操作时, 中途断网不会中断安装"
+    echo "[INFO]: 日志文件: $guard_log"
+
+    GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" TS_PROXY_URL="$AVAILABLE_URL_HEAD" \
+        setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
+    local guard_pid=$!
+    # Ctrl-C/TERM 时终止整个后台进程组（含 wget/opkg 等子进程）并确认退出,
+    # 避免"看似取消实则继续安装"
+    trap 'guard_cancel' INT TERM
+    echo "[INFO]: 后台任务已启动 (PID: $guard_pid), 正在执行..."
+    echo ""
+    local guard_waited=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+        sleep 3
+        guard_waited=$((guard_waited + 3))
+    done
+    if kill -0 "$guard_pid" 2>/dev/null; then
+        echo ""
+        echo "[WARNING]: 后台任务仍在运行（超过 15 分钟），可能在处理较慢的网络或重试"
+        echo "[WARNING]: 请稍后重新连接设备，查看日志: $guard_log"
+        trap - INT TERM
+        return 1
+    fi
+    local guard_rc=0
+    wait "$guard_pid" 2>/dev/null
+    guard_rc=$?
+    trap - INT TERM
+    # 安装主体在后台子进程完成, 刷新前台状态变量; 否则菜单等后续流程使用过期状态
+    check_tailscale_install_status 2>/dev/null || true
+    echo ""
+    echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
+    echo "----------------------------------------------------------"
+    tail -n 20 "$guard_log" 2>/dev/null
+    echo "----------------------------------------------------------"
+    return "$guard_rc"
+}
+
+# 函数：按需把安装主体转为后台守护执行（供各安装函数在确认后调用）
+# 返回：2 = 继续前台执行（已处于守护模式/cron 环境/无法守护）；其他 = 安装结果
+maybe_guard_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local grc
+
+    if [ "${TS_GUARDED_RUN:-false}" = "true" ] || [ "${TS_NO_DAEMON:-false}" = "true" ]; then
+        return 2
+    fi
+
+    guarded_install "$mode" "$ipath" "$from_mode"
+    grc=$?
+    if [ "$grc" = "2" ]; then
+        return 2
+    fi
+    return "$grc"
+}
+
 persistent_install() {
     local confirm2persistent_install=$1
     local silent_install=$2
@@ -613,24 +788,55 @@ persistent_install() {
         fi
     fi
 
+    # 通过 SSH（尤其是 Tailscale 连接）操作时，安装/更新过程会短暂断开网络。
+    # 将安装主体放入独立会话执行，避免连接断开导致脚本被终止、安装中断。
+    maybe_guard_install persistent "" "$confirm2persistent_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 清理临时文件..."
         rm -rf /tmp/tailscale
         rm -rf /tmp/tailscaled
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: 临时文件清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
     fi
 
     echo ""
     echo "[INFO]: 正在持久安装..."
     echo "[INFO]: 开始下载tailscale文件..."
     downloader
+
+    # 安装前停止服务：避免安装触发的 start 对运行中的 daemon 执行清理，
+    # 导致地址与防火墙规则丢失（运行中的 daemon 不会因实例数据未变而被 procd 重启）
+    echo "[INFO]: 安装前停止 tailscale 服务（网络会短暂中断）..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+
+    # 包管理器已记录 tailscale 但二进制缺失 (旧版本转换残留/安装中断):
+    # 先清除记录, 否则同版本安装会被视为"已安装"跳过, 安装后验证必然失败
+    if [ ! -f "/usr/sbin/tailscaled" ]; then
+        if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+            echo "[INFO]: 检测到包管理器残留记录但文件缺失, 正在清除残留记录..."
+            pkg_remove_tailscale
+        elif [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+            echo "[INFO]: 检测到包管理器残留记录但文件缺失, 正在清除残留记录..."
+            pkg_remove_tailscale
+        fi
+    fi
 
     local install_success=false
     local install_attempt_range="1 2 3"
@@ -649,7 +855,9 @@ persistent_install() {
             fi
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
             echo "[INFO]: 安装/更新tailscale APK包..."
-            if apk add --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
+            # --force-reinstall: 同版本已登记时(例如 luci-app-tailscale-community 依赖导致
+            # apk del 无法清除记录)也强制重装, 避免被"已安装"跳过导致文件缺失
+            if apk add --force-reinstall --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
                 install_success=true
                 echo "[INFO]: APK包安装成功"
                 rm -f "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
@@ -664,8 +872,20 @@ persistent_install() {
         echo "[ERROR]: 包安装失败，已重试3次，可能原因：设备存储空间不足、网络连接异常或未知错误"
         echo "[ERROR]: 请检查设备存储空间、网络连接后重试"
         rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+        # 安装失败时尝试恢复原有的 tailscale 服务，避免设备失去连接、无法远程重试
+        echo "[INFO]: 正在尝试恢复 tailscale 服务（使用原有版本）..."
+        /etc/init.d/tailscale start 2>/dev/null || true
         exit 1
     fi
+
+    # 被修改过的 /etc 文件会被包管理器保护: 新版本留在 .apk-new/.opkg-new,
+    # 需提升为正式文件, 否则 init 脚本仍指向旧的自定义路径
+    for pending in /etc/init.d/tailscale.apk-new /etc/init.d/tailscale.opkg-new; do
+        if [ -f "$pending" ]; then
+            mv -f "$pending" "/etc/init.d/tailscale" 2>/dev/null || true
+            chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    done
 
     echo "[INFO]: 验证安装状态..."
     check_tailscale_install_status
@@ -673,8 +893,23 @@ persistent_install() {
     if [ "$TAILSCALE_INSTALL_STATUS" == "persistent" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
         echo "[INFO]: 持久安装完成!"
         echo "[INFO]: 正在启动tailscale服务..."
-
-        tailscaled up &>/dev/null &
+        # 仅在服务未运行时启动：包实际安装后 postinst 可能已经启动过服务，
+        # 再次 start 会对运行中的 daemon 执行 cleanup，清掉地址与防火墙规则
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            echo "[WARNING]: tailscale服务未能启动, 尝试再次启动..."
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if pidof tailscaled >/dev/null 2>&1; then
+            echo "[INFO]: tailscale服务已启动"
+        else
+            echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale start"
+            exit 1
+        fi
 
         if [ "$silent_install" != "true" ]; then
             echo ""
@@ -703,6 +938,49 @@ temp_to_persistent() {
 }
 
 # 函数：临时安装
+# 函数：仅下载/恢复临时安装文件（开机后 /tmp 被清空时由 wrapper 调用）
+# 不触碰配置、依赖与服务状态, 服务由外层 init 统一启停
+temp_download_only() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="/tmp/tailscaled"
+    local tmp_path="${file_path}.new"
+
+    echo "[INFO]: 正在恢复临时安装文件 (仅下载)..."
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3"
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 三次下载均失败"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
+
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 校验失败"
+                exit 1
+            fi
+            sleep 3
+        else
+            rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
+            ln -sf /tmp/tailscaled /tmp/tailscale
+            echo "[INFO]: 临时安装文件恢复完成"
+            return 0
+        fi
+    done
+}
+
 temp_install() {
     local confirm2temp_install=$1
     local silent_install=$2
@@ -728,16 +1006,29 @@ temp_install() {
         fi
     fi
 
+    # 通过 SSH（尤其 Tailscale 连接）操作时网络会短暂中断，安装主体放入独立会话执行
+    maybe_guard_install temp "" "$confirm2temp_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2temp_install" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: 清理持久安装文件..."
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: 持久安装文件清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -748,16 +1039,19 @@ temp_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="/tmp/tailscaled"
+    # 先下载到临时文件、校验通过后再原子替换目标：
+    # 直接写入正在运行的二进制会因 Text file busy 失败，失败清理还会破坏正在运行的服务
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: 下载尝试 $attempt_times/3"
         echo "[INFO]: 下载tailscaled二进制文件..."
-        if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
-                sleep 3
-                init
+                echo "[ERROR]: 请检查网络连接后重试"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
@@ -765,28 +1059,31 @@ temp_install() {
 
         echo "[INFO]: 下载配置文件和初始化脚本..."
         wget -cO "$sha_file" --timeout="$attempt_timeout"  "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+        # 已有配置保留: 仅在首次安装时写入默认配置, 避免覆盖用户自定义设置
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init 脚本无校验: 全量覆盖下载, 避免 -c 续传在已有文件上追加损坏内容
+        wget -O  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: 请检查网络后重试"
+                exit 1
             fi
+            echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+            sleep 3
         else
             echo "[INFO]: tailscaled 文件校验通过!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
@@ -796,7 +1093,14 @@ temp_install() {
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
 
-    if [ "$TMP_INSTALL" != "true" ]; then
+    # 固化当前脚本到 root 专属路径: /tmp 被清空后 /usr/sbin/tailscaled
+    # 包装脚本会调用 /usr/sbin/install.sh 自动重下
+    if [ -f "$0" ] && cp "$0" /usr/sbin/install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/install.sh 2>/dev/null || true
+    fi
+
+    # 依赖包(kmod-tun 等)对临时安装同样必需, CLI 与菜单安装保持一致
+    if [ "$PACKAGE_MANAGER" = "opkg" ] || [ "$PACKAGE_MANAGER" = "apk" ]; then
         echo "[INFO]: 安装依赖包..."
         local pkg_install_success=false
         local pkg_attempt_range="1 2 3"
@@ -804,6 +1108,17 @@ temp_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新opkg包列表..."
                 opkg update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -820,6 +1135,17 @@ temp_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新apk包列表..."
                 apk update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -855,11 +1181,18 @@ temp_install() {
     echo "[INFO]: 正在启动tailscale服务..."
 
     /etc/init.d/tailscale enable
-    /etc/init.d/tailscale start
+    # 完整重启：更新场景下先停止旧进程再启动新二进制，
+    # 避免对运行中的 daemon 执行 cleanup（清掉地址与防火墙规则）
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: tailscale服务已启动"
+    else
+        echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale restart"
+        exit 1
+    fi
 
     sleep 2
     check_tailscale_install_status
@@ -904,6 +1237,14 @@ validate_install_path() {
         echo "[ERROR]: 安装路径为空"
         return 1
     fi
+
+    # 仅允许安全字符, 避免特殊字符破坏标记解析/sed 替换/命令拼接
+    case "$path" in
+        *[!A-Za-z0-9_./-]*)
+            echo "[ERROR]: 安装路径仅允许字母/数字/._- 字符: ${path}"
+            return 1
+            ;;
+    esac
 
     # 系统关键目录白名单 - 禁止安装到这些目录
     local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
@@ -951,14 +1292,241 @@ validate_install_path() {
 }
 
 # 函数：二进制安装
+# 函数：下载 binary 模式所需的配置与 init 脚本（普通/紧凑两条替换路径共用）
+# 先下载到临时文件并校验, 成功后才原子替换; 失败时保留原文件并中止更新,
+# 避免中断的下载损坏现有脚本导致服务无法启动
+binary_fetch_support_files() {
+    local attempt_timeout=20
+    local dl_tmp="/tmp/tailscale-support.download"
+    local attempt_times
+
+    echo "[INFO]: 下载配置文件和初始化脚本..."
+
+    # 配置仅在不存在时写入, 同样先临时下载校验
+    if [ ! -f "/etc/config/tailscale" ]; then
+        local cfg_ok="false"
+        for attempt_times in 1 2 3; do
+            rm -f "$dl_tmp"
+            if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf" \
+                && [ -s "$dl_tmp" ]; then
+                cfg_ok="true"
+                break
+            fi
+            rm -f "$dl_tmp"
+            sleep 2
+        done
+        if [ "$cfg_ok" = "true" ] \
+            && cp "$dl_tmp" "/etc/config/tailscale.new" 2>/dev/null \
+            && [ -s "/etc/config/tailscale.new" ] \
+            && mv -f "/etc/config/tailscale.new" "/etc/config/tailscale" 2>/dev/null; then
+            rm -f "$dl_tmp"
+        else
+            rm -f "$dl_tmp" "/etc/config/tailscale.new"
+            echo "[ERROR]: 配置文件下载失败, 已中止更新"
+            exit 1
+        fi
+    fi
+
+    # init 脚本先下载到临时文件并校验(非空 + 语法), 成功后才替换
+    for attempt_times in 1 2 3; do
+        rm -f "$dl_tmp"
+        if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init" \
+            && [ -s "$dl_tmp" ] && sh -n "$dl_tmp" 2>/dev/null; then
+            if cp "$dl_tmp" "/etc/init.d/tailscale.new" 2>/dev/null \
+                && [ -s "/etc/init.d/tailscale.new" ] \
+                && mv -f "/etc/init.d/tailscale.new" "/etc/init.d/tailscale" 2>/dev/null; then
+                chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+                rm -f "$dl_tmp"
+                return 0
+            fi
+            rm -f "/etc/init.d/tailscale.new"
+        fi
+        rm -f "$dl_tmp"
+        sleep 2
+    done
+
+    echo "[ERROR]: init 脚本下载或校验失败, 已中止更新"
+    echo "[ERROR]: 现有 init 脚本未被破坏"
+    exit 1
+}
+
+# 函数：紧凑替换关键阶段收到取消信号时, 先回滚旧程序并恢复服务再退出
+# (在 binary_tight_replace 的破坏性替换阶段安装为 TERM/INT trap)
+tight_cancel_rollback() {
+    trap '' TERM INT
+    echo "[WARNING]: 收到取消信号, 正在回滚旧程序并恢复服务..."
+    local target="$BINARY_TIGHT_PATH"
+    rm -f /tmp/tailscaled.stage /tmp/tailscaled.stage.sha256
+    ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+    for p in $(pidof tailscaled); do
+        kill "$p" 2>/dev/null || true
+    done
+    sleep 1
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ] && [ -n "$target" ]; then
+        rm -f "${target}.new"
+        rm -f "$target"
+        if cp "$BINARY_ROLLBACK_FILE" "${target}.new" 2>/dev/null \
+            && [ "$(wc -c < "${target}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "${target}.new" "$target" 2>/dev/null; then
+            chmod +x "$target" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: 已回滚旧程序并恢复服务"
+        else
+            rm -f "${target}.new"
+            echo "[WARNING]: 回滚落盘失败, 请手动恢复: cp $BINARY_ROLLBACK_FILE $target"
+        fi
+    else
+        echo "[WARNING]: 无回滚副本可用"
+    fi
+    exit 130
+}
+
+# 函数：紧凑替换 binary 二进制（目标空间不足直接下载时使用）
+# 流程: /tmp 暂存下载并校验 -> 下载配置/init -> 备份旧程序(必须成功) ->
+#       停服务 -> 删旧释放空间 -> 落盘并校验 -> 保留备份供外层启动验证
+# 失败时恢复旧程序并退出
+binary_tight_replace() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local file_path="${install_path}/tailscaled"
+    local stage="/tmp/tailscaled.stage"
+    local rollback="/tmp/tailscaled.rollback"
+    local sha_file="/tmp/tailscaled.stage.sha256"
+    local final_tmp="${file_path}.new"
+    local expected_sha=""
+    local got=0
+
+    BINARY_ROLLBACK_FILE=""
+    rm -f "$stage" "$sha_file"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: 下载尝试 $attempt_times/3 (暂存到 /tmp)"
+        if ! wget -cO "$stage" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$stage"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
+                echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
+        expected_sha=$(cat "$sha_file" 2>/dev/null | tr -d '\n\r')
+        printf '%s' "$expected_sha" > "$sha_file"
+        printf '  %s\n' "$stage" >> "$sha_file"
+
+        if [ -z "$expected_sha" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$stage" "$sha_file"
+            expected_sha=""
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: tailscaled 文件校验失败"
+                echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+                exit 1
+            fi
+            sleep 3
+        else
+            echo "[INFO]: 暂存文件校验通过"
+            break
+        fi
+    done
+    rm -f "$sha_file"
+
+    # 配置与 init 脚本 (与普通路径共用同一初始化流程)
+    binary_fetch_support_files
+
+    # 有旧程序时必须先备份成功, 否则不允许进入破坏性替换
+    if [ -f "$file_path" ]; then
+        rm -f "$rollback"
+        if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
+            BINARY_ROLLBACK_FILE="$rollback"
+            BINARY_TIGHT_PATH="$file_path"
+            echo "[INFO]: 已备份旧程序用于回滚"
+        else
+            rm -f "$rollback" "$stage"
+            echo "[ERROR]: 无法备份旧程序, 为避免更新失败后失去可用的 tailscale, 已终止"
+            echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+            exit 1
+        fi
+    fi
+
+    # 关键替换阶段: 收到 TERM/INT 时先回滚并恢复服务再退出, 避免留下缺失的二进制
+    if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+        trap 'tight_cancel_rollback' TERM INT
+    fi
+
+    echo "[INFO]: 停止服务并替换二进制 (请勿断电)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+    sleep 1
+    # 确认服务已停止: 旧文件的磁盘块只有在进程退出后才会释放, 空间检查依赖这一点
+    if pidof tailscaled >/dev/null 2>&1; then
+        for p in $(pidof tailscaled); do
+            kill "$p" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[ERROR]: 服务未能停止, 已终止替换 (旧程序未受影响)"
+        rm -f "$stage"
+        if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
+        exit 1
+    fi
+    rm -f "$file_path"
+
+    for attempt_times in $attempt_range; do
+        if cp "$stage" "$final_tmp" 2>/dev/null \
+            && [ "$(sha256sum "$final_tmp" 2>/dev/null | awk '{print $1}')" = "$expected_sha" ]; then
+            mv -f "$final_tmp" "$file_path" 2>/dev/null && got=1 && break
+        fi
+        echo "[WARNING]: 落盘失败或校验不一致, 重试 $attempt_times/3"
+        rm -f "$final_tmp"
+        sleep 1
+    done
+
+    if [ "$got" = "1" ]; then
+        chmod +x "$file_path" 2>/dev/null || true
+        rm -f "$stage"
+        echo "[INFO]: 紧凑替换完成 (启动验证前保留回滚备份)"
+        return 0
+    fi
+
+    echo "[ERROR]: 新二进制落盘失败"
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+        echo "[INFO]: 正在回滚旧程序..."
+        # 先删除新文件释放空间, 否则回滚副本可能因空间不足落盘失败
+        rm -f "$file_path"
+        if cp "$BINARY_ROLLBACK_FILE" "$final_tmp" 2>/dev/null \
+            && [ "$(wc -c < "$final_tmp" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "$final_tmp" "$file_path" 2>/dev/null; then
+            chmod +x "$file_path" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: 已回滚旧程序并恢复服务"
+        else
+            rm -f "$final_tmp"
+            echo "[WARNING]: 回滚落盘失败 (可能空间不足), 请手动恢复: cp $BINARY_ROLLBACK_FILE $file_path"
+        fi
+    else
+        echo "[WARNING]: 无回滚副本; 已验证的新程序仍在 $stage, 可手动复制到 $file_path"
+    fi
+    exit 1
+}
+
 binary_install() {
     local confirm2binary_install=$1
     local silent_install=$2
 
     # 确定安装路径
-    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
-    # 如果 CUSTOM_INSTALL_PATH 未设置但存在标记文件，从标记文件恢复路径
-    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+    local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
+    # 仅当 CUSTOM_INSTALL_PATH 与 GUARD_INSTALL_PATH 都未设置时才从标记文件恢复路径：
+    # 守护子进程通过 GUARD_INSTALL_PATH 显式携带新路径，不能被旧标记覆盖
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -z "$GUARD_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
         marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
         if [ -n "$marker_path" ]; then
@@ -983,7 +1551,7 @@ binary_install() {
         echo "│ 二进制安装模式将直接下载 tailscaled 可执行文件到指定路径"
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ 安装路径: ${install_path}"
-            echo "│ 请确保该路径所在设备有足够空间(至少 ${TAILSCALE_FILE_SIZE}M)"
+            echo "│ 请确保该路径所在设备有足够空间(至少 ${TAILSCALE_FILE_SIZE}M; 不足时将自动使用紧凑替换)"
         fi
         echo "│ 此模式不使用 opkg/apk 包管理器进行安装"
         echo "│ 但仍会尝试通过包管理器安装依赖库"
@@ -1002,21 +1570,6 @@ binary_install() {
         fi
     fi
 
-    echo ""
-    clean_old_installation
-
-    if [ "$confirm2binary_install" = "true" ]; then
-        echo "[INFO]: 停止现有tailscale服务..."
-        tailscale_stoper
-        echo "[INFO]: 清理旧安装文件..."
-        rm -rf /tmp/tailscale /tmp/tailscaled
-        echo "[INFO]: 清理完成"
-    fi
-
-    echo ""
-    echo "[INFO]: 正在二进制安装..."
-    echo "[INFO]: 安装路径: ${install_path}"
-
     # 创建安装目录
     mkdir -p "${install_path}" 2>/dev/null || {
         echo "[ERROR]: 无法创建安装目录 ${install_path}"
@@ -1024,66 +1577,121 @@ binary_install() {
         exit 1
     }
 
-    # 检查目标路径可用空间
+    # 检查目标路径可用空间 (在进入后台守护前完成, 保证交互用户能看到警告)
+    # df 的空闲空间已排除旧文件占用, 直接替换只需额外容纳新文件;
+    # 不足时若 /tmp 能同时暂存新文件并备份旧程序, 则使用紧凑替换方案
     local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M"
+    local tight_replace="false"
+    local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+    local old_kb=0
+    if [ -f "${install_path}/tailscaled" ]; then
+        old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+    fi
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((need_kb + 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 (需要约 ${TAILSCALE_FILE_SIZE}M 用于下载新文件)"
         echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
-        read -n 1 -p "是否继续? (y/N): " space_choice
-        if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
-            echo "[INFO]: 取消安装"
-            return
+        local target_dev tmp_dev tmp_avail
+        target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+        if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + old_kb + 2048))" ] 2>/dev/null \
+            && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
+            tight_replace="true"
+            echo "[WARNING]: 将使用紧凑替换方案 (先经 /tmp 暂存校验并备份旧程序, 再删除旧程序并落盘)"
+            echo "[WARNING]: 更新期间请勿断电或强制重启, 否则 tailscale 可能无法启动"
+        else
+            echo "[ERROR]: 目标空间不足, 且 /tmp 无法暂存新文件并备份旧程序 (需与目标为不同文件系统且有足够空间)"
+            echo "[ERROR]: 请释放目标路径空间 (或改用 USB 存储) 后重试"
+            exit 1
         fi
     fi
+
+    # 通过 SSH（尤其 Tailscale 连接）操作时网络会短暂中断，安装主体放入独立会话执行
+    maybe_guard_install binary "$install_path" "$confirm2binary_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # 切换模式时先停服务（此时旧 CLI 仍存在, down/logout 才能生效），再清理旧文件
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 停止现有tailscale服务..."
+        tailscale_stoper
+    fi
+
+    echo ""
+    # 同模式更新不预先删除旧二进制: 下载校验成功后由 mv 原子替换接管,
+    # 下载失败时旧程序仍可继续服务 (仅切换模式时清理旧安装)
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        clean_old_installation
+    fi
+
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: 清理旧安装文件..."
+        rm -rf /tmp/tailscale /tmp/tailscaled
+        echo "[INFO]: 清理完成"
+        # 移除包管理器中的残留记录: 否则同版本重装会被跳过, 导致文件缺失
+        pkg_remove_tailscale
+    fi
+
+    echo ""
+    echo "[INFO]: 正在二进制安装..."
+    echo "[INFO]: 安装路径: ${install_path}"
 
     local attempt_range="1 2 3"
     local attempt_timeout=20
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="${install_path}/tailscaled"
+    # 先下载到临时文件、校验通过后再原子替换目标（同 temp 模式的原因）
+    local tmp_path="${file_path}.new"
+    BINARY_ROLLBACK_FILE=""
 
+    if [ "$tight_replace" = "true" ]; then
+        # 目标空间不足 2 倍: 紧凑替换 (经 /tmp 暂存, 内部处理失败回滚)
+        binary_tight_replace
+    else
     for attempt_times in $attempt_range; do
         echo "[INFO]: 下载尝试 $attempt_times/3"
         echo "[INFO]: 下载tailscaled二进制文件..."
-        if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: tailscaled 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
-                sleep 3
-                rm -f "$file_path"
-                init
+                echo "[ERROR]: 请检查网络连接后重试"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
         fi
 
-        echo "[INFO]: 下载配置文件和初始化脚本..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+        # 配置与 init 脚本 (与紧凑路径共用同一初始化流程)
+        binary_fetch_support_files
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: tailscaled 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: 请检查网络后重试"
+                exit 1
             fi
+            echo "[INFO]: tailscaled 文件校验不通过，正在尝试重新下载..."
+            sleep 3
         else
             echo "[INFO]: tailscaled 文件校验通过!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
+    fi
 
     # 设置可执行权限
     chmod +x "$file_path" 2>/dev/null
@@ -1109,6 +1717,17 @@ binary_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: 依赖包安装尝试 $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新opkg包列表..."
                 opkg update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -1125,6 +1744,17 @@ binary_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # 先检查依赖是否已齐全: 已齐全时无需访问包源, 避免包源不可达阻断安装
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: 所有依赖包已安装, 跳过包源更新"
+                    break
+                fi
+
                 echo "[INFO]: 更新apk包列表..."
                 apk update || continue
                 echo "[INFO]: 安装依赖包: $PACKAGES_TO_CHECK"
@@ -1176,13 +1806,53 @@ binary_install() {
     echo "[INFO]: 正在启动tailscale服务..."
 
     /etc/init.d/tailscale enable 2>/dev/null || true
-    /etc/init.d/tailscale start 2>/dev/null || true
+    # 完整重启：更新场景下先停止旧进程再启动新二进制，
+    # 避免对运行中的 daemon 执行 cleanup（清掉地址与防火墙规则）
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    # 尝试启动 tailscaled
-    if [ -f "${install_path}/tailscaled" ]; then
-        ${install_path}/tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: tailscale服务已启动"
+        # 服务验证通过, 清理紧凑替换保留的回滚备份并解除取消 trap
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            BINARY_TIGHT_PATH=""
+            trap - TERM INT
+        fi
+    else
+        # 服务未能启动: 紧凑替换保留了回滚备份时恢复旧程序
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            echo "[WARNING]: 新程序未能启动, 正在回滚旧程序..."
+            # 清理可能被 procd 拉起的残留实例/进程, 并删除新文件释放空间,
+            # 否则回滚副本可能因空间不足落盘失败
+            ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+            for p in $(pidof tailscaled); do
+                kill "$p" 2>/dev/null || true
+            done
+            sleep 1
+            rm -f "$file_path"
+            if cp "$BINARY_ROLLBACK_FILE" "${file_path}.new" 2>/dev/null \
+                && [ "$(wc -c < "${file_path}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+                && mv -f "${file_path}.new" "$file_path" 2>/dev/null; then
+                chmod +x "$file_path" 2>/dev/null || true
+                rm -f "$BINARY_ROLLBACK_FILE"
+                BINARY_ROLLBACK_FILE=""
+                /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
+                sleep 3
+                if pidof tailscaled >/dev/null 2>&1; then
+                    echo "[INFO]: 已回滚旧程序, 服务恢复运行"
+                else
+                    echo "[WARNING]: 回滚后服务仍未启动, 请手动执行: /etc/init.d/tailscale restart"
+                fi
+            else
+                rm -f "${file_path}.new"
+                echo "[WARNING]: 回滚落盘失败, 请手动恢复: cp $BINARY_ROLLBACK_FILE $file_path"
+            fi
+        fi
+        echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale restart"
+        exit 1
     fi
 
     sleep 2
@@ -1267,26 +1937,37 @@ cron_check_update() {
 
         # 安全检测: 如果 tailscale 正在活跃使用, 跳过本次更新
         local active_peers=0
-        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        # 仅统计真正 active 的对端（idle 不代表正在使用）；grep -c 计数为 0 时
+        # 会输出 0 并返回非零, 加 || true 避免拼出 "0\n0" 畸形值
+        active_peers=$(tailscale status 2>/dev/null | grep -cw 'active' || true)
+        [ -z "$active_peers" ] && active_peers=0
         if [ "$active_peers" -gt 0 ] 2>/dev/null; then
             echo "[$(date)] TAILSCALE_CRON: 有 ${active_peers} 个活跃对端, 跳过更新以避免断网" >> "$CRON_LOG"
             return 0
         fi
 
         echo "[$(date)] TAILSCALE_CRON: 开始自动更新..." >> "$CRON_LOG"
+        # cron 环境没有交互式 SSH 连接，无需后台守护
+        export TS_NO_DAEMON=true
         # 根据当前安装模式自动选择更新方式
+        local update_rc=0
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
-                temp_install "" "true" 2>&1 >> "$CRON_LOG"
+                temp_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             persistent)
-                persistent_install "" "true" 2>&1 >> "$CRON_LOG"
+                persistent_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             binary)
-                binary_install "" "true" 2>&1 >> "$CRON_LOG"
+                binary_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
         esac
-        echo "[$(date)] TAILSCALE_CRON: 更新完成(模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        if [ "$update_rc" = "0" ]; then
+            echo "[$(date)] TAILSCALE_CRON: 更新完成(模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        else
+            echo "[$(date)] TAILSCALE_CRON: 更新失败(rc=$update_rc, 模式=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        fi
+        return "$update_rc"
     fi
 }
 
@@ -1297,9 +1978,9 @@ generate_cron_script() {
 # Tailscale 自动更新检查脚本 - 由 install.sh 生成
 # 此脚本被 crond 定时调用
 
-# 获取脚本路径 (install.sh 可能在不同位置)
-SCRIPT_CANDIDATES="/usr/sbin/install.sh /tmp/install.sh /mnt/install.sh
-$(dirname "$0")/install.sh"
+# 获取脚本路径 (仅信任 root 专属路径; /tmp、/mnt 等世界可写目录中的
+# 同名脚本可能被本地用户替换后由 root 通过 crond 执行)
+SCRIPT_CANDIDATES="/usr/sbin/tailscale-install.sh /usr/sbin/install.sh"
 
 for script in $SCRIPT_CANDIDATES; do
     if [ -f "$script" ]; then
@@ -1309,7 +1990,7 @@ for script in $SCRIPT_CANDIDATES; do
     fi
 done
 
-# 如果找不到 install.sh, 尝试直接下载版本信息并记录
+# 如果找不到受信任的 install.sh, 记录错误并退出
 LOG="/var/log/tailscale-update.log"
 echo "[$(date)] TAILSCALE_CRON: 错误 - 找不到 install.sh" >> "$LOG"
 exit 1
@@ -1326,6 +2007,12 @@ cron_setup() {
     # 生成检查脚本
     generate_cron_script
 
+    # 将当前脚本固化到 root 专属路径, 供 cron 使用:
+    # 世界可写目录中的脚本可能被本地用户替换后由 root 执行
+    if [ -f "$0" ] && cp "$0" /usr/sbin/tailscale-install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/tailscale-install.sh 2>/dev/null || true
+    fi
+
     # 解析时间参数
     local cron_time=""
     case "$interval" in
@@ -1333,7 +2020,26 @@ cron_setup() {
         daily)     cron_time="0 4 * * *" ;;
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
-        */minutes) cron_time="*/$interval * * * *" ;;
+        *h)
+            # 小时间隔, 如 6h -> 0 */6 * * * (不能写成 */360, 分钟字段无此语义)
+            local hours="${interval%h}"
+            if echo "$hours" | grep -q '^[0-9]\+$' && [ "$hours" -ge 1 ] && [ "$hours" -le 23 ] 2>/dev/null; then
+                cron_time="0 */${hours} * * *"
+            else
+                echo "[WARNING]: 无效的小时间隔 '$interval', 使用默认 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
+        *min)
+            # 分钟间隔, 如 30min -> */30 * * * *
+            local mins="${interval%min}"
+            if echo "$mins" | grep -q '^[0-9]\+$' && [ "$mins" -ge 1 ] && [ "$mins" -le 59 ] 2>/dev/null; then
+                cron_time="*/${mins} * * * *"
+            else
+                echo "[WARNING]: 无效的分钟间隔 '$interval', 使用默认 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *:*)
             # 支持 HH:MM 或 H:MM 格式（如 05:00 或 5:00）
             local hour="${interval%%:*}"
@@ -1354,8 +2060,8 @@ cron_setup() {
             fi
             ;;
         *)
-            # 尝试作为分钟数解析
-            if echo "$interval" | grep -q '^[0-9]\+$'; then
+            # 纯数字按分钟处理
+            if echo "$interval" | grep -q '^[0-9]\+$' && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ] 2>/dev/null; then
                 cron_time="*/${interval} * * * *"
             else
                 echo "[ERROR]: 未知间隔 '$interval', 使用 daily"
@@ -1365,7 +2071,9 @@ cron_setup() {
     esac
 
     # 写入 crontab
-    local cron_line="${cron_time} ${CRON_ID} ${CRON_SCRIPT} >/dev/null 2>&1"
+    # 注意：标记必须放在命令之后——BusyBox crond 将行内 '#' 之后视为注释，
+    # 放在命令前会导致整条命令为空（cron 静默不执行）
+    local cron_line="${cron_time} ${CRON_SCRIPT} >/dev/null 2>&1 ${CRON_ID}"
 
     # 检查是否已存在
     if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
@@ -1397,7 +2105,7 @@ cron_remove() {
     else
         echo "[INFO]: 未找到 cron 自动更新条目"
     fi
-    rm -f "$CRON_SCRIPT" 2>/dev/null || true
+    rm -f "$CRON_SCRIPT" /usr/sbin/tailscale-install.sh 2>/dev/null || true
 }
 
 # 函数：显示 cron 状态
@@ -1445,9 +2153,10 @@ downloader() {
         if ! wget -cO "$file_path" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: $target_file 三次下载均失败，可能原因：网络连接异常或代理不可用"
-                echo "[ERROR]: 即将重启脚本，请检查网络连接后重试"
+                echo "[ERROR]: 请检查网络连接后重新运行本脚本"
                 sleep 3
-                init
+                rm -f "$file_path" "$sha_file"
+                exit 1
             fi
             echo "[INFO]: 下载失败，准备重试..."
             continue
@@ -1460,17 +2169,17 @@ downloader() {
             wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/apk.sha256"
         fi
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path\n" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$file_path" >> "$sha_file"
 
         echo "[INFO]: 验证文件完整性..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: tailscale 文件三次下载均失败，可能原因：文件损坏或网络不稳定"
-                echo "[ERROR]: 即将重启脚本，请重试"
+                echo "[ERROR]: 请检查网络后重新运行本脚本"
                 sleep 3
                 rm -f "$file_path" "$sha_file"
-                init
+                exit 1
             else
                 echo "[INFO]: tailscale 文件校验不通过，正在尝试重新下载..."
                 rm -f "$file_path" "$sha_file"
@@ -1515,6 +2224,10 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout 2>/dev/null || true
         echo "[INFO]: 禁用tailscale开机启动..."
         /etc/init.d/tailscale disable 2>/dev/null || true
+    else
+        echo "[INFO]: 未识别的安装状态, 尝试停止运行中的服务..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        killall tailscaled 2>/dev/null || true
     fi
     echo "[INFO]: tailscale服务停止完成"
     echo ""
@@ -1666,7 +2379,7 @@ show_info() {
 
 # Cron 菜单快捷函数
 cron_setup_6h() {
-    cron_setup "360"
+    cron_setup "6h"
 }
 cron_setup_daily() {
     cron_setup "daily"
@@ -1834,12 +2547,12 @@ option_menu() {
         done
         echo ""
 
-        read -n 1 -p "│ 请输入选项(0 ~ $option_index): " choice
+        read -n 1 -p "│ 请输入选项(1 ~ $option_index): " choice
         echo ""
         echo ""
 
-        # 判断输入是否合法
-        if [ "$choice" -ge 0 ] && [ "$choice" -le "$option_index" ]; then
+        # 判断输入是否合法（先校验为单个数字, 避免空输入/字母触发 test 报错）
+        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
             operation_index=1
             for operation in $menu_operations; do
                 if [ "$operation_index" = "$choice" ]; then
@@ -1851,7 +2564,7 @@ option_menu() {
         else
             echo "[WARNING]: 无效选项，请重试！"
             echo ""
-            break
+            continue
         fi
     done
 }
@@ -1880,9 +2593,10 @@ show_help() {
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
+    echo "      --download-only           Only download/restore temp files (internal, boot wrapper)"
     echo ""
     echo "  Examples:"
     echo "      $0 --bin-install                          # Binary mode, default path"
@@ -1902,6 +2616,7 @@ show_help() {
 
 # 读取参数
 BIN_INSTALL="false"
+DOWNLOAD_ONLY="false"
 PERSISTENT_INSTALL="false"
 UPDATE_MODE="false"
 UNINSTALL_MODE="false"
@@ -1921,6 +2636,9 @@ for arg in "$@"; do
         ;;
     --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --download-only)
+        DOWNLOAD_ONLY="true"
         ;;
     --persistent-install)
         PERSISTENT_INSTALL="true"
@@ -1963,7 +2681,7 @@ for arg in "$@"; do
             echo "║ "$REPO_URL"/issues  ║"
             echo "║                                                       ║"
             echo "╚═══════════════════════════════════════════════════════╝"
-            read -p "请输入您想要使用的代理并按回车: " custom_proxy
+            read -r -p "请输入您想要使用的代理并按回车: " custom_proxy
             while true; do
                 echo "[INFO]: 您自定义的代理是: $custom_proxy"
                 read -n 1 -p "您确定使用该代理吗? (y/N): " choise
@@ -2031,31 +2749,68 @@ main() {
     option_menu
 }
 
-if [ "$TMP_INSTALL" = "true" ]; then
+# 安装模式互斥检查
+_mode_count=0
+[ "$TMP_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$PERSISTENT_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$BIN_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+if [ "$_mode_count" -gt 1 ]; then
+    echo "[ERROR]: 安装模式互斥, 请只指定一种: --temp-install / --persistent-install / --bin-install"
+    exit 1
+fi
+
+if [ "$DOWNLOAD_ONLY" = "true" ]; then
     check_package_manager
     check_device_target
     test_proxy
     get_tailscale_info
-    temp_install "" "true"
-    exit 0
+    temp_download_only
+    exit $?
+fi
+
+if [ "$TMP_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    test_proxy
+    get_tailscale_info
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        temp_install "true" "true"
+    else
+        temp_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     test_proxy
     get_tailscale_info
-    persistent_install "" "true"
-    exit 0
+    if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        persistent_install "true" "true"
+    else
+        persistent_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     test_proxy
     get_tailscale_info
-    binary_install "" "true"
-    exit 0
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        # 与菜单切换行为一致: 从其他模式转来时执行转换清理
+        binary_install "true" "true"
+    else
+        binary_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$UPDATE_MODE" = "true" ]; then
@@ -2065,7 +2820,7 @@ if [ "$UPDATE_MODE" = "true" ]; then
     test_proxy
     get_tailscale_info
     update
-    exit 0
+    exit $?
 fi
 
 if [ "$UNINSTALL_MODE" = "true" ]; then
@@ -2087,12 +2842,12 @@ if [ "$CRON_CHECK" = "true" ]; then
     test_proxy
     get_tailscale_info
     cron_check_update
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_SETUP" = "true" ]; then
     cron_setup "$CRON_SETUP_INTERVAL"
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_REMOVE" = "true" ]; then

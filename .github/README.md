@@ -136,6 +136,7 @@ ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_
 
 * **持久安装**：代替手动下载ipk包或apk包到设备，使用 `opkg install` 或 `apk add` 进行安装；  
 * **临时安装**：下载二进制可执行文件至设备 `/tmp` 目录下，并在 `/usr/sbin` 目录下创建脚本连接；
+* **断线保护**：安装/更新/切换在独立后台会话执行，SSH/Tailscale 连接中途断开不会中断安装；完整日志见 `/tmp/tailscale-install.log`；
 
 以上两点，可详查于[install.sh](../install.sh)
 

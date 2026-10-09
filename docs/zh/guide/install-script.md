@@ -86,6 +86,10 @@ sh install.sh --update --yes
 | `--cron-remove` | 移除自动更新定时任务 |
 | `--cron-check` | 检查并安装更新（由 cron 内部调用） |
 
+::: tip 卸载说明
+如果包管理器中的 `tailscale` 被其他包依赖（例如 `luci-app-tailscale-community`），卸载会被包管理器拒绝。脚本检测到后会**中止卸载并恢复服务**，避免依赖它的包损坏；请先卸载依赖包后再重试。
+:::
+
 ## 安装模式详解
 
 ### 持久安装（`--persistent-install`）
@@ -103,7 +107,7 @@ sh install.sh --persistent-install --yes
 
 ### 临时安装（`--temp-install`）
 
-安装到 `/tmp` 目录。文件**重启后丢失** — `/usr/sbin` 下的包装脚本会在下次运行时自动重新下载二进制（当 `/tmp/tailscaled` 不存在时）。
+安装到 `/tmp` 目录。文件**重启后丢失** — 开机时 `/usr/sbin/tailscaled` 包装脚本会自动**仅下载**恢复文件（不启停服务，由 init 统一启动）。
 
 ```sh
 sh install.sh --temp-install
@@ -138,7 +142,8 @@ sh install.sh --mode binary /mnt/usb --yes
 - 被屏蔽的系统关键目录：`/`、`/bin`、`/boot`、`/dev`、`/etc`、`/lib`、`/proc`、`/sbin`、`/sys`、`/usr`、`/usr/bin`、`/usr/lib`、`/var`、`/rom`、`/overlay`
 - 目录不存在时自动创建
 - 检查父目录写权限
-- 检查目标分区可用空间
+- 检查目标分区可用空间：更新采用"下载校验后原子替换"，需要约 1 倍二进制大小的空闲空间
+- 空间不足但 `/tmp` 可用（与目标为不同文件系统）时自动使用**紧凑替换**（经 `/tmp` 暂存并备份旧程序；替换期间请勿断电）
 
 **符号链接行为：**
 - 安装到自定义路径时，会在 `/usr/sbin` 创建指向实际二进制位置的符号链接
@@ -163,8 +168,17 @@ sh install.sh --mode binary /mnt/usb --yes
 
 切换模式时，脚本会自动：
 1. 停止正在运行的 Tailscale 服务
-2. 清理上一个模式的文件
-3. 使用新模式安装
+2. 清理上一个模式的文件（用户配置 `/etc/config/tailscale` 会保留，不会被默认配置覆盖）
+3. 使用新模式安装（整个过程同样受断线保护）
+
+## 断线保护与日志
+
+安装、更新和模式切换的主体流程会在**独立后台会话**中执行：如果你正通过 SSH（尤其是 Tailscale 连接）操作，过程中网络短暂中断或连接掉线都不会打断安装。
+
+- CLI 与交互菜单的安装/更新/切换均受保护
+- 前台等待后台任务结束并显示日志末尾；完整日志位于 `/tmp/tailscale-install.log`
+- 按 `Ctrl-C` 取消时，若正处于替换二进制等关键阶段，脚本会先回滚旧程序并恢复服务，再退出
+- 后台任务超过 15 分钟未结束时给出提示，可稍后重连查看日志
 
 ## 交互菜单
 
@@ -197,6 +211,8 @@ sh install.sh --mode binary /mnt/usb --yes
 | 预设名称 | `weekly` | 每周日 04:00 检查 |
 | 预设名称 | `monthly` | 每月 1 号 04:00 检查 |
 | 分钟数 | `30` | 每 30 分钟检查 |
+| 分钟数（带单位） | `30min` | 每 30 分钟检查 |
+| 小时数（带单位） | `6h` | 每 6 小时检查（`0 */6`） |
 | 指定时间 | `05:00` | 每天 05:00 检查 |
 | 指定时间 | `22:30` | 每天 22:30 检查 |
 
@@ -230,6 +246,7 @@ sh install.sh --cron-remove
 | 文件 | 用途 |
 |------|------|
 | `/usr/sbin/tailscale-update-check` | 生成的 cron 脚本 |
+| `/usr/sbin/tailscale-install.sh` | 安装脚本快照（cron 仅执行 `/usr/sbin` 下受信任路径） |
 | `/var/log/tailscale-update.log` | 更新日志 |
 | `/etc/crontabs/root` | cron 条目（带 `# tailscale-auto-update` 标记） |
 
@@ -258,7 +275,9 @@ sh install.sh --cron-remove
 
 - **SHA256 校验**：所有下载的文件（包和二进制）都会通过 SHA256 校验和验证
 - **下载重试**：失败的下载最多重试 3 次
-- **路径校验**：二进制安装屏蔽系统关键目录
+- **路径校验**：二进制安装屏蔽系统关键目录，且路径仅允许字母/数字/`._-` 字符
+- **配置保护**：更新/切换/开机恢复不会覆盖已有的 `/etc/config/tailscale`
+- **cron 加固**：定时任务只执行受信任的 `/usr/sbin` 路径，不访问世界可写目录（`/tmp`、`/mnt`）
 - **架构检查**：不受支持的架构会在安装前被拒绝
 
 ## 完整示例

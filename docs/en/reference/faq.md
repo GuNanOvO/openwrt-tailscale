@@ -33,6 +33,21 @@ This might be due to OOM (out of memory). See [Memory Optimization](/en/guide/oo
 
 Yes! Install [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community) for a graphical management interface. See [LuCI Web UI](/en/guide/luci) for details.
 
+### Do updates/reinstalls affect packages like luci-app-tailscale-community?
+
+No. Dependencies are by package name (`tailscale`) and this repository keeps the name; persistent updates/reinstalls force-reinstall while keeping the package record, `/etc/config/tailscale` is never overwritten, and during mode switches LuCI can still call the CLI through `/usr/sbin/tailscale`.
+
+### Uninstall says "tailscale is still registered"?
+
+It means another package depends on tailscale (e.g. `luci-app-tailscale-community`) and the package manager refused the removal. To avoid breaking dependent packages the script **aborts the uninstall and restores the service**; remove the dependent package first and retry:
+
+```sh
+# OpenWrt 25.12+
+apk del luci-app-tailscale-community
+# OpenWrt 24.10-
+opkg remove luci-app-tailscale-community
+```
+
 ## Build
 
 ### Can I build packages myself?

@@ -22,10 +22,12 @@ TMP_TAILSCALE='#!/bin/sh
 TMP_TAILSCALED='#!/bin/sh
                 set -e
                 if [ -f "/tmp/tailscaled" ]; then
-                    /tmp/tailscaled "$@"
+                    exec /tmp/tailscaled "$@"
                 else
-                    /usr/sbin/install.sh --tempinstall
-                    /tmp/tailscaled "$@"
+                    # /tmp was cleared (e.g. after reboot): download files only,
+                    # the outer init starts/stops the service
+                    /usr/sbin/install.sh --tempinstall --download-only
+                    exec /tmp/tailscaled "$@"
                 fi'
 
 TAILSCALE_LATEST_VERSION="" # Set by get_tailscale_info
@@ -87,8 +89,29 @@ check_package_manager() {
     else
         PACKAGE_MANAGER=""
         echo "[WARNING]: No package manager (opkg/apk) found"
-        echo "[WARNING]: Persistent and temporary install not available, use --bin-install for binary install"
+        echo "[WARNING]: Cannot determine the device architecture, all install modes are unavailable"
+        echo "[WARNING]: Please install opkg or apk and retry"
     fi
+}
+
+# Function: drop the tailscale entry from the package manager (mode conversion).
+# Removing files but keeping the DB entry makes a same-version reinstall a
+# no-op with no binaries; the config is backed up and restored
+pkg_remove_tailscale() {
+    local cfg_backup=""
+    if [ -f "/etc/config/tailscale" ]; then
+        cfg_backup="/tmp/tailscale.conf.convert-backup"
+        cp "/etc/config/tailscale" "$cfg_backup" 2>/dev/null || cfg_backup=""
+    fi
+    if [ "$PACKAGE_MANAGER" = "apk" ]; then
+        apk del tailscale >/dev/null 2>&1 || true
+    elif [ "$PACKAGE_MANAGER" = "opkg" ]; then
+        opkg remove tailscale >/dev/null 2>&1 || true
+    fi
+    if [ -n "$cfg_backup" ] && [ -f "$cfg_backup" ] && [ ! -f "/etc/config/tailscale" ]; then
+        mv "$cfg_backup" "/etc/config/tailscale" 2>/dev/null || true
+    fi
+    rm -f "/tmp/tailscale.conf.convert-backup" 2>/dev/null || true
 }
 
 # Function: Get Device Architecture
@@ -106,7 +129,7 @@ check_device_target() {
     fi
 
     if [ -z "$raw_target" ]; then
-        echo "[ERROR]: Unable to get device architecture, script exiting."
+        echo "[ERROR]: Unable to get device architecture (requires opkg/apk), script exiting."
         exit 1
     fi
 
@@ -263,6 +286,15 @@ check_device_storage() {
 get_tailscale_info() {
     local version
     local file_size
+    # Argument-driven paths (e.g. --persistent-install) may not have run the
+    # device checks; make sure the dependencies are populated so the arithmetic
+    # comparisons below never see empty values ("out of range")
+    if [ -z "$DEVICE_MEM_FREE" ]; then
+        check_device_memory
+    fi
+    if [ -z "$DEVICE_STORAGE_AVAILABLE" ]; then
+        check_device_storage
+    fi
     # Try 3 times
     local attempt_range="1 2 3"
     # Timeout (seconds)
@@ -287,6 +319,23 @@ get_tailscale_info() {
         echo "3. Report to developer"
         exit 1
     fi
+
+    # Validate version/size format: HTML from a proxy/portal would otherwise
+    # break the arithmetic or the download URL, so reject it early
+    case "$version" in
+        ''|*[!0-9A-Za-z.-]*)
+            echo "[ERROR]: Invalid version received: $version"
+            echo "[ERROR]: Please check network or proxy settings and retry"
+            exit 1
+            ;;
+    esac
+    case "$file_size" in
+        ''|*[!0-9]*)
+            echo "[ERROR]: Invalid file size received: $file_size"
+            echo "[ERROR]: Please check network or proxy settings and retry"
+            exit 1
+            ;;
+    esac
 
     TAILSCALE_LATEST_VERSION="$version"
     # package files are named tailscale-<version>-r<release> (e.g. tailscale-1.102.4-r2);
@@ -329,21 +378,19 @@ update() {
     echo "[INFO]: Updating..."
     if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
         echo "[INFO]: Detected temporary installation mode, executing temporary installation update..."
-        temp_install "" "true"
+        temp_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ]; then
         echo "[INFO]: Detected persistent installation mode, executing persistent installation update..."
-        persistent_install "" "true"
+        persistent_install "" "true" || return $?
     elif [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         echo "[INFO]: Detected binary installation mode, executing binary installation update..."
-        binary_install "" "true"
+        binary_install "" "true" || return $?
     fi
 
     # Skip restart confirmation if --yes mode
     if [ "$YES_MODE" = "true" ]; then
-        echo "[INFO]: --yes mode, auto-restarting tailscale service..."
-        /etc/init.d/tailscale stop 2>/dev/null || true
-        /etc/init.d/tailscale start 2>/dev/null || true
-        echo "[INFO]: Tailscale service restart complete"
+        # The install already restarted the service as needed; do not restart twice
+        echo "[INFO]: --yes mode: service restart already handled by the install"
         init "" "false"
         return
     fi
@@ -413,6 +460,22 @@ remove() {
             apk del tailscale
             echo "[INFO]: apk package removal complete"
         fi
+    fi
+
+    # If the package manager still lists tailscale, the removal was blocked by a
+    # dependency (e.g. luci-app-tailscale-community); deleting the files would
+    # break that package, so abort the uninstall and restore the service
+    if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+        echo "[ERROR]: tailscale is still registered (a package may depend on it), uninstall aborted"
+        echo "[ERROR]: Remove packages depending on tailscale (e.g. luci-app-tailscale-community) first"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+    if [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+        echo "[ERROR]: tailscale is still registered (a package may depend on it), uninstall aborted"
+        echo "[ERROR]: Remove packages depending on tailscale (e.g. luci-app-tailscale-community) first"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
     fi
 
     # Clean up binary installation path files if in binary mode
@@ -540,6 +603,123 @@ clean_old_installation() {
 }
 
 # Function: Persistent Installation
+# Cancel a guarded install: terminate the whole background process group
+# (including wget/opkg children) and make sure it actually stopped
+guard_cancel() {
+    # setsid makes the background task its own process-group leader, so the
+    # negative PID reaches every child process
+    kill -TERM -"$guard_pid" 2>/dev/null
+    kill -TERM "$guard_pid" 2>/dev/null
+    local n=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 10 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+    kill -KILL -"$guard_pid" 2>/dev/null
+    kill -KILL "$guard_pid" 2>/dev/null
+    exit 130
+}
+
+# Re-run the install body in a detached session so a dropped SSH (especially a
+# Tailscale connection) cannot terminate the script and leave a half-finished
+# install. Args: mode (persistent|temp|binary), optional install path, optional
+# "mode switch" flag. Returns the guard task's exit code; 2 means "cannot guard"
+# (caller continues in the foreground).
+guarded_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local guard_cmd=""
+
+    case "$mode" in
+        persistent) guard_cmd="--persistent-install" ;;
+        temp) guard_cmd="--temp-install" ;;
+        binary) guard_cmd="--bin-install" ;;
+        *) return 2 ;;
+    esac
+
+    if [ ! -f "$0" ]; then
+        echo ""
+        echo "[WARNING]: Cannot determine the script path, skipping the background guard mode"
+        echo "[WARNING]: Consider running this script with nohup or tmux to survive a dropped connection"
+        return 2
+    fi
+
+    local guard_log="/tmp/tailscale-install.log"
+    # Guard against symlink attacks: a pre-placed symlink would make root
+    # truncate an arbitrary file. If no safe replacement can be created,
+    # disable logging rather than fall back to the suspicious path
+    if [ -L "$guard_log" ]; then
+        guard_log="$(mktemp /tmp/tailscale-install.XXXXXX 2>/dev/null)"
+        if [ -z "$guard_log" ]; then
+            guard_log="/dev/null"
+            echo "[WARNING]: Log path is a symlink and no safe log file could be created, logging disabled"
+        fi
+    fi
+    : >"$guard_log" 2>/dev/null || true
+
+    echo ""
+    echo "[INFO]: Installation/update will continue in a background session"
+    echo "[INFO]: When operating over Tailscale or SSH, a dropped connection will not interrupt the install"
+    echo "[INFO]: Log file: $guard_log"
+
+    GUARD_INSTALL_PATH="$ipath" TS_GUARDED_RUN=true TS_FROM_MODE="$from_mode" \
+        setsid sh "$0" $guard_cmd --yes >>"$guard_log" 2>&1 </dev/null &
+    local guard_pid=$!
+    # On Ctrl-C/TERM terminate the whole background process group (including
+    # wget/opkg children) and confirm it stopped, so "cancel" does not leave
+    # an install running
+    trap 'guard_cancel' INT TERM
+    echo "[INFO]: Background task started (PID: $guard_pid), running..."
+    echo ""
+    local guard_waited=0
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$guard_waited" -lt 900 ]; do
+        sleep 3
+        guard_waited=$((guard_waited + 3))
+    done
+    if kill -0 "$guard_pid" 2>/dev/null; then
+        echo ""
+        echo "[WARNING]: Background task is still running (over 15 minutes), possibly slow network or retries"
+        echo "[WARNING]: Please reconnect later and check the log: $guard_log"
+        trap - INT TERM
+        return 1
+    fi
+    local guard_rc=0
+    wait "$guard_pid" 2>/dev/null
+    guard_rc=$?
+    trap - INT TERM
+    # The install body ran in the background child; refresh the foreground state
+    # variables or the menu keeps showing stale options
+    check_tailscale_install_status 2>/dev/null || true
+    echo ""
+    echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
+    echo "----------------------------------------------------------"
+    tail -n 20 "$guard_log" 2>/dev/null
+    echo "----------------------------------------------------------"
+    return "$guard_rc"
+}
+
+# Guard the install on demand (called by each install function after confirmation).
+# Returns 2 = continue in the foreground (already guarded / cron env / cannot guard);
+# other values = installation result.
+maybe_guard_install() {
+    local mode="$1"
+    local ipath="${2:-}"
+    local from_mode="${3:-false}"
+    local grc
+
+    if [ "${TS_GUARDED_RUN:-false}" = "true" ] || [ "${TS_NO_DAEMON:-false}" = "true" ]; then
+        return 2
+    fi
+
+    guarded_install "$mode" "$ipath" "$from_mode"
+    grc=$?
+    if [ "$grc" = "2" ]; then
+        return 2
+    fi
+    return "$grc"
+}
+
 persistent_install() {
     local confirm2persistent_install=$1
     local silent_install=$2
@@ -563,24 +743,61 @@ persistent_install() {
         fi
     fi
 
+    # When operating over SSH (especially a Tailscale connection), the install/update
+    # briefly interrupts the network. Run the install body in a separate session so a
+    # dropped connection cannot terminate the script and leave a half-finished install.
+    maybe_guard_install persistent "" "$confirm2persistent_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2persistent_install" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
+    if [ "$confirm2persistent_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Cleaning temporary files..."
         rm -rf /tmp/tailscale
         rm -rf /tmp/tailscaled
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: Temporary file cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
     fi
 
     echo ""
     echo "[INFO]: Persistent installation in progress..."
     echo "[INFO]: Starting tailscale file download..."
     downloader
+
+    # Stop the service before installing: the post-install start would otherwise run
+    # --cleanup against the running daemon, wiping its addresses and firewall rules
+    # (procd does not restart the instance when the instance data is unchanged).
+    echo "[INFO]: Stopping tailscale service before installation (network briefly interrupted)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+
+    # The package manager still lists tailscale but the binary is missing
+    # (leftover from an older conversion or an interrupted install): clear the
+    # entry first, or a same-version install is skipped as "already installed"
+    # and the post-install verification always fails
+    if [ ! -f "/usr/sbin/tailscaled" ]; then
+        if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+            echo "[INFO]: Stale package-manager entry found but files are missing, clearing it..."
+            pkg_remove_tailscale
+        elif [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+            echo "[INFO]: Stale package-manager entry found but files are missing, clearing it..."
+            pkg_remove_tailscale
+        fi
+    fi
 
     local install_success=false
     local install_attempt_range="1 2 3"
@@ -599,7 +816,10 @@ persistent_install() {
             fi
         elif [ "$PACKAGE_MANAGER" = "apk" ]; then
             echo "[INFO]: Installing/updating tailscale APK package..."
-            if apk add --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
+            # --force-reinstall: force a reinstall even when the same version is
+            # registered (e.g. a dependency like luci-app-tailscale-community
+            # prevents apk del from clearing it), so the install is not skipped
+            if apk add --force-reinstall --allow-untrusted --force-overwrite /tmp/$TAILSCALE_FILE.apk; then
                 install_success=true
                 echo "[INFO]: APK package installation successful"
                 rm -f "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
@@ -614,8 +834,22 @@ persistent_install() {
         echo "[ERROR]: Package installation failed after 3 retries, possible causes: insufficient device storage space, network connection issues, or unknown errors"
         echo "[ERROR]: Please check device storage space and network connection, then retry"
         rm -f "/tmp/$TAILSCALE_FILE.ipk" "/tmp/$TAILSCALE_FILE.apk" "/tmp/$TAILSCALE_FILE.sha256"
+        # Try to restore the previous tailscale service so the device does not stay
+        # unreachable and can be retried remotely
+        echo "[INFO]: Attempting to restart tailscale service (previous version)..."
+        /etc/init.d/tailscale start 2>/dev/null || true
         exit 1
     fi
+
+    # Modified /etc files are protected by the package manager: the new version
+    # stays as .apk-new/.opkg-new and must be promoted, or the init script still
+    # points at the old custom path
+    for pending in /etc/init.d/tailscale.apk-new /etc/init.d/tailscale.opkg-new; do
+        if [ -f "$pending" ]; then
+            mv -f "$pending" "/etc/init.d/tailscale" 2>/dev/null || true
+            chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+        fi
+    done
 
     echo "[INFO]: Verifying installation status..."
     check_tailscale_install_status
@@ -623,8 +857,24 @@ persistent_install() {
     if [ "$TAILSCALE_INSTALL_STATUS" == "persistent" ] && [ "$IS_TAILSCALE_INSTALLED" == "true" ]; then
         echo "[INFO]: Persistent installation complete!"
         echo "[INFO]: Starting tailscale service..."
-
-        tailscaled up &>/dev/null &
+        # Start only when the service is not already running: when the package was really
+        # installed, postinst may have started it; starting again would run --cleanup
+        # against the live daemon and wipe its addresses and firewall rules
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if ! pidof tailscaled >/dev/null 2>&1; then
+            echo "[WARNING]: Tailscale service did not start, trying again..."
+            /etc/init.d/tailscale start 2>/dev/null || true
+            sleep 2
+        fi
+        if pidof tailscaled >/dev/null 2>&1; then
+            echo "[INFO]: Tailscale service started"
+        else
+            echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale start"
+            exit 1
+        fi
 
         if [ "$silent_install" != "true" ]; then
             echo ""
@@ -652,6 +902,50 @@ temp_to_persistent() {
 }
 
 # Function: Temporary Installation
+# Function: download/restore temp install files only (called by the boot wrapper
+# when /tmp was cleared). Does not touch config, dependencies or service state;
+# the outer init starts/stops the service
+temp_download_only() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local sha_file="/tmp/tailscaled.sha256"
+    local file_path="/tmp/tailscaled"
+    local tmp_path="${file_path}.new"
+
+    echo "[INFO]: Restoring temp install files (download only)..."
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: Download attempt $attempt_times/3"
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
+
+        if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file verification failed"
+                exit 1
+            fi
+            sleep 3
+        else
+            rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
+            ln -sf /tmp/tailscaled /tmp/tailscale
+            echo "[INFO]: Temp install files restored"
+            return 0
+        fi
+    done
+}
+
 temp_install() {
     local confirm2temp_install=$1
     local silent_install=$2
@@ -680,16 +974,31 @@ temp_install() {
         fi
     fi
 
+    # The install body runs in a detached session to survive a dropped SSH connection
+    maybe_guard_install temp "" "$confirm2temp_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
     echo ""
     clean_old_installation
 
-    if [ "$confirm2temp_install" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
+    if [ "$confirm2temp_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
         echo "[INFO]: Cleaning persistent installation files..."
         rm -rf /usr/sbin/tailscale
         rm -rf /usr/sbin/tailscaled
         echo "[INFO]: Persistent installation file cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
     fi
 
     echo ""
@@ -700,16 +1009,20 @@ temp_install() {
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="/tmp/tailscaled"
+    # Download to a temp file and atomically replace after verification:
+    # writing to a running binary fails with "Text file busy", and the old
+    # failure cleanup used to delete the running binary and break the service
+    local tmp_path="${file_path}.new"
 
     for attempt_times in $attempt_range; do
         echo "[INFO]: Download attempt $attempt_times/3"
         echo "[INFO]: Downloading tailscaled binary file..."
-        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
-                sleep 3
-                init
+                echo "[ERROR]: Please check the network connection and retry"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
@@ -717,28 +1030,32 @@ temp_install() {
 
         echo "[INFO]: Downloading configuration files and init scripts..."
         wget -cO "$sha_file" --timeout="$attempt_timeout"  "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+        # Preserve existing config: only write the default on first install
+        if [ ! -f "/etc/config/tailscale" ]; then
+            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        fi
+        # init script has no checksum: download it in full; -c resume could
+        # append corrupt bytes to an existing file
+        wget -O  "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: Please check the network and retry"
+                exit 1
             fi
+            echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
+            sleep 3
         else
             echo "[INFO]: Tailscale file verification passed!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
@@ -748,7 +1065,15 @@ temp_install() {
     echo "$TMP_TAILSCALED" > /usr/sbin/tailscaled
     ln -sf /tmp/tailscaled /tmp/tailscale
 
-    if [ "$TMP_INSTALL" != "true" ]; then
+    # Pin the installer to a root-owned path: after /tmp is cleared, the
+    # /usr/sbin/tailscaled wrapper calls /usr/sbin/install.sh to re-download
+    if [ -f "$0" ] && cp "$0" /usr/sbin/install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/install.sh 2>/dev/null || true
+    fi
+
+    # Dependency packages (kmod-tun etc.) are required for temp installs too;
+    # keep CLI and menu installs consistent
+    if [ "$PACKAGE_MANAGER" = "opkg" ] || [ "$PACKAGE_MANAGER" = "apk" ]; then
         echo "[INFO]: Installing dependency packages..."
         local pkg_install_success=false
         local pkg_attempt_range="1 2 3"
@@ -756,6 +1081,18 @@ temp_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: Dependency package installation attempt $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating opkg package list..."
                 opkg update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -772,6 +1109,18 @@ temp_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating apk package list..."
                 apk update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -807,11 +1156,18 @@ temp_install() {
     echo "[INFO]: Starting tailscale service..."
 
     /etc/init.d/tailscale enable
-    /etc/init.d/tailscale start
+    # Full restart: on update this stops the old process before starting the new binary,
+    # avoiding --cleanup against a running daemon (which wipes addresses and firewall rules)
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: Tailscale service started"
+    else
+        echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale restart"
+        exit 1
+    fi
 
     sleep 2
     check_tailscale_install_status
@@ -856,6 +1212,15 @@ validate_install_path() {
         return 1
     fi
 
+    # Only safe characters, so marker parsing/sed substitution/command building
+    # cannot be broken by special characters
+    case "$path" in
+        *[!A-Za-z0-9_./-]*)
+            echo "[ERROR]: Install path may only contain letters/digits/._- : ${path}"
+            return 1
+            ;;
+    esac
+
     local blocked_paths="/ /bin /boot /dev /etc /lib /proc /sbin /sys /usr /usr/bin /usr/lib /var /rom /overlay"
     for bp in $blocked_paths; do
         if [ "$path" = "$bp" ] || [ "$path" = "${bp}/" ]; then
@@ -897,14 +1262,249 @@ validate_install_path() {
 }
 
 # Function: Binary Installation
+# Function: download the config and init script required by binary mode
+# (shared by the normal and tight replacement paths). Files are downloaded to
+# a temp file and verified before an atomic replace; on failure the original
+# is kept and the update aborts, so an interrupted download cannot corrupt the
+# existing script and break service startup
+binary_fetch_support_files() {
+    local attempt_timeout=20
+    local dl_tmp="/tmp/tailscale-support.download"
+    local attempt_times
+
+    echo "[INFO]: Downloading configuration files and init scripts..."
+
+    # Config is only written when missing; download it to a temp file first
+    if [ ! -f "/etc/config/tailscale" ]; then
+        local cfg_ok="false"
+        for attempt_times in 1 2 3; do
+            rm -f "$dl_tmp"
+            if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf" \
+                && [ -s "$dl_tmp" ]; then
+                cfg_ok="true"
+                break
+            fi
+            rm -f "$dl_tmp"
+            sleep 2
+        done
+        if [ "$cfg_ok" = "true" ] \
+            && cp "$dl_tmp" "/etc/config/tailscale.new" 2>/dev/null \
+            && [ -s "/etc/config/tailscale.new" ] \
+            && mv -f "/etc/config/tailscale.new" "/etc/config/tailscale" 2>/dev/null; then
+            rm -f "$dl_tmp"
+        else
+            rm -f "$dl_tmp" "/etc/config/tailscale.new"
+            echo "[ERROR]: Config download failed, aborting the update"
+            exit 1
+        fi
+    fi
+
+    # Init script: download to a temp file, verify (non-empty + syntax), then replace
+    for attempt_times in 1 2 3; do
+        rm -f "$dl_tmp"
+        if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init" \
+            && [ -s "$dl_tmp" ] && sh -n "$dl_tmp" 2>/dev/null; then
+            if cp "$dl_tmp" "/etc/init.d/tailscale.new" 2>/dev/null \
+                && [ -s "/etc/init.d/tailscale.new" ] \
+                && mv -f "/etc/init.d/tailscale.new" "/etc/init.d/tailscale" 2>/dev/null; then
+                chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+                rm -f "$dl_tmp"
+                return 0
+            fi
+            rm -f "/etc/init.d/tailscale.new"
+        fi
+        rm -f "$dl_tmp"
+        sleep 2
+    done
+
+    echo "[ERROR]: Init script download or verification failed, aborting the update"
+    echo "[ERROR]: The existing init script was not touched"
+    exit 1
+}
+
+# Function: on TERM/INT during the critical replacement phase, roll the old
+# program back and restore the service before exiting (installed as a trap by
+# binary_tight_replace around the destructive phase)
+tight_cancel_rollback() {
+    trap '' TERM INT
+    echo "[WARNING]: Cancel received, rolling back the old program and restoring the service..."
+    local target="$BINARY_TIGHT_PATH"
+    rm -f /tmp/tailscaled.stage /tmp/tailscaled.stage.sha256
+    ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+    for p in $(pidof tailscaled); do
+        kill "$p" 2>/dev/null || true
+    done
+    sleep 1
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ] && [ -n "$target" ]; then
+        rm -f "${target}.new"
+        rm -f "$target"
+        if cp "$BINARY_ROLLBACK_FILE" "${target}.new" 2>/dev/null \
+            && [ "$(wc -c < "${target}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "${target}.new" "$target" 2>/dev/null; then
+            chmod +x "$target" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: Old program restored and service restarted"
+        else
+            rm -f "${target}.new"
+            echo "[WARNING]: Rollback placement failed, restore manually: cp $BINARY_ROLLBACK_FILE $target"
+        fi
+    else
+        echo "[WARNING]: No rollback copy available"
+    fi
+    exit 130
+}
+
+# Function: tight replacement of the binary when the target cannot fit the
+# download. Flow: stage+verify in /tmp -> fetch config/init -> backup the old
+# binary (mandatory) -> stop service -> delete old (frees space) -> place and
+# verify -> keep the backup for the outer start verification; restore on failure
+binary_tight_replace() {
+    local attempt_range="1 2 3"
+    local attempt_timeout=20
+    local file_path="${install_path}/tailscaled"
+    local stage="/tmp/tailscaled.stage"
+    local rollback="/tmp/tailscaled.rollback"
+    local sha_file="/tmp/tailscaled.stage.sha256"
+    local final_tmp="${file_path}.new"
+    local expected_sha=""
+    local got=0
+
+    BINARY_ROLLBACK_FILE=""
+    rm -f "$stage" "$sha_file"
+
+    for attempt_times in $attempt_range; do
+        echo "[INFO]: Download attempt $attempt_times/3 (staging to /tmp)"
+        if ! wget -cO "$stage" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$stage"
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
+                echo "[ERROR]: The old program is untouched and the service keeps running"
+                exit 1
+            fi
+            continue
+        fi
+
+        wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
+        expected_sha=$(cat "$sha_file" 2>/dev/null | tr -d '\n\r')
+        printf '%s' "$expected_sha" > "$sha_file"
+        printf '  %s\n' "$stage" >> "$sha_file"
+
+        if [ -z "$expected_sha" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$stage" "$sha_file"
+            expected_sha=""
+            if [ "$attempt_times" = "3" ]; then
+                echo "[ERROR]: Tailscaled file verification failed"
+                echo "[ERROR]: The old program is untouched and the service keeps running"
+                exit 1
+            fi
+            sleep 3
+        else
+            echo "[INFO]: Staged file verification passed"
+            break
+        fi
+    done
+    rm -f "$sha_file"
+
+    # Config and init script (shared initialization flow with the normal path)
+    binary_fetch_support_files
+
+    # With an old program present the backup must succeed before any
+    # destructive step; otherwise abort
+    if [ -f "$file_path" ]; then
+        rm -f "$rollback"
+        if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
+            BINARY_ROLLBACK_FILE="$rollback"
+            BINARY_TIGHT_PATH="$file_path"
+            echo "[INFO]: Old program backed up for rollback"
+        else
+            rm -f "$rollback" "$stage"
+            echo "[ERROR]: Could not back up the old program; aborting so a failed update cannot lose tailscale"
+            echo "[ERROR]: The old program is untouched and the service keeps running"
+            exit 1
+        fi
+    fi
+
+    # Critical replacement phase: on TERM/INT roll back and restore the service
+    # before exiting, so a cancel cannot leave a missing binary
+    if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+        trap 'tight_cancel_rollback' TERM INT
+    fi
+
+    echo "[INFO]: Stopping the service and replacing the binary (do not power off)..."
+    /etc/init.d/tailscale stop 2>/dev/null || true
+    sleep 1
+    # Confirm the service stopped: the old file's blocks are only released when
+    # the process exits, and the space math depends on that
+    if pidof tailscaled >/dev/null 2>&1; then
+        for p in $(pidof tailscaled); do
+            kill "$p" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[ERROR]: Service did not stop, aborting the replacement (old program untouched)"
+        rm -f "$stage"
+        if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
+        exit 1
+    fi
+    rm -f "$file_path"
+
+    for attempt_times in $attempt_range; do
+        if cp "$stage" "$final_tmp" 2>/dev/null \
+            && [ "$(sha256sum "$final_tmp" 2>/dev/null | awk '{print $1}')" = "$expected_sha" ]; then
+            mv -f "$final_tmp" "$file_path" 2>/dev/null && got=1 && break
+        fi
+        echo "[WARNING]: Placement failed or checksum mismatch, retry $attempt_times/3"
+        rm -f "$final_tmp"
+        sleep 1
+    done
+
+    if [ "$got" = "1" ]; then
+        chmod +x "$file_path" 2>/dev/null || true
+        rm -f "$stage"
+        echo "[INFO]: Tight replacement complete (rollback backup kept until start verification)"
+        return 0
+    fi
+
+    echo "[ERROR]: Placing the new binary failed"
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+        echo "[INFO]: Rolling back the old program..."
+        # Remove the new file first to free space, or the rollback copy may
+        # fail to fit
+        rm -f "$file_path"
+        if cp "$BINARY_ROLLBACK_FILE" "$final_tmp" 2>/dev/null \
+            && [ "$(wc -c < "$final_tmp" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "$final_tmp" "$file_path" 2>/dev/null; then
+            chmod +x "$file_path" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: Old program restored and service restart attempted"
+        else
+            rm -f "$final_tmp"
+            echo "[WARNING]: Rollback placement failed (out of space?), restore manually: cp $BINARY_ROLLBACK_FILE $file_path"
+        fi
+    else
+        echo "[WARNING]: No rollback copy; the verified new file is still at $stage and can be copied manually"
+    fi
+    exit 1
+}
+
 binary_install() {
     local confirm2binary_install=$1
     local silent_install=$2
 
     # Determine install path
-    local install_path="${CUSTOM_INSTALL_PATH:-/usr/sbin}"
-    # If CUSTOM_INSTALL_PATH not set but marker exists, restore path from marker
-    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
+    local install_path="${GUARD_INSTALL_PATH:-${CUSTOM_INSTALL_PATH:-/usr/sbin}}"
+    # Restore the path from the marker only when neither CUSTOM_INSTALL_PATH nor
+    # GUARD_INSTALL_PATH is set: a guard child carries the new path explicitly
+    # and must not be overridden by the old marker
+    if [ -z "$CUSTOM_INSTALL_PATH" ] && [ -z "$GUARD_INSTALL_PATH" ] && [ -f "$TAILSCALE_MODE_MARKER" ]; then
         local marker_path
         marker_path=$(cat "$TAILSCALE_MODE_MARKER" 2>/dev/null | cut -d':' -f2)
         if [ -n "$marker_path" ]; then
@@ -930,7 +1530,7 @@ binary_install() {
         echo "│ executable directly to the specified path."
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ Install path: ${install_path}"
-            echo "│ Please ensure the target device has enough space (at least ${TAILSCALE_FILE_SIZE}M)"
+            echo "│ Please ensure the target device has enough space (at least ${TAILSCALE_FILE_SIZE}M; tight replacement is used otherwise)"
         fi
         echo "│ This mode does NOT use opkg/apk package manager."
         echo "│ It will still try to install dependencies via package"
@@ -951,21 +1551,6 @@ binary_install() {
         fi
     fi
 
-    echo ""
-    clean_old_installation
-
-    if [ "$confirm2binary_install" = "true" ]; then
-        echo "[INFO]: Stopping existing tailscale service..."
-        tailscale_stoper
-        echo "[INFO]: Cleaning old installation files..."
-        rm -rf /tmp/tailscale /tmp/tailscaled
-        echo "[INFO]: Cleanup complete"
-    fi
-
-    echo ""
-    echo "[INFO]: Binary installation in progress..."
-    echo "[INFO]: Install path: ${install_path}"
-
     # Create install directory
     mkdir -p "${install_path}" 2>/dev/null || {
         echo "[ERROR]: Cannot create install directory ${install_path}"
@@ -973,66 +1558,126 @@ binary_install() {
         exit 1
     }
 
-    # Check target path available space
+    # Check target path available space (before entering the guard, so an
+    # interactive user actually sees the warning)
+    # df free space already excludes the old file; a direct replace only needs
+    # room for the new file. If that does not fit but /tmp can hold both the
+    # staged download and the old-program backup, use the tight path
     local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: Target path ${install_path} has insufficient space (need ${TAILSCALE_FILE_SIZE}M)"
+    local tight_replace="false"
+    local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+    local old_kb=0
+    if [ -f "${install_path}/tailscaled" ]; then
+        old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+    fi
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((need_kb + 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: Target path ${install_path} has insufficient free space (needs about ${TAILSCALE_FILE_SIZE}M for the new file)"
         echo "[WARNING]: Currently available: $((target_avail / 1024))M"
-        read -n 1 -p "Continue anyway? (y/N): " space_choice
-        if [ "$space_choice" != "Y" ] && [ "$space_choice" != "y" ]; then
-            echo "[INFO]: Cancel installation"
-            return
+        local target_dev tmp_dev tmp_avail
+        target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
+        tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
+        if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + old_kb + 2048))" ] 2>/dev/null \
+            && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
+            tight_replace="true"
+            echo "[WARNING]: Using the tight replacement path (stage+verify and back up the old program via /tmp, then replace)"
+            echo "[WARNING]: Do not power off or force-reboot during the update, or tailscale may not start"
+        else
+            echo "[ERROR]: Not enough target space, and /tmp cannot stage the new file plus the old-program backup (needs a different filesystem with enough room)"
+            echo "[ERROR]: Free space on the target path (or use USB storage) and retry"
+            exit 1
         fi
     fi
+
+    # The install body runs in a detached session to survive a dropped SSH connection
+    maybe_guard_install binary "$install_path" "$confirm2binary_install"
+    local guard_result=$?
+    if [ "$guard_result" != "2" ]; then
+        return "$guard_result"
+    fi
+
+    # In a mode switch, stop the service first (the old CLI still exists so
+    # down/logout work), then clean up the old files
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Stopping existing tailscale service..."
+        tailscale_stoper
+    fi
+
+    echo ""
+    # Same-mode updates keep the old binary until the verified atomic replace;
+    # a failed download leaves the previous program working (cleanup only on switch)
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        clean_old_installation
+    fi
+
+    if [ "$confirm2binary_install" = "true" ] || [ "${TS_FROM_MODE:-false}" = "true" ]; then
+        echo "[INFO]: Cleaning old installation files..."
+        rm -rf /tmp/tailscale /tmp/tailscaled
+        echo "[INFO]: Cleanup complete"
+        # Drop the stale package-manager entry, or a same-version reinstall
+        # would be skipped and leave no binaries
+        pkg_remove_tailscale
+    fi
+
+    echo ""
+    echo "[INFO]: Binary installation in progress..."
+    echo "[INFO]: Install path: ${install_path}"
 
     local attempt_range="1 2 3"
     local attempt_timeout=20
 
     local sha_file="/tmp/tailscaled.sha256"
     local file_path="${install_path}/tailscaled"
+    # Download to a temp file and atomically replace after verification (same
+    # reason as the temp install: avoid ETXTBSY and never delete a running binary)
+    local tmp_path="${file_path}.new"
+    BINARY_ROLLBACK_FILE=""
 
+    if [ "$tight_replace" = "true" ]; then
+        # Less than 2x space: tight replacement (stage via /tmp, rollback on failure)
+        binary_tight_replace
+    else
     for attempt_times in $attempt_range; do
         echo "[INFO]: Download attempt $attempt_times/3"
         echo "[INFO]: Downloading tailscaled binary file..."
-        if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+        if ! wget -cO "$tmp_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscaled"; then
+            rm -f "$tmp_path"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
-                sleep 3
-                rm -f "$file_path"
-                init
+                echo "[ERROR]: Please check the network connection and retry"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
         fi
 
-        echo "[INFO]: Downloading configuration files and init scripts..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
-        wget -cO "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
-        wget -cO "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+        # Config and init script (shared initialization flow with the tight path)
+        binary_fetch_support_files
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
-        printf "  $file_path" >> "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '  %s\n' "$tmp_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
+            rm -f "$tmp_path" "$sha_file"
             if [ "$attempt_times" = "3" ]; then
                 echo "[ERROR]: Tailscaled file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
-                sleep 3
-                rm -f "$file_path" "$sha_file"
-                init
-            else
-                echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
-                rm -f "$file_path" "$sha_file"
-                sleep 3
+                echo "[ERROR]: Please check the network and retry"
+                exit 1
             fi
+            echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
+            sleep 3
         else
             echo "[INFO]: Tailscale file verification passed!"
             rm -f "$sha_file"
+            mv -f "$tmp_path" "$file_path"
+            chmod +x "$file_path" 2>/dev/null || true
             break
         fi
     done
+    fi
 
     # Set executable permissions
     chmod +x "$file_path" 2>/dev/null
@@ -1058,6 +1703,18 @@ binary_install() {
         for pkg_attempt in $pkg_attempt_range; do
             echo "[INFO]: Dependency package installation attempt $pkg_attempt/3"
             if [ "$PACKAGE_MANAGER" = "opkg" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    opkg list-installed 2>/dev/null | grep -q "^$pkg " || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating opkg package list..."
                 opkg update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -1074,6 +1731,18 @@ binary_install() {
                     break
                 fi
             elif [ "$PACKAGE_MANAGER" = "apk" ]; then
+                # Check first: if everything is installed, no package source
+                # access is needed and an unreachable source must not block it
+                local deps_ready=true
+                for pkg in $PACKAGES_TO_CHECK; do
+                    apk info 2>/dev/null | grep -q "^$pkg$" || { deps_ready=false; break; }
+                done
+                if $deps_ready; then
+                    pkg_install_success=true
+                    echo "[INFO]: All dependency packages already installed, skipping source update"
+                    break
+                fi
+
                 echo "[INFO]: Updating apk package list..."
                 apk update || continue
                 echo "[INFO]: Installing dependency packages: $PACKAGES_TO_CHECK"
@@ -1125,13 +1794,54 @@ binary_install() {
     echo "[INFO]: Starting tailscale service..."
 
     /etc/init.d/tailscale enable 2>/dev/null || true
-    /etc/init.d/tailscale start 2>/dev/null || true
+    # Full restart: on update this stops the old process before starting the new binary,
+    # avoiding --cleanup against a running daemon (which wipes addresses and firewall rules)
+    /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
 
     sleep 3
 
-    # Try to start tailscaled
-    if [ -f "${install_path}/tailscaled" ]; then
-        ${install_path}/tailscaled up &>/dev/null &
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[INFO]: Tailscale service started"
+        # Service verified: clean up the rollback backup kept by the tight path
+        # and release the cancel trap
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            BINARY_TIGHT_PATH=""
+            trap - TERM INT
+        fi
+    else
+        # Service failed to start: restore the old program if the tight path kept a backup
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            echo "[WARNING]: The new program failed to start, rolling back the old one..."
+            # Clear any procd-respawned instance/process and remove the new
+            # file to free space, or the rollback copy may fail to fit
+            ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+            for p in $(pidof tailscaled); do
+                kill "$p" 2>/dev/null || true
+            done
+            sleep 1
+            rm -f "$file_path"
+            if cp "$BINARY_ROLLBACK_FILE" "${file_path}.new" 2>/dev/null \
+                && [ "$(wc -c < "${file_path}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+                && mv -f "${file_path}.new" "$file_path" 2>/dev/null; then
+                chmod +x "$file_path" 2>/dev/null || true
+                rm -f "$BINARY_ROLLBACK_FILE"
+                BINARY_ROLLBACK_FILE=""
+                /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
+                sleep 3
+                if pidof tailscaled >/dev/null 2>&1; then
+                    echo "[INFO]: Old program restored, service running again"
+                else
+                    echo "[WARNING]: Service still not running after rollback, run manually: /etc/init.d/tailscale restart"
+                fi
+            else
+                rm -f "${file_path}.new"
+                echo "[WARNING]: Rollback placement failed, restore manually: cp $BINARY_ROLLBACK_FILE $file_path"
+            fi
+        fi
+        echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale restart"
+        exit 1
     fi
 
     sleep 2
@@ -1216,25 +1926,36 @@ cron_check_update() {
 
         # Safety check: skip update if tailscale has active peers
         local active_peers=0
-        active_peers=$(tailscale status 2>/dev/null | grep -cE 'active|idle' || echo 0)
+        # Only count genuinely active peers (idle is not "in use"); grep -c prints
+        # 0 and exits non-zero when nothing matches, guard against a "0\n0" value
+        active_peers=$(tailscale status 2>/dev/null | grep -cw 'active' || true)
+        [ -z "$active_peers" ] && active_peers=0
         if [ "$active_peers" -gt 0 ] 2>/dev/null; then
             echo "[$(date)] TAILSCALE_CRON: ${active_peers} active peers, skipping update to avoid disconnection" >> "$CRON_LOG"
             return 0
         fi
 
         echo "[$(date)] TAILSCALE_CRON: auto-updating..." >> "$CRON_LOG"
+        # cron has no interactive SSH session; no background guard needed
+        export TS_NO_DAEMON=true
+        local update_rc=0
         case "$TAILSCALE_INSTALL_STATUS" in
             temp)
-                temp_install "" "true" 2>&1 >> "$CRON_LOG"
+                temp_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             persistent)
-                persistent_install "" "true" 2>&1 >> "$CRON_LOG"
+                persistent_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
             binary)
-                binary_install "" "true" 2>&1 >> "$CRON_LOG"
+                binary_install "" "true" >> "$CRON_LOG" 2>&1 || update_rc=$?
                 ;;
         esac
-        echo "[$(date)] TAILSCALE_CRON: update complete (mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        if [ "$update_rc" = "0" ]; then
+            echo "[$(date)] TAILSCALE_CRON: update complete (mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        else
+            echo "[$(date)] TAILSCALE_CRON: update failed (rc=$update_rc, mode=$TAILSCALE_INSTALL_STATUS)" >> "$CRON_LOG"
+        fi
+        return "$update_rc"
     fi
 }
 
@@ -1245,8 +1966,9 @@ generate_cron_script() {
 # Tailscale auto-update check script - generated by install.sh
 # Called by crond periodically
 
-SCRIPT_CANDIDATES="/usr/sbin/install.sh /tmp/install.sh /mnt/install.sh
-$(dirname "$0")/install.sh"
+# Only trust root-owned paths: files in world-writable dirs like /tmp or /mnt
+# could be replaced by a local user and then run as root by crond
+SCRIPT_CANDIDATES="/usr/sbin/tailscale-install.sh /usr/sbin/install.sh"
 
 for script in $SCRIPT_CANDIDATES; do
     if [ -f "$script" ]; then
@@ -1270,12 +1992,39 @@ cron_setup() {
 
     generate_cron_script
 
+    # Pin the current script to a root-owned path for cron: a script in a
+    # world-writable directory could be replaced by a local user and run as root
+    if [ -f "$0" ] && cp "$0" /usr/sbin/tailscale-install.sh 2>/dev/null; then
+        chmod 755 /usr/sbin/tailscale-install.sh 2>/dev/null || true
+    fi
+
     local cron_time=""
     case "$interval" in
         hourly)    cron_time="0 * * * *" ;;
         daily)     cron_time="0 4 * * *" ;;
         weekly)    cron_time="0 4 * * 0" ;;
         monthly)   cron_time="0 4 1 * *" ;;
+        *h)
+            # Hour interval, e.g. 6h -> 0 */6 * * * (never */360: the minute
+            # field has no such semantics)
+            local hours="${interval%h}"
+            if echo "$hours" | grep -q '^[0-9]\+$' && [ "$hours" -ge 1 ] && [ "$hours" -le 23 ] 2>/dev/null; then
+                cron_time="0 */${hours} * * *"
+            else
+                echo "[WARNING]: Invalid hour interval '$interval', using default 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
+        *min)
+            # Minute interval, e.g. 30min -> */30 * * * *
+            local mins="${interval%min}"
+            if echo "$mins" | grep -q '^[0-9]\+$' && [ "$mins" -ge 1 ] && [ "$mins" -le 59 ] 2>/dev/null; then
+                cron_time="*/${mins} * * * *"
+            else
+                echo "[WARNING]: Invalid minute interval '$interval', using default 4:00"
+                cron_time="0 4 * * *"
+            fi
+            ;;
         *:*)
             local hour="${interval%%:*}"
             local min="${interval##*:}"
@@ -1295,7 +2044,8 @@ cron_setup() {
             fi
             ;;
         *)
-            if echo "$interval" | grep -q '^[0-9]\+$'; then
+            # Plain number: treat as minutes
+            if echo "$interval" | grep -q '^[0-9]\+$' && [ "$interval" -ge 1 ] && [ "$interval" -le 59 ] 2>/dev/null; then
                 cron_time="*/${interval} * * * *"
             else
                 echo "[ERROR]: unknown interval '$interval', using daily"
@@ -1304,7 +2054,9 @@ cron_setup() {
             ;;
     esac
 
-    local cron_line="${cron_time} ${CRON_ID} ${CRON_SCRIPT} >/dev/null 2>&1"
+    # The marker must follow the command: BusyBox crond treats everything after
+    # an inline '#' as a comment, so a marker in front would blank the command
+    local cron_line="${cron_time} ${CRON_SCRIPT} >/dev/null 2>&1 ${CRON_ID}"
 
     if grep -q "$CRON_ID" /etc/crontabs/root 2>/dev/null; then
         sed -i "/$CRON_ID/d" /etc/crontabs/root 2>/dev/null
@@ -1334,7 +2086,7 @@ cron_remove() {
     else
         echo "[INFO]: no cron auto-update entry found"
     fi
-    rm -f "$CRON_SCRIPT" 2>/dev/null || true
+    rm -f "$CRON_SCRIPT" /usr/sbin/tailscale-install.sh 2>/dev/null || true
 }
 
 # Function: show cron status
@@ -1360,7 +2112,7 @@ cron_status() {
 
 # Cron menu helper functions
 cron_setup_6h() {
-    cron_setup "360"
+    cron_setup "6h"
 }
 cron_setup_daily() {
     cron_setup "daily"
@@ -1437,9 +2189,10 @@ downloader() {
         if ! wget -cO "$file_path" "${TAILSCALE_URL}/${DEVICE_TARGET}/$target_file"; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: $target_file failed to download three times, possible causes: network connection issues"
-                echo "[ERROR]: Restarting script, please check network connection and retry"
+                echo "[ERROR]: Please check the network connection and run the script again"
                 sleep 3
-                init
+                rm -f "$file_path" "$sha_file"
+                exit 1
             fi
             echo "[INFO]: Download failed, preparing to retry..."
             continue
@@ -1452,18 +2205,18 @@ downloader() {
             wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/apk.sha256"
         fi
 
-        printf "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
+        printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
 
-        printf "  $file_path\n" >> "$sha_file"
+        printf '  %s\n' "$file_path" >> "$sha_file"
 
         echo "[INFO]: Verifying file integrity..."
         if [ ! -s "$sha_file" ] || ! sha256sum -c "$sha_file" >/dev/null 2>&1; then
             if [ "$attempt_times" == "3" ]; then
                 echo "[ERROR]: Tailscale file failed to download three times, possible causes: file corruption or unstable network"
-                echo "[ERROR]: Restarting script, please retry"
+                echo "[ERROR]: Please check the network and run the script again"
                 sleep 3
                 rm -f "$file_path" "$sha_file"
-                init
+                exit 1
             else
                 echo "[INFO]: Tailscale file verification failed, attempting to re-download..."
                 rm -f "$file_path" "$sha_file"
@@ -1508,6 +2261,10 @@ tailscale_stoper() {
         /usr/sbin/tailscale logout 2>/dev/null || true
         echo "[INFO]: Disabling tailscale auto-start..."
         /etc/init.d/tailscale disable 2>/dev/null || true
+    else
+        echo "[INFO]: Unknown installation state, trying to stop the running service..."
+        /etc/init.d/tailscale stop 2>/dev/null || true
+        killall tailscaled 2>/dev/null || true
     fi
     echo "[INFO]: Tailscale service stop complete"
     echo ""
@@ -1753,8 +2510,9 @@ option_menu() {
         echo ""
         echo ""
 
-        # Determine if input is legal
-        if [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
+        # Determine if input is legal (require a single digit first so an empty
+        # or letter input cannot trigger a test error)
+        if echo "$choice" | grep -q '^[0-9]$' && [ "$choice" -ge 1 ] && [ "$choice" -le "$option_index" ]; then
             operation_index=1
             for operation in $menu_operations; do
                 if [ "$operation_index" = "$choice" ]; then
@@ -1766,7 +2524,7 @@ option_menu() {
         else
             echo "[WARNING]: Invalid option, please try again!"
             echo ""
-            break
+            continue
         fi
     done
 }
@@ -1790,14 +2548,14 @@ show_help() {
     echo ""
     echo "  Install options:"
     echo "      --install-path <path>     Custom install path for binary mode"
-    echo "      --custom-proxy            Use a custom GitHub proxy"
     echo ""
     echo "  Other actions:"
     echo "      --uninstall               Uninstall tailscale (use with --yes)"
     echo "      --update                  Update tailscale (use with --yes)"
-    echo "      --cron-setup [interval]   Setup auto-update cron (daily/weekly/monthly/hours/Nmin/HH:MM)"
+    echo "      --cron-setup [interval]   Setup auto-update cron (hourly/daily/weekly/monthly, HH:MM, Nmin, Nh)"
     echo "      --cron-remove             Remove auto-update cron"
     echo "      --cron-check              Check for update and install (called by cron)"
+    echo "      --download-only           Only download/restore temp files (internal, boot wrapper)"
     echo ""
     echo "  Examples:"
     echo "      $0 --bin-install                          # Binary mode, default path"
@@ -1817,6 +2575,7 @@ show_help() {
 
 # Read Parameters
 BIN_INSTALL="false"
+DOWNLOAD_ONLY="false"
 PERSISTENT_INSTALL="false"
 UPDATE_MODE="false"
 UNINSTALL_MODE="false"
@@ -1837,6 +2596,9 @@ for arg in "$@"; do
         ;;
     --tempinstall|--temp-install)
         TMP_INSTALL="true"
+        ;;
+    --download-only)
+        DOWNLOAD_ONLY="true"
         ;;
     --persistent-install)
         PERSISTENT_INSTALL="true"
@@ -1916,28 +2678,64 @@ main() {
     option_menu
 }
 
-if [ "$TMP_INSTALL" = "true" ]; then
+# Install modes are mutually exclusive
+_mode_count=0
+[ "$TMP_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$PERSISTENT_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+[ "$BIN_INSTALL" = "true" ] && _mode_count=$((_mode_count + 1))
+if [ "$_mode_count" -gt 1 ]; then
+    echo "[ERROR]: Install modes are mutually exclusive, pick one: --temp-install / --persistent-install / --bin-install"
+    exit 1
+fi
+
+if [ "$DOWNLOAD_ONLY" = "true" ]; then
     check_package_manager
     check_device_target
     get_tailscale_info
-    temp_install "" "true"
-    exit 0
+    temp_download_only
+    exit $?
+fi
+
+if [ "$TMP_INSTALL" = "true" ]; then
+    check_package_manager
+    check_device_target
+    check_tailscale_install_status
+    get_tailscale_info
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        temp_install "true" "true"
+    else
+        temp_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$PERSISTENT_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     get_tailscale_info
-    persistent_install "" "true"
-    exit 0
+    if [ "$TAILSCALE_INSTALL_STATUS" = "temp" ] || [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        persistent_install "true" "true"
+    else
+        persistent_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$BIN_INSTALL" = "true" ]; then
     check_package_manager
     check_device_target
+    check_tailscale_install_status
     get_tailscale_info
-    binary_install "" "true"
-    exit 0
+    if [ "$TAILSCALE_INSTALL_STATUS" = "persistent" ] || [ "$TAILSCALE_INSTALL_STATUS" = "temp" ]; then
+        # Same as the menu conversion: run conversion cleanup when switching modes
+        binary_install "true" "true"
+    else
+        binary_install "" "true"
+    fi
+    exit $?
 fi
 
 if [ "$UPDATE_MODE" = "true" ]; then
@@ -1946,7 +2744,7 @@ if [ "$UPDATE_MODE" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     update
-    exit 0
+    exit $?
 fi
 
 if [ "$UNINSTALL_MODE" = "true" ]; then
@@ -1967,12 +2765,12 @@ if [ "$CRON_CHECK" = "true" ]; then
     check_tailscale_install_status
     get_tailscale_info
     cron_check_update
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_SETUP" = "true" ]; then
     cron_setup "$CRON_SETUP_INTERVAL"
-    exit 0
+    exit $?
 fi
 
 if [ "$CRON_REMOVE" = "true" ]; then

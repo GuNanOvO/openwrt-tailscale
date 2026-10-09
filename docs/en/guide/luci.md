@@ -26,5 +26,5 @@ This is an open-source LuCI application that provides an easy-to-use web interfa
 Follow the instructions in the [luci-app-tailscale-community repository](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community) to install the LuCI app on your OpenWrt device.
 
 ::: tip
-The LuCI app works with the smaller Tailscale package from this repository — they are fully compatible.
+The LuCI app works with the smaller Tailscale package from this repository — they are fully compatible. Updating/reinstalling Tailscale does not affect the app; if you want to uninstall Tailscale, remove the app first (it depends on tailscale).
 :::
