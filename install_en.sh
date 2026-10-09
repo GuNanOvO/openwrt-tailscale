@@ -595,7 +595,7 @@ guard_cancel() {
     kill -TERM -"$guard_pid" 2>/dev/null
     kill -TERM "$guard_pid" 2>/dev/null
     local n=0
-    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 10 ]; do
         sleep 1
         n=$((n + 1))
     done
@@ -1227,18 +1227,97 @@ validate_install_path() {
 
 # Function: Binary Installation
 # Function: download the config and init script required by binary mode
-# (shared by the normal and tight replacement paths). Config is only written
-# when missing; the init script has no checksum and is fully overwritten
+# (shared by the normal and tight replacement paths). Files are downloaded to
+# a temp file and verified before an atomic replace; on failure the original
+# is kept and the update aborts, so an interrupted download cannot corrupt the
+# existing script and break service startup
 binary_fetch_support_files() {
     local attempt_timeout=20
+    local dl_tmp="/tmp/tailscale-support.download"
+    local attempt_times
+
     echo "[INFO]: Downloading configuration files and init scripts..."
+
+    # Config is only written when missing; download it to a temp file first
     if [ ! -f "/etc/config/tailscale" ]; then
-        wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+        local cfg_ok="false"
+        for attempt_times in 1 2 3; do
+            rm -f "$dl_tmp"
+            if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf" \
+                && [ -s "$dl_tmp" ]; then
+                cfg_ok="true"
+                break
+            fi
+            rm -f "$dl_tmp"
+            sleep 2
+        done
+        if [ "$cfg_ok" = "true" ] \
+            && cp "$dl_tmp" "/etc/config/tailscale.new" 2>/dev/null \
+            && [ -s "/etc/config/tailscale.new" ] \
+            && mv -f "/etc/config/tailscale.new" "/etc/config/tailscale" 2>/dev/null; then
+            rm -f "$dl_tmp"
+        else
+            rm -f "$dl_tmp" "/etc/config/tailscale.new"
+            echo "[ERROR]: Config download failed, aborting the update"
+            exit 1
+        fi
     fi
-    wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
-    # wget creates the file without the exec bit; the tight path stops the
-    # service right after, so make it executable first
-    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+
+    # Init script: download to a temp file, verify (non-empty + syntax), then replace
+    for attempt_times in 1 2 3; do
+        rm -f "$dl_tmp"
+        if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init" \
+            && [ -s "$dl_tmp" ] && sh -n "$dl_tmp" 2>/dev/null; then
+            if cp "$dl_tmp" "/etc/init.d/tailscale.new" 2>/dev/null \
+                && [ -s "/etc/init.d/tailscale.new" ] \
+                && mv -f "/etc/init.d/tailscale.new" "/etc/init.d/tailscale" 2>/dev/null; then
+                chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+                rm -f "$dl_tmp"
+                return 0
+            fi
+            rm -f "/etc/init.d/tailscale.new"
+        fi
+        rm -f "$dl_tmp"
+        sleep 2
+    done
+
+    echo "[ERROR]: Init script download or verification failed, aborting the update"
+    echo "[ERROR]: The existing init script was not touched"
+    exit 1
+}
+
+# Function: on TERM/INT during the critical replacement phase, roll the old
+# program back and restore the service before exiting (installed as a trap by
+# binary_tight_replace around the destructive phase)
+tight_cancel_rollback() {
+    trap '' TERM INT
+    echo "[WARNING]: Cancel received, rolling back the old program and restoring the service..."
+    local target="$BINARY_TIGHT_PATH"
+    rm -f /tmp/tailscaled.stage /tmp/tailscaled.stage.sha256
+    ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+    for p in $(pidof tailscaled); do
+        kill "$p" 2>/dev/null || true
+    done
+    sleep 1
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ] && [ -n "$target" ]; then
+        rm -f "${target}.new"
+        rm -f "$target"
+        if cp "$BINARY_ROLLBACK_FILE" "${target}.new" 2>/dev/null \
+            && [ "$(wc -c < "${target}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "${target}.new" "$target" 2>/dev/null; then
+            chmod +x "$target" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: Old program restored and service restarted"
+        else
+            rm -f "${target}.new"
+            echo "[WARNING]: Rollback placement failed, restore manually: cp $BINARY_ROLLBACK_FILE $target"
+        fi
+    else
+        echo "[WARNING]: No rollback copy available"
+    fi
+    exit 130
 }
 
 # Function: tight replacement of the binary when the target cannot fit the
@@ -1301,6 +1380,7 @@ binary_tight_replace() {
         rm -f "$rollback"
         if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
             BINARY_ROLLBACK_FILE="$rollback"
+            BINARY_TIGHT_PATH="$file_path"
             echo "[INFO]: Old program backed up for rollback"
         else
             rm -f "$rollback" "$stage"
@@ -1308,6 +1388,12 @@ binary_tight_replace() {
             echo "[ERROR]: The old program is untouched and the service keeps running"
             exit 1
         fi
+    fi
+
+    # Critical replacement phase: on TERM/INT roll back and restore the service
+    # before exiting, so a cancel cannot leave a missing binary
+    if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+        trap 'tight_cancel_rollback' TERM INT
     fi
 
     echo "[INFO]: Stopping the service and replacing the binary (do not power off)..."
@@ -1681,9 +1767,12 @@ binary_install() {
     if pidof tailscaled >/dev/null 2>&1; then
         echo "[INFO]: Tailscale service started"
         # Service verified: clean up the rollback backup kept by the tight path
+        # and release the cancel trap
         if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
             rm -f "$BINARY_ROLLBACK_FILE"
             BINARY_ROLLBACK_FILE=""
+            BINARY_TIGHT_PATH=""
+            trap - TERM INT
         fi
     else
         # Service failed to start: restore the old program if the tight path kept a backup

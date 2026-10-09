@@ -647,7 +647,7 @@ guard_cancel() {
     kill -TERM -"$guard_pid" 2>/dev/null
     kill -TERM "$guard_pid" 2>/dev/null
     local n=0
-    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+    while kill -0 "$guard_pid" 2>/dev/null && [ "$n" -lt 10 ]; do
         sleep 1
         n=$((n + 1))
     done
@@ -1262,16 +1262,94 @@ validate_install_path() {
 
 # 函数：二进制安装
 # 函数：下载 binary 模式所需的配置与 init 脚本（普通/紧凑两条替换路径共用）
-# 配置仅在不存在时写入; init 脚本无校验需全量覆盖
+# 先下载到临时文件并校验, 成功后才原子替换; 失败时保留原文件并中止更新,
+# 避免中断的下载损坏现有脚本导致服务无法启动
 binary_fetch_support_files() {
     local attempt_timeout=20
+    local dl_tmp="/tmp/tailscale-support.download"
+    local attempt_times
+
     echo "[INFO]: 下载配置文件和初始化脚本..."
+
+    # 配置仅在不存在时写入, 同样先临时下载校验
     if [ ! -f "/etc/config/tailscale" ]; then
-        wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+        local cfg_ok="false"
+        for attempt_times in 1 2 3; do
+            rm -f "$dl_tmp"
+            if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf" \
+                && [ -s "$dl_tmp" ]; then
+                cfg_ok="true"
+                break
+            fi
+            rm -f "$dl_tmp"
+            sleep 2
+        done
+        if [ "$cfg_ok" = "true" ] \
+            && cp "$dl_tmp" "/etc/config/tailscale.new" 2>/dev/null \
+            && [ -s "/etc/config/tailscale.new" ] \
+            && mv -f "/etc/config/tailscale.new" "/etc/config/tailscale" 2>/dev/null; then
+            rm -f "$dl_tmp"
+        else
+            rm -f "$dl_tmp" "/etc/config/tailscale.new"
+            echo "[ERROR]: 配置文件下载失败, 已中止更新"
+            exit 1
+        fi
     fi
-    wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
-    # wget 新建文件无执行位; 紧凑路径会在下载后立即 stop, 必须先可执行
-    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+
+    # init 脚本先下载到临时文件并校验(非空 + 语法), 成功后才替换
+    for attempt_times in 1 2 3; do
+        rm -f "$dl_tmp"
+        if wget -O "$dl_tmp" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init" \
+            && [ -s "$dl_tmp" ] && sh -n "$dl_tmp" 2>/dev/null; then
+            if cp "$dl_tmp" "/etc/init.d/tailscale.new" 2>/dev/null \
+                && [ -s "/etc/init.d/tailscale.new" ] \
+                && mv -f "/etc/init.d/tailscale.new" "/etc/init.d/tailscale" 2>/dev/null; then
+                chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+                rm -f "$dl_tmp"
+                return 0
+            fi
+            rm -f "/etc/init.d/tailscale.new"
+        fi
+        rm -f "$dl_tmp"
+        sleep 2
+    done
+
+    echo "[ERROR]: init 脚本下载或校验失败, 已中止更新"
+    echo "[ERROR]: 现有 init 脚本未被破坏"
+    exit 1
+}
+
+# 函数：紧凑替换关键阶段收到取消信号时, 先回滚旧程序并恢复服务再退出
+# (在 binary_tight_replace 的破坏性替换阶段安装为 TERM/INT trap)
+tight_cancel_rollback() {
+    trap '' TERM INT
+    echo "[WARNING]: 收到取消信号, 正在回滚旧程序并恢复服务..."
+    local target="$BINARY_TIGHT_PATH"
+    rm -f /tmp/tailscaled.stage /tmp/tailscaled.stage.sha256
+    ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+    for p in $(pidof tailscaled); do
+        kill "$p" 2>/dev/null || true
+    done
+    sleep 1
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ] && [ -n "$target" ]; then
+        rm -f "${target}.new"
+        rm -f "$target"
+        if cp "$BINARY_ROLLBACK_FILE" "${target}.new" 2>/dev/null \
+            && [ "$(wc -c < "${target}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "${target}.new" "$target" 2>/dev/null; then
+            chmod +x "$target" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+            /etc/init.d/tailscale start 2>/dev/null || true
+            echo "[INFO]: 已回滚旧程序并恢复服务"
+        else
+            rm -f "${target}.new"
+            echo "[WARNING]: 回滚落盘失败, 请手动恢复: cp $BINARY_ROLLBACK_FILE $target"
+        fi
+    else
+        echo "[WARNING]: 无回滚副本可用"
+    fi
+    exit 130
 }
 
 # 函数：紧凑替换 binary 二进制（目标空间不足直接下载时使用）
@@ -1333,6 +1411,7 @@ binary_tight_replace() {
         rm -f "$rollback"
         if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
             BINARY_ROLLBACK_FILE="$rollback"
+            BINARY_TIGHT_PATH="$file_path"
             echo "[INFO]: 已备份旧程序用于回滚"
         else
             rm -f "$rollback" "$stage"
@@ -1340,6 +1419,11 @@ binary_tight_replace() {
             echo "[ERROR]: 旧程序未受影响, 服务保持运行"
             exit 1
         fi
+    fi
+
+    # 关键替换阶段: 收到 TERM/INT 时先回滚并恢复服务再退出, 避免留下缺失的二进制
+    if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+        trap 'tight_cancel_rollback' TERM INT
     fi
 
     echo "[INFO]: 停止服务并替换二进制 (请勿断电)..."
@@ -1699,10 +1783,12 @@ binary_install() {
 
     if pidof tailscaled >/dev/null 2>&1; then
         echo "[INFO]: tailscale服务已启动"
-        # 服务验证通过, 清理紧凑替换保留的回滚备份
+        # 服务验证通过, 清理紧凑替换保留的回滚备份并解除取消 trap
         if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
             rm -f "$BINARY_ROLLBACK_FILE"
             BINARY_ROLLBACK_FILE=""
+            BINARY_TIGHT_PATH=""
+            trap - TERM INT
         fi
     else
         # 服务未能启动: 紧凑替换保留了回滚备份时恢复旧程序
