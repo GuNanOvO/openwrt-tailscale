@@ -672,6 +672,9 @@ guarded_install() {
     wait "$guard_pid" 2>/dev/null
     guard_rc=$?
     trap - INT TERM
+    # The install body ran in the background child; refresh the foreground state
+    # variables or the menu keeps showing stale options
+    check_tailscale_install_status 2>/dev/null || true
     echo ""
     echo "[INFO]: Installation/update finished (exit code: $guard_rc), last log lines:"
     echo "----------------------------------------------------------"

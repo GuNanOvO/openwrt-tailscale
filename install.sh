@@ -721,6 +721,8 @@ guarded_install() {
     wait "$guard_pid" 2>/dev/null
     guard_rc=$?
     trap - INT TERM
+    # 安装主体在后台子进程完成, 刷新前台状态变量; 否则菜单等后续流程使用过期状态
+    check_tailscale_install_status 2>/dev/null || true
     echo ""
     echo "[INFO]: 安装/更新流程已结束（退出码: $guard_rc）, 日志末尾如下:"
     echo "----------------------------------------------------------"
