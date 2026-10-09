@@ -1261,9 +1261,23 @@ validate_install_path() {
 }
 
 # 函数：二进制安装
-# 函数：紧凑替换 binary 二进制（目标空间不足 2 倍时使用）
-# 流程: /tmp 暂存下载并校验 -> 备份旧程序(尽力) -> 停服务 -> 删旧释放空间
-#       -> 落盘并校验 -> 成功清理; 失败时回滚旧程序并退出
+# 函数：下载 binary 模式所需的配置与 init 脚本（普通/紧凑两条替换路径共用）
+# 配置仅在不存在时写入; init 脚本无校验需全量覆盖
+binary_fetch_support_files() {
+    local attempt_timeout=20
+    echo "[INFO]: 下载配置文件和初始化脚本..."
+    if [ ! -f "/etc/config/tailscale" ]; then
+        wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
+    fi
+    wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+    # wget 新建文件无执行位; 紧凑路径会在下载后立即 stop, 必须先可执行
+    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+}
+
+# 函数：紧凑替换 binary 二进制（目标空间不足直接下载时使用）
+# 流程: /tmp 暂存下载并校验 -> 下载配置/init -> 备份旧程序(必须成功) ->
+#       停服务 -> 删旧释放空间 -> 落盘并校验 -> 保留备份供外层启动验证
+# 失败时恢复旧程序并退出
 binary_tight_replace() {
     local attempt_range="1 2 3"
     local attempt_timeout=20
@@ -1275,6 +1289,7 @@ binary_tight_replace() {
     local expected_sha=""
     local got=0
 
+    BINARY_ROLLBACK_FILE=""
     rm -f "$stage" "$sha_file"
 
     for attempt_times in $attempt_range; do
@@ -1310,17 +1325,42 @@ binary_tight_replace() {
     done
     rm -f "$sha_file"
 
-    # 备份旧程序用于失败回滚 (尽力而为; /tmp 空间不足时跳过)
-    if [ -f "$file_path" ] && cp "$file_path" "$rollback" 2>/dev/null; then
-        echo "[INFO]: 已备份旧程序用于回滚"
-    else
+    # 配置与 init 脚本 (与普通路径共用同一初始化流程)
+    binary_fetch_support_files
+
+    # 有旧程序时必须先备份成功, 否则不允许进入破坏性替换
+    if [ -f "$file_path" ]; then
         rm -f "$rollback"
-        echo "[WARNING]: 无法备份旧程序, 替换失败时将重试落盘"
+        if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
+            BINARY_ROLLBACK_FILE="$rollback"
+            echo "[INFO]: 已备份旧程序用于回滚"
+        else
+            rm -f "$rollback" "$stage"
+            echo "[ERROR]: 无法备份旧程序, 为避免更新失败后失去可用的 tailscale, 已终止"
+            echo "[ERROR]: 旧程序未受影响, 服务保持运行"
+            exit 1
+        fi
     fi
 
     echo "[INFO]: 停止服务并替换二进制 (请勿断电)..."
     /etc/init.d/tailscale stop 2>/dev/null || true
     sleep 1
+    # 确认服务已停止: 旧文件的磁盘块只有在进程退出后才会释放, 空间检查依赖这一点
+    if pidof tailscaled >/dev/null 2>&1; then
+        for p in $(pidof tailscaled); do
+            kill "$p" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[ERROR]: 服务未能停止, 已终止替换 (旧程序未受影响)"
+        rm -f "$stage"
+        if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
+        exit 1
+    fi
     rm -f "$file_path"
 
     for attempt_times in $attempt_range; do
@@ -1335,18 +1375,27 @@ binary_tight_replace() {
 
     if [ "$got" = "1" ]; then
         chmod +x "$file_path" 2>/dev/null || true
-        rm -f "$stage" "$rollback"
-        echo "[INFO]: 紧凑替换完成"
+        rm -f "$stage"
+        echo "[INFO]: 紧凑替换完成 (启动验证前保留回滚备份)"
         return 0
     fi
 
     echo "[ERROR]: 新二进制落盘失败"
-    if [ -f "$rollback" ]; then
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
         echo "[INFO]: 正在回滚旧程序..."
-        if cp "$rollback" "$file_path" 2>/dev/null; then
+        # 先删除新文件释放空间, 否则回滚副本可能因空间不足落盘失败
+        rm -f "$file_path"
+        if cp "$BINARY_ROLLBACK_FILE" "$final_tmp" 2>/dev/null \
+            && [ "$(wc -c < "$final_tmp" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "$final_tmp" "$file_path" 2>/dev/null; then
             chmod +x "$file_path" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
             /etc/init.d/tailscale start 2>/dev/null || true
             echo "[INFO]: 已回滚旧程序并恢复服务"
+        else
+            rm -f "$final_tmp"
+            echo "[WARNING]: 回滚落盘失败 (可能空间不足), 请手动恢复: cp $BINARY_ROLLBACK_FILE $file_path"
         fi
     else
         echo "[WARNING]: 无回滚副本; 已验证的新程序仍在 $stage, 可手动复制到 $file_path"
@@ -1387,7 +1436,7 @@ binary_install() {
         echo "│ 二进制安装模式将直接下载 tailscaled 可执行文件到指定路径"
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ 安装路径: ${install_path}"
-            echo "│ 请确保该路径所在设备有足够空间(约 2 倍 ${TAILSCALE_FILE_SIZE}M; 不足时将自动使用紧凑替换)"
+            echo "│ 请确保该路径所在设备有足够空间(至少 ${TAILSCALE_FILE_SIZE}M; 不足时将自动使用紧凑替换)"
         fi
         echo "│ 此模式不使用 opkg/apk 包管理器进行安装"
         echo "│ 但仍会尝试通过包管理器安装依赖库"
@@ -1414,30 +1463,30 @@ binary_install() {
     }
 
     # 检查目标路径可用空间 (在进入后台守护前完成, 保证交互用户能看到警告)
-    # 安全替换 (下载到 .new 校验后原子替换) 需要旧+新两份二进制同时存在,
-    # 即约 2 倍空间; 不足时若 /tmp 可暂存, 则使用紧凑替换方案
+    # df 的空闲空间已排除旧文件占用, 直接替换只需额外容纳新文件;
+    # 不足时若 /tmp 能同时暂存新文件并备份旧程序, 则使用紧凑替换方案
     local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
     local tight_replace="false"
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 2 * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 ${TAILSCALE_FILE_SIZE}M 的 2 倍 (安全替换需要旧+新两份)"
+    local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+    local old_kb=0
+    if [ -f "${install_path}/tailscaled" ]; then
+        old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+    fi
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((need_kb + 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: 目标路径 ${install_path} 可用空间不足 (需要约 ${TAILSCALE_FILE_SIZE}M 用于下载新文件)"
         echo "[WARNING]: 当前可用: $((target_avail / 1024))M"
-        local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
-        local old_kb=0
-        if [ -f "${install_path}/tailscaled" ]; then
-            old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
-        fi
         local target_dev tmp_dev tmp_avail
         target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
         tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
         tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
         if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
-            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + 2048))" ] 2>/dev/null \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + old_kb + 2048))" ] 2>/dev/null \
             && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
             tight_replace="true"
-            echo "[WARNING]: 将使用紧凑替换方案 (先经 /tmp 暂存校验, 再删除旧程序并落盘)"
+            echo "[WARNING]: 将使用紧凑替换方案 (先经 /tmp 暂存校验并备份旧程序, 再删除旧程序并落盘)"
             echo "[WARNING]: 更新期间请勿断电或强制重启, 否则 tailscale 可能无法启动"
         else
-            echo "[ERROR]: 目标空间不足以安全替换, 且 /tmp 无法用于暂存 (需与目标为不同文件系统且有足够空间)"
+            echo "[ERROR]: 目标空间不足, 且 /tmp 无法暂存新文件并备份旧程序 (需与目标为不同文件系统且有足够空间)"
             echo "[ERROR]: 请释放目标路径空间 (或改用 USB 存储) 后重试"
             exit 1
         fi
@@ -1482,6 +1531,7 @@ binary_install() {
     local file_path="${install_path}/tailscaled"
     # 先下载到临时文件、校验通过后再原子替换目标（同 temp 模式的原因）
     local tmp_path="${file_path}.new"
+    BINARY_ROLLBACK_FILE=""
 
     if [ "$tight_replace" = "true" ]; then
         # 目标空间不足 2 倍: 紧凑替换 (经 /tmp 暂存, 内部处理失败回滚)
@@ -1501,14 +1551,9 @@ binary_install() {
             continue
         fi
 
-        echo "[INFO]: 下载配置文件和初始化脚本..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/bin.sha256"
-        # 已有配置保留: 仅在首次安装时写入默认配置, 避免覆盖用户自定义设置
-        if [ ! -f "/etc/config/tailscale" ]; then
-            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.conf"
-        fi
-        # init 脚本无校验: 全量覆盖下载, 避免 -c 续传在已有文件上追加损坏内容
-        wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${AVAILABLE_URL_HEAD}/${DEVICE_TARGET}/tailscale.init"
+        # 配置与 init 脚本 (与紧凑路径共用同一初始化流程)
+        binary_fetch_support_files
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -1654,7 +1699,41 @@ binary_install() {
 
     if pidof tailscaled >/dev/null 2>&1; then
         echo "[INFO]: tailscale服务已启动"
+        # 服务验证通过, 清理紧凑替换保留的回滚备份
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
     else
+        # 服务未能启动: 紧凑替换保留了回滚备份时恢复旧程序
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            echo "[WARNING]: 新程序未能启动, 正在回滚旧程序..."
+            # 清理可能被 procd 拉起的残留实例/进程, 并删除新文件释放空间,
+            # 否则回滚副本可能因空间不足落盘失败
+            ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+            for p in $(pidof tailscaled); do
+                kill "$p" 2>/dev/null || true
+            done
+            sleep 1
+            rm -f "$file_path"
+            if cp "$BINARY_ROLLBACK_FILE" "${file_path}.new" 2>/dev/null \
+                && [ "$(wc -c < "${file_path}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+                && mv -f "${file_path}.new" "$file_path" 2>/dev/null; then
+                chmod +x "$file_path" 2>/dev/null || true
+                rm -f "$BINARY_ROLLBACK_FILE"
+                BINARY_ROLLBACK_FILE=""
+                /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
+                sleep 3
+                if pidof tailscaled >/dev/null 2>&1; then
+                    echo "[INFO]: 已回滚旧程序, 服务恢复运行"
+                else
+                    echo "[WARNING]: 回滚后服务仍未启动, 请手动执行: /etc/init.d/tailscale restart"
+                fi
+            else
+                rm -f "${file_path}.new"
+                echo "[WARNING]: 回滚落盘失败, 请手动恢复: cp $BINARY_ROLLBACK_FILE $file_path"
+            fi
+        fi
         echo "[WARNING]: tailscale服务未能启动, 请手动执行: /etc/init.d/tailscale restart"
         exit 1
     fi

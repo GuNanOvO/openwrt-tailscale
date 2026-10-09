@@ -1226,10 +1226,25 @@ validate_install_path() {
 }
 
 # Function: Binary Installation
-# Function: tight replacement of the binary when the target has less than 2x
-# space. Flow: stage+verify in /tmp -> best-effort backup of the old binary ->
-# stop service -> delete old (frees space) -> place+verify -> cleanup; on
-# failure restore the old binary and exit
+# Function: download the config and init script required by binary mode
+# (shared by the normal and tight replacement paths). Config is only written
+# when missing; the init script has no checksum and is fully overwritten
+binary_fetch_support_files() {
+    local attempt_timeout=20
+    echo "[INFO]: Downloading configuration files and init scripts..."
+    if [ ! -f "/etc/config/tailscale" ]; then
+        wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
+    fi
+    wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+    # wget creates the file without the exec bit; the tight path stops the
+    # service right after, so make it executable first
+    chmod +x "/etc/init.d/tailscale" 2>/dev/null || true
+}
+
+# Function: tight replacement of the binary when the target cannot fit the
+# download. Flow: stage+verify in /tmp -> fetch config/init -> backup the old
+# binary (mandatory) -> stop service -> delete old (frees space) -> place and
+# verify -> keep the backup for the outer start verification; restore on failure
 binary_tight_replace() {
     local attempt_range="1 2 3"
     local attempt_timeout=20
@@ -1241,6 +1256,7 @@ binary_tight_replace() {
     local expected_sha=""
     local got=0
 
+    BINARY_ROLLBACK_FILE=""
     rm -f "$stage" "$sha_file"
 
     for attempt_times in $attempt_range; do
@@ -1276,17 +1292,44 @@ binary_tight_replace() {
     done
     rm -f "$sha_file"
 
-    # Best-effort backup of the old binary for rollback (/tmp space may be short)
-    if [ -f "$file_path" ] && cp "$file_path" "$rollback" 2>/dev/null; then
-        echo "[INFO]: Old program backed up for rollback"
-    else
+    # Config and init script (shared initialization flow with the normal path)
+    binary_fetch_support_files
+
+    # With an old program present the backup must succeed before any
+    # destructive step; otherwise abort
+    if [ -f "$file_path" ]; then
         rm -f "$rollback"
-        echo "[WARNING]: Could not back up the old program, will retry placement on failure"
+        if cp "$file_path" "$rollback" 2>/dev/null && [ -f "$rollback" ] && [ -s "$rollback" ]; then
+            BINARY_ROLLBACK_FILE="$rollback"
+            echo "[INFO]: Old program backed up for rollback"
+        else
+            rm -f "$rollback" "$stage"
+            echo "[ERROR]: Could not back up the old program; aborting so a failed update cannot lose tailscale"
+            echo "[ERROR]: The old program is untouched and the service keeps running"
+            exit 1
+        fi
     fi
 
     echo "[INFO]: Stopping the service and replacing the binary (do not power off)..."
     /etc/init.d/tailscale stop 2>/dev/null || true
     sleep 1
+    # Confirm the service stopped: the old file's blocks are only released when
+    # the process exits, and the space math depends on that
+    if pidof tailscaled >/dev/null 2>&1; then
+        for p in $(pidof tailscaled); do
+            kill "$p" 2>/dev/null || true
+        done
+        sleep 1
+    fi
+    if pidof tailscaled >/dev/null 2>&1; then
+        echo "[ERROR]: Service did not stop, aborting the replacement (old program untouched)"
+        rm -f "$stage"
+        if [ -n "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
+        exit 1
+    fi
     rm -f "$file_path"
 
     for attempt_times in $attempt_range; do
@@ -1301,18 +1344,28 @@ binary_tight_replace() {
 
     if [ "$got" = "1" ]; then
         chmod +x "$file_path" 2>/dev/null || true
-        rm -f "$stage" "$rollback"
-        echo "[INFO]: Tight replacement complete"
+        rm -f "$stage"
+        echo "[INFO]: Tight replacement complete (rollback backup kept until start verification)"
         return 0
     fi
 
     echo "[ERROR]: Placing the new binary failed"
-    if [ -f "$rollback" ]; then
+    if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
         echo "[INFO]: Rolling back the old program..."
-        if cp "$rollback" "$file_path" 2>/dev/null; then
+        # Remove the new file first to free space, or the rollback copy may
+        # fail to fit
+        rm -f "$file_path"
+        if cp "$BINARY_ROLLBACK_FILE" "$final_tmp" 2>/dev/null \
+            && [ "$(wc -c < "$final_tmp" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+            && mv -f "$final_tmp" "$file_path" 2>/dev/null; then
             chmod +x "$file_path" 2>/dev/null || true
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
             /etc/init.d/tailscale start 2>/dev/null || true
             echo "[INFO]: Old program restored and service restart attempted"
+        else
+            rm -f "$final_tmp"
+            echo "[WARNING]: Rollback placement failed (out of space?), restore manually: cp $BINARY_ROLLBACK_FILE $file_path"
         fi
     else
         echo "[WARNING]: No rollback copy; the verified new file is still at $stage and can be copied manually"
@@ -1355,7 +1408,7 @@ binary_install() {
         echo "│ executable directly to the specified path."
         if [ -n "$CUSTOM_INSTALL_PATH" ]; then
             echo "│ Install path: ${install_path}"
-            echo "│ Please ensure the target device has enough space (about 2x ${TAILSCALE_FILE_SIZE}M; tight replacement is used otherwise)"
+            echo "│ Please ensure the target device has enough space (at least ${TAILSCALE_FILE_SIZE}M; tight replacement is used otherwise)"
         fi
         echo "│ This mode does NOT use opkg/apk package manager."
         echo "│ It will still try to install dependencies via package"
@@ -1385,31 +1438,31 @@ binary_install() {
 
     # Check target path available space (before entering the guard, so an
     # interactive user actually sees the warning)
-    # A safe replacement (download to .new, verify, atomic rename) needs both
-    # the old and the new binary at once (~2x); if that does not fit but /tmp
-    # can stage the download, use the tight replacement path
+    # df free space already excludes the old file; a direct replace only needs
+    # room for the new file. If that does not fit but /tmp can hold both the
+    # staged download and the old-program backup, use the tight path
     local target_avail=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
     local tight_replace="false"
-    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((TAILSCALE_FILE_SIZE * 2 * 1024))" ] 2>/dev/null; then
-        echo "[WARNING]: Target path ${install_path} has less than 2x ${TAILSCALE_FILE_SIZE}M free (safe replace needs old+new)"
+    local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
+    local old_kb=0
+    if [ -f "${install_path}/tailscaled" ]; then
+        old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
+    fi
+    if [ -n "$target_avail" ] && [ "$target_avail" -lt "$((need_kb + 1024))" ] 2>/dev/null; then
+        echo "[WARNING]: Target path ${install_path} has insufficient free space (needs about ${TAILSCALE_FILE_SIZE}M for the new file)"
         echo "[WARNING]: Currently available: $((target_avail / 1024))M"
-        local need_kb=$((TAILSCALE_FILE_SIZE * 1024))
-        local old_kb=0
-        if [ -f "${install_path}/tailscaled" ]; then
-            old_kb=$(( $(wc -c < "${install_path}/tailscaled" 2>/dev/null || echo 0) / 1024 ))
-        fi
         local target_dev tmp_dev tmp_avail
         target_dev=$(df -Pk "${install_path}" 2>/dev/null | awk 'NR==2 {print $1}')
         tmp_dev=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $1}')
         tmp_avail=$(df -Pk /tmp 2>/dev/null | awk 'NR==2 {print $(NF-2)}')
         if [ -n "$tmp_dev" ] && [ "$tmp_dev" != "$target_dev" ] \
-            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + 2048))" ] 2>/dev/null \
+            && [ -n "$tmp_avail" ] && [ "$tmp_avail" -ge "$((need_kb + old_kb + 2048))" ] 2>/dev/null \
             && [ $((target_avail + old_kb)) -ge $((need_kb + 1024)) ] 2>/dev/null; then
             tight_replace="true"
-            echo "[WARNING]: Using the tight replacement path (stage via /tmp, delete old, then place)"
+            echo "[WARNING]: Using the tight replacement path (stage+verify and back up the old program via /tmp, then replace)"
             echo "[WARNING]: Do not power off or force-reboot during the update, or tailscale may not start"
         else
-            echo "[ERROR]: Not enough space for a safe replacement and /tmp cannot stage it (needs a different filesystem with enough room)"
+            echo "[ERROR]: Not enough target space, and /tmp cannot stage the new file plus the old-program backup (needs a different filesystem with enough room)"
             echo "[ERROR]: Free space on the target path (or use USB storage) and retry"
             exit 1
         fi
@@ -1457,6 +1510,7 @@ binary_install() {
     # Download to a temp file and atomically replace after verification (same
     # reason as the temp install: avoid ETXTBSY and never delete a running binary)
     local tmp_path="${file_path}.new"
+    BINARY_ROLLBACK_FILE=""
 
     if [ "$tight_replace" = "true" ]; then
         # Less than 2x space: tight replacement (stage via /tmp, rollback on failure)
@@ -1476,15 +1530,9 @@ binary_install() {
             continue
         fi
 
-        echo "[INFO]: Downloading configuration files and init scripts..."
         wget -cO "$sha_file" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/bin.sha256"
-        # Preserve existing config: only write the default on first install
-        if [ ! -f "/etc/config/tailscale" ]; then
-            wget -O "/etc/config/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.conf"
-        fi
-        # init script has no checksum: download it in full; -c resume could
-        # append corrupt bytes to an existing file
-        wget -O "/etc/init.d/tailscale" --timeout="$attempt_timeout" "${TAILSCALE_URL}/${DEVICE_TARGET}/tailscale.init"
+        # Config and init script (shared initialization flow with the tight path)
+        binary_fetch_support_files
 
         printf '%s' "$(cat "$sha_file" | tr -d '\n\r')" > "$sha_file"
         printf '  %s\n' "$tmp_path" >> "$sha_file"
@@ -1632,7 +1680,41 @@ binary_install() {
 
     if pidof tailscaled >/dev/null 2>&1; then
         echo "[INFO]: Tailscale service started"
+        # Service verified: clean up the rollback backup kept by the tight path
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            rm -f "$BINARY_ROLLBACK_FILE"
+            BINARY_ROLLBACK_FILE=""
+        fi
     else
+        # Service failed to start: restore the old program if the tight path kept a backup
+        if [ -n "$BINARY_ROLLBACK_FILE" ] && [ -f "$BINARY_ROLLBACK_FILE" ]; then
+            echo "[WARNING]: The new program failed to start, rolling back the old one..."
+            # Clear any procd-respawned instance/process and remove the new
+            # file to free space, or the rollback copy may fail to fit
+            ubus call service delete '{"name":"tailscale"}' 2>/dev/null || true
+            for p in $(pidof tailscaled); do
+                kill "$p" 2>/dev/null || true
+            done
+            sleep 1
+            rm -f "$file_path"
+            if cp "$BINARY_ROLLBACK_FILE" "${file_path}.new" 2>/dev/null \
+                && [ "$(wc -c < "${file_path}.new" 2>/dev/null || echo 0)" = "$(wc -c < "$BINARY_ROLLBACK_FILE" 2>/dev/null || echo 1)" ] \
+                && mv -f "${file_path}.new" "$file_path" 2>/dev/null; then
+                chmod +x "$file_path" 2>/dev/null || true
+                rm -f "$BINARY_ROLLBACK_FILE"
+                BINARY_ROLLBACK_FILE=""
+                /etc/init.d/tailscale restart 2>/dev/null || /etc/init.d/tailscale start 2>/dev/null || true
+                sleep 3
+                if pidof tailscaled >/dev/null 2>&1; then
+                    echo "[INFO]: Old program restored, service running again"
+                else
+                    echo "[WARNING]: Service still not running after rollback, run manually: /etc/init.d/tailscale restart"
+                fi
+            else
+                rm -f "${file_path}.new"
+                echo "[WARNING]: Rollback placement failed, restore manually: cp $BINARY_ROLLBACK_FILE $file_path"
+            fi
+        fi
         echo "[WARNING]: Tailscale service failed to start, run manually: /etc/init.d/tailscale restart"
         exit 1
     fi
