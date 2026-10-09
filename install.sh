@@ -517,6 +517,21 @@ remove() {
         fi
     fi
 
+    # 包管理器仍登记 tailscale 说明删除被依赖阻止 (如 luci-app-tailscale-community);
+    # 继续删除文件会破坏依赖它的包, 因此中止卸载并恢复服务
+    if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+        echo "[ERROR]: tailscale 仍被包管理器登记 (可能被其他包依赖), 已中止卸载"
+        echo "[ERROR]: 请先卸载依赖 tailscale 的包 (如 luci-app-tailscale-community) 后重试"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+    if [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+        echo "[ERROR]: tailscale 仍被包管理器登记 (可能被其他包依赖), 已中止卸载"
+        echo "[ERROR]: 请先卸载依赖 tailscale 的包 (如 luci-app-tailscale-community) 后重试"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+
     # 如果是二进制安装模式，清理二进制安装路径下的文件
     if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         local binary_path=""

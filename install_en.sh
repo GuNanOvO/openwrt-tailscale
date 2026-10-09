@@ -462,6 +462,22 @@ remove() {
         fi
     fi
 
+    # If the package manager still lists tailscale, the removal was blocked by a
+    # dependency (e.g. luci-app-tailscale-community); deleting the files would
+    # break that package, so abort the uninstall and restore the service
+    if [ "$PACKAGE_MANAGER" = "apk" ] && apk info 2>/dev/null | grep -q "^tailscale$"; then
+        echo "[ERROR]: tailscale is still registered (a package may depend on it), uninstall aborted"
+        echo "[ERROR]: Remove packages depending on tailscale (e.g. luci-app-tailscale-community) first"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+    if [ "$PACKAGE_MANAGER" = "opkg" ] && opkg list-installed 2>/dev/null | grep -q "^tailscale "; then
+        echo "[ERROR]: tailscale is still registered (a package may depend on it), uninstall aborted"
+        echo "[ERROR]: Remove packages depending on tailscale (e.g. luci-app-tailscale-community) first"
+        /etc/init.d/tailscale start 2>/dev/null || true
+        exit 1
+    fi
+
     # Clean up binary installation path files if in binary mode
     if [ "$TAILSCALE_INSTALL_STATUS" = "binary" ]; then
         local binary_path=""
