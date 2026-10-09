@@ -66,6 +66,12 @@ apk update && apk upgrade tailscale
 opkg update && opkg upgrade tailscale
 ```
 
+也可以使用一键脚本更新（自动检测安装模式，过程带断线保护，适合 SSH/Tailscale 远程操作）：
+
+```sh
+sh install.sh --update --yes
+```
+
 ## 卸载
 
 ```sh
@@ -77,6 +83,10 @@ apk del tailscale
 opkg remove tailscale
 rm -rf /etc/tailscale /var/lib/tailscale
 ```
+
+::: tip
+如果 `apk del` / `opkg remove` 提示无法删除（被其他包依赖，例如 `luci-app-tailscale-community`），请先卸载依赖它的包再执行卸载。
+:::
 
 ## 下一步
 

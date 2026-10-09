@@ -66,6 +66,12 @@ apk update && apk upgrade tailscale
 opkg update && opkg upgrade tailscale
 ```
 
+You can also update with the one-click script (auto-detects the install mode and is disconnect-protected, suitable for remote SSH/Tailscale sessions):
+
+```sh
+sh install.sh --update --yes
+```
+
 ## Uninstall
 
 ```sh
@@ -77,6 +83,10 @@ apk del tailscale
 opkg remove tailscale
 rm -rf /etc/tailscale /var/lib/tailscale
 ```
+
+::: tip
+If `apk del` / `opkg remove` refuses to remove the package (another package depends on it, e.g. `luci-app-tailscale-community`), remove the dependent package first and retry.
+:::
 
 ## Next Steps
 

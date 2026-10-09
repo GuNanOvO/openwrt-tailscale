@@ -33,6 +33,21 @@ opkg update && opkg upgrade tailscale
 
 可以！安装 [luci-app-tailscale-community](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community) 获取图形化管理界面。详见 [LuCI 管理界面](/zh/guide/luci)。
 
+### 更新/重装会影响 luci-app-tailscale-community 等依赖包吗？
+
+不会。依赖按包名 `tailscale` 建立，本仓库保持包名不变；持久更新/重装使用强制重装并保留包记录，`/etc/config/tailscale` 配置不会被覆盖；模式切换期间 LuCI 仍可通过 `/usr/sbin/tailscale` 正常调用 CLI。
+
+### 卸载时提示 "tailscale 仍被包管理器登记"？
+
+说明有包依赖 tailscale（例如 `luci-app-tailscale-community`），包管理器拒绝了删除。脚本为避免破坏依赖包会**中止卸载并恢复服务**；请先卸载依赖它的包后重试：
+
+```sh
+# OpenWrt 25.12+
+apk del luci-app-tailscale-community
+# OpenWrt 24.10-
+opkg remove luci-app-tailscale-community
+```
+
 ## 构建
 
 ### 如何将最新版 Tailscale 编入自编译固件？

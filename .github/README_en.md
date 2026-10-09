@@ -124,6 +124,7 @@ Binary compression is performed using [UPX](https://upx.github.io/) with:
 
 * **Persistent installation**: Automatically downloads ipk/apk packages and installs them using `opkg install` or `apk add`
 * **Temporary installation**: Downloads the binary executable to `/tmp` and creates a script symlink in `/usr/sbin`
+* **Disconnect protection**: installs/updates/switches run in a detached background session — an SSH/Tailscale connection drop does not interrupt the install (full log: `/tmp/tailscale-install.log`)
 
 For details, see [install_en.sh](../install_en.sh)
 

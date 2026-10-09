@@ -26,5 +26,5 @@ description: 通过 luci-app-tailscale-community 图形化管理 Tailscale
 按照 [luci-app-tailscale-community 仓库](https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community) 的说明进行安装。
 
 ::: tip
-此 LuCI 应用与本仓库的精简版 Tailscale 完全兼容。
+此 LuCI 应用与本仓库的精简版 Tailscale 完全兼容。更新/重装 Tailscale 不会影响该应用；如需卸载 Tailscale，请先卸载本应用（存在依赖关系）。
 :::

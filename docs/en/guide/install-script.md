@@ -75,7 +75,7 @@ sh install.sh --update --yes
 | Option | Description |
 |--------|-------------|
 | `--install-path <path>` | Custom install path for binary mode (default: `/usr/sbin`) |
-| `--custom-proxy` | Use a custom GitHub proxy (no fallback to built-in proxies) |
+| `--custom-proxy` | Use a custom GitHub proxy (install.sh only; install_en.sh has no proxy support) |
 
 ### Other Actions
 
@@ -86,6 +86,10 @@ sh install.sh --update --yes
 | `--cron-setup [interval]` | Setup automatic update cron job |
 | `--cron-remove` | Remove the auto-update cron job |
 | `--cron-check` | Check for update and install (called internally by cron) |
+
+::: tip Uninstall note
+If another package depends on `tailscale` in the package manager (e.g. `luci-app-tailscale-community`), the removal is refused. The script detects this and **aborts the uninstall, restoring the service**, so dependent packages are not broken; remove the dependent package first and retry.
+:::
 
 ## Install Modes
 
@@ -104,7 +108,7 @@ sh install.sh --persistent-install --yes
 
 ### Temporary Install (`--temp-install`)
 
-Installs Tailscale to `/tmp`. Files are **lost on reboot** — the wrapper script in `/usr/sbin` will auto re-download the binary on next run if `/tmp/tailscaled` is missing.
+Installs Tailscale to `/tmp`. Files are **lost on reboot** — at boot the `/usr/sbin/tailscaled` wrapper triggers a **download-only** recovery (it does not start/stop the service; the init starts it).
 
 ```sh
 sh install.sh --temp-install
@@ -139,7 +143,8 @@ sh install.sh --mode binary /mnt/usb --yes
 - Blocked system directories: `/`, `/bin`, `/boot`, `/dev`, `/etc`, `/lib`, `/proc`, `/sbin`, `/sys`, `/usr`, `/usr/bin`, `/usr/lib`, `/var`, `/rom`, `/overlay`
 - Creates directory if it doesn't exist
 - Checks parent directory write permissions
-- Checks available space on target partition
+- Checks available space on the target partition: updates use "verify then atomic replace" and need about 1x the binary size free
+- When space is short but `/tmp` is available (different filesystem), a **tight replacement** is used automatically (staged via `/tmp` with an old-program backup; do not power off during the replace)
 
 **Symlink behavior:**
 - When installing to a custom path, symlinks are created in `/usr/sbin` pointing to the actual binary location
@@ -164,8 +169,17 @@ The script supports switching between any installation modes without uninstallin
 
 When switching modes, the script automatically:
 1. Stops the running Tailscale service
-2. Cleans up files from the previous mode
-3. Installs using the new mode
+2. Cleans up files from the previous mode (user config `/etc/config/tailscale` is preserved and never overwritten by defaults)
+3. Installs using the new mode (the whole process is disconnect-protected)
+
+## Disconnect Protection & Logging
+
+Install, update and mode-switch bodies run in a **detached background session**: when operating over SSH (especially a Tailscale connection), a brief network drop or a lost connection will not interrupt the install.
+
+- CLI and interactive-menu installs/updates/switches are all protected
+- The foreground waits for the background task and prints the log tail; the full log is `/tmp/tailscale-install.log`
+- On `Ctrl-C`, if the critical replacement phase is in progress, the script rolls the old program back and restores the service before exiting
+- If the background task runs longer than 15 minutes you get a notice; reconnect later and check the log
 
 ## Interactive Menu
 
@@ -198,6 +212,8 @@ The script can set up a cron job to automatically check for and install Tailscal
 | `weekly` | `weekly` | Every Sunday at 04:00 |
 | `monthly` | `monthly` | Every 1st at 04:00 |
 | Minutes | `30` | Every 30 minutes |
+| Minutes (suffix) | `30min` | Every 30 minutes |
+| Hours (suffix) | `6h` | Every 6 hours (`0 */6`) |
 | Specific time | `05:00` | Every day at 05:00 |
 | Specific time | `22:30` | Every day at 22:30 |
 
@@ -231,6 +247,7 @@ sh install.sh --cron-remove
 | File | Purpose |
 |------|---------|
 | `/usr/sbin/tailscale-update-check` | Generated cron script |
+| `/usr/sbin/tailscale-install.sh` | Installer snapshot (cron only executes trusted `/usr/sbin` paths) |
 | `/var/log/tailscale-update.log` | Update log |
 | `/etc/crontabs/root` | Cron entry (tagged with `# tailscale-auto-update`) |
 
@@ -259,7 +276,9 @@ On startup, the script may prompt to change your system DNS to `223.5.5.5` and `
 
 - **SHA256 verification**: All downloaded files (packages and binaries) are verified with SHA256 checksums
 - **Download retry**: Failed downloads are retried up to 3 times
-- **Path validation**: Binary install blocks system-critical directories
+- **Path validation**: Binary install blocks system-critical directories and only allows letters/digits/`._-` in the path
+- **Config protection**: Updates/switches/boot recovery never overwrite an existing `/etc/config/tailscale`
+- **Cron hardening**: The cron job only executes trusted `/usr/sbin` paths and never world-writable dirs (`/tmp`, `/mnt`)
 - **Architecture check**: Unsupported architectures are rejected before installation
 
 ## Complete Examples
