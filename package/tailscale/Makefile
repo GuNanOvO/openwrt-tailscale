@@ -30,9 +30,8 @@ GO_PKG_LDFLAGS:=-s -w -X 'tailscale.com/version.longStamp=$(PKG_VERSION)-$(PKG_R
 GO_PKG_LDFLAGS_X:=tailscale.com/version.shortStamp=$(PKG_VERSION)
 # Note: keep ts_omit_relayserver out of this list - it removes the Relay server
 # feature (Peer Relay). It was removed in 1.102.4-r2 after issue #161.
-# Note: ts_omit_clientupdate also needs ts_omit_flashappliance. Otherwise the CLI's
-# flash-appliance commands still link tailscale.com/clientupdate and CanAutoUpdate() stays
-# true, so a saved auto-update=true makes "tailscale set" fail (tailscale/tailscale#21912).
+# Note: ts_omit_flashappliance must accompany ts_omit_clientupdate to keep
+# clientupdate out of the binary (tailscale/tailscale#21912).
 GO_PKG_TAGS:=ts_include_cli,ts_omit_aws,ts_omit_bird,ts_omit_completion,ts_omit_kube,ts_omit_systray,ts_omit_taildrop,ts_omit_tap,ts_omit_tpm,ts_omit_capture,ts_omit_syspolicy,ts_omit_debugeventbus,ts_omit_webclient,ts_omit_clientupdate,ts_omit_flashappliance
 
 ifneq ($(filter mips64% riscv64% loongarch64%,$(ARCH)),)
