@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://gunanovo.github.io/openwrt-tailscale/sitemap.xml
