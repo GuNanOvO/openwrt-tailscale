@@ -353,6 +353,14 @@ jobs:
         uses: actions/download-artifact@v5
         with:
           path: ${{ env.ARTIFACT_DIR }}
+          merge-multiple: true
+          skip-decompress: true
+
+      - name: Extract artifacts
+        run: |
+          for ziparchive in ${{ env.ARTIFACT_DIR }}/*.zip; do
+            unzip -q "$ziparchive" -d "${ziparchive%.zip}"
+          done
 
       - name: List Downloaded Artifacts
         run: |
