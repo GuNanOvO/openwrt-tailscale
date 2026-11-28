@@ -29,6 +29,7 @@ jobs:
     outputs:
       upx_ver: ${{ steps.check_upx.outputs.upx_ver }}
       go_version: ${{ steps.check_go.outputs.go_version }}
+      ts_source: ${{ steps.check_go.outputs.ts_source }}
     steps:
       # ----------------- UPX -----------------
       - name: Check Latest UPX Version
@@ -70,17 +71,37 @@ jobs:
           key: upx-linux-amd64-${{ steps.check_upx.outputs.upx_ver }}
 
       # ----------------- Go -----------------
-      - name: Check Latest Go Version
+      - name: Checkout package Makefile
+        uses: actions/checkout@v5
+        with:
+          ref: main
+          path: repo
+          sparse-checkout: package/tailscale/Makefile
+          sparse-checkout-cone-mode: false
+
+      - name: Read Tailscale Go version
         id: check_go
         run: |
-          GO_TAG=$(curl -s https://go.dev/VERSION?m=text | head -1)
-          echo "GO_TAG=$GO_TAG" >> "$GITHUB_ENV"
-
-          GO_VER="${GO_TAG#go}"
-          echo "Detected Go Version: $GO_VER"
-
+          MFILE="/tmp/ts.mk"
+          sed -E '/^[[:space:]]*(-?include|sinclude)[[:space:]]/d' repo/package/tailscale/Makefile > $MFILE
+          TS_SOURCE=$(make -sf $MFILE --eval='print:;@printf "%s\n" "$(PKG_SOURCE)"' print)
+          echo "ts_source=$TS_SOURCE" >> "$GITHUB_OUTPUT"
+          TS_SOURCE_URL=$(make -sf $MFILE --eval='print:;@printf "%s\n" "$(PKG_SOURCE_URL)"' print)
+          curl -fsSL "$TS_SOURCE_URL" -o $TS_SOURCE
+          TOOLCHAIN_FILE=$(tar -tzf $TS_SOURCE | grep '/go.toolchain.version$' | head -1)
+          GO_VER=$(tar -xOf $TS_SOURCE "$TOOLCHAIN_FILE")
+          TS_VERSION=$(sed -n 's/^PKG_VERSION:=//p' "$MFILE")
+          echo "Tailscale $TS_VERSION requires Go $GO_VER"
           echo "go_version=$GO_VER" >> "$GITHUB_OUTPUT"
           echo "GO_VERSION=$GO_VER" >> "$GITHUB_ENV"
+          GO_TAG="go$GO_VER"
+          echo "GO_TAG=$GO_TAG" >> "$GITHUB_ENV"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          archive: false
+          path: ${{ steps.check_go.outputs.ts_source }}
+          retention-days: 1
 
       - name: Restore Go Cache
         id: cache_go
@@ -241,6 +262,11 @@ jobs:
           echo "Directories prepared with permissions:"
           ls -la
 
+      - uses: actions/download-artifact@v8
+        with:
+          name: ${{ needs.prepare.outputs.ts_source }}
+          path: dl
+
       - name: Build with OpenWRT 24.10 SDK Docker
         run: |
           if echo "${{ env.SKIP_TARGETS_24 }}" | grep -qw "${{ matrix.platform }}"; then
@@ -253,6 +279,7 @@ jobs:
               -v "$(pwd)/keys:/builder/keys:ro,z" \
               -v "$(pwd)/upx:/builder/upx:ro,z" \
               -v "$(pwd)/go:/builder/go:ro,z" \
+              -v "$(pwd)/dl/${{ needs.prepare.outputs.ts_source }}:/builder/dl/${{ needs.prepare.outputs.ts_source }}:ro,z" \
               -e TERM=xterm \
               -e FORCE=1 \
               ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_IPK_SDK }} \
@@ -271,6 +298,7 @@ jobs:
               -v "$(pwd)/keys:/builder/keys:ro,z" \
               -v "$(pwd)/upx:/builder/upx:ro,z" \
               -v "$(pwd)/go:/builder/go:ro,z" \
+              -v "$(pwd)/dl/${{ needs.prepare.outputs.ts_source }}:/builder/dl/${{ needs.prepare.outputs.ts_source }}:ro,z" \
               -e TERM=xterm \
               -e FORCE=1 \
               ghcr.io/openwrt/sdk:${{ matrix.platform }}-V${{ env.OPENWRT_APK_SDK }} \
@@ -486,11 +514,44 @@ jobs:
           git commit -m "Update feed: ${{ env.BUILD_DATE }}"
           git push origin feed --force
 
+  cleanup_temp:
+    name: Delete Source Tarball Artifact
+    if: always()
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - uses: actions/github-script@v9
+        env:
+          TS_ARTIFACT_NAME: ${{ needs.prepare.outputs.ts_source }}
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const { data } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner,
+              repo,
+              run_id: context.runId
+            });
+
+            const artifact = data.artifacts.find(
+              item => item.name === process.env.TS_ARTIFACT_NAME
+            );
+
+            if (artifact) {
+              await github.rest.actions.deleteArtifact({
+                owner,
+                repo,
+                artifact_id: artifact.id
+              });
+              core.info(`Deleted ${artifact.name}`);
+            }
+
   # Release To GitHub Release
 
   release:
     name: Create Release
-    needs: [build]
+    needs: [build, cleanup_temp]
     runs-on: ubuntu-latest
     permissions:
       contents: write

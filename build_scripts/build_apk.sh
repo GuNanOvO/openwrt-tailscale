@@ -38,9 +38,10 @@ make defconfig > /dev/null 2>&1
 # avoid dependency resolution and installation during build
 # which can be time-consuming and may fail due to network issues
 # mkdir for go binary and link it to staging dir for go build
-mkdir -p /builder/staging_dir/hostpkg/lib/go-1.26/bin
-ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-1.26/bin/go
-ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/lib/go-1.26/bin/gofmt
+GO_VERS_FOLDER="go-$(sed -n 's/^GO_DEFAULT_VERSION:=//p' feeds/packages/lang/golang/golang-values.mk)"
+mkdir -p /builder/staging_dir/hostpkg/lib/$GO_VERS_FOLDER/bin
+ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/$GO_VERS_FOLDER/bin/go
+ln -sf /builder/go/bin/gofmt /builder/staging_dir/hostpkg/lib/$GO_VERS_FOLDER/bin/gofmt
 if [ -d /builder/staging_dir/hostpkg/lib/go-cross/bin ]; then
     ln -sf /builder/go/bin/go /builder/staging_dir/hostpkg/lib/go-cross/bin/go
 fi
